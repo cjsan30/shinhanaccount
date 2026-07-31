@@ -21,3 +21,13 @@
 - 기본 한도: 정주비 500,000원, 학습공간 지원비 200,000원, 총 700,000원
 - 카테고리별 알림 기본값: 50%, 80%; 사용자가 슬라이더로 변경 가능
 - 수동 분류로 임계치 도달 시 현재 기준은 인라인 경고이며, 푸시 알림은 보류한다.
+
+## 앱 식별값과 서명
+
+- 표시 이름: `신청해 계산기`
+- Android 패키지 ID: `io.github.cjsan30.shinhanhae.calculator`
+- 앱 아이콘 원본: `assets/app-icon-calculator.png`
+- 개발 중에는 Android debug key를 사용한다.
+- 최초 공유 APK 직전에 별도의 release keystore를 생성한다.
+- release keystore와 비밀번호는 비밀번호 관리자에 보관하고, 암호화된 별도 저장소에 백업 1개를 둔다.
+- keystore·비밀번호·서명된 APK/AAB는 Git 저장소에 커밋하지 않는다.
