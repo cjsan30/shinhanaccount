@@ -7,3 +7,4 @@
 .secondary-action{margin-top:10px!important;color:#eef0f2!important;border:1px solid #e6eaf044!important;background:#ffffff12!important}
 .policy-lines{display:grid;grid-template-columns:1fr 1fr;gap:7px}.policy-lines span{color:#c9d0d8;font-size:13px}.policy-lines strong{grid-column:1/-1;margin-top:5px;padding-top:10px;border-top:1px solid #e6eaf022;font-size:13px}
 .policy-amount{display:flex!important;align-items:center;justify-content:space-between;margin:0!important;color:#c9d0d8;font-size:13px}.policy-amount input{width:108px!important;margin:0!important;padding:7px 8px!important;text-align:right;letter-spacing:0!important;font-size:13px}
+.policy-lines{display:block}.policy-group{margin-top:12px;padding:12px;border-radius:9px;background:#ffffff08}.policy-group h4{display:flex;justify-content:space-between;margin:0 0 8px;font-size:14px}.policy-group h4 span{color:#dfe4e8;font-weight:500}.policy-group+.policy-group{margin-top:9px}

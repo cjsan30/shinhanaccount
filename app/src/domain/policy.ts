@@ -1,7 +1,7 @@
 import type { BudgetKey } from './budget';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
-export type SupportPolicy = { plans: Record<PolicyItem, number> };
+export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string };
 export type PolicyItemDefinition = { key: PolicyItem; bucket: BudgetKey; label: string; ledgerCategories: string[] };
 
 export const POLICY_STORAGE_KEY = 'shinhanhae-policy-v1';
@@ -14,7 +14,7 @@ export const POLICY_ITEMS: PolicyItemDefinition[] = [
   { key: 'cafe', bucket: 'studySpace', label: '카페', ledgerCategories: ['generalCafe'] },
   { key: 'readingRoom', bucket: 'studySpace', label: '독서실', ledgerCategories: ['readingRoom'] },
 ];
-export const defaultPolicy: SupportPolicy = { plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+export const defaultPolicy: SupportPolicy = { plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 }, sourceText: '' };
 
 const fields: Array<[PolicyItem, RegExp]> = [
   ['housing', /숙박비[\s\S]{0,80}?([\d,]+)\s*원?/],
@@ -46,7 +46,7 @@ export function parsePolicyText(text: string): SupportPolicy {
     const lineItems = totalIndex >= 0 ? trailing.slice(0, totalIndex) : trailing;
     const nonZero = lineItems.filter((amount) => amount > 0);
     if (nonZero.length) { plans.transport = nonZero[0]; plans.cafe = nonZero.at(-1) ?? plans.cafe; }
-    return { plans };
+    return { plans, sourceText: text };
   }
   for (const [item, pattern] of fields) {
     const match = text.match(pattern);
@@ -54,14 +54,14 @@ export function parsePolicyText(text: string): SupportPolicy {
     const amount = Number(match[1].replaceAll(',', ''));
     if (Number.isFinite(amount)) plans[item] = amount;
   }
-  return { plans };
+  return { plans, sourceText: text };
 }
 
 export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
   return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0);
 }
 export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
-  try { const raw = storage.getItem(POLICY_STORAGE_KEY); return raw ? { plans: { ...defaultPolicy.plans, ...(JSON.parse(raw) as SupportPolicy).plans } } : structuredClone(defaultPolicy); }
+  try { const raw = storage.getItem(POLICY_STORAGE_KEY); return raw ? { plans: { ...defaultPolicy.plans, ...(JSON.parse(raw) as SupportPolicy).plans }, sourceText: (JSON.parse(raw) as SupportPolicy).sourceText ?? '' } : structuredClone(defaultPolicy); }
   catch { return structuredClone(defaultPolicy); }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }

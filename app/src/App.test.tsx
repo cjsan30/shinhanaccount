@@ -62,7 +62,7 @@ describe('support fund home', () => {
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '숙박비 100,000원 식비 200,000원 교통비 250,000원 카페 200,000원' } });
     fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
-    expect(screen.getByText('정주비 550,000원 · 학습공간 200,000원')).toBeInTheDocument();
+    expect(screen.getByText('550,000원')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '검토 후 정책 확정' }));
     expect(screen.getByText('456,600원')).toBeInTheDocument();
     expect(window.localStorage.getItem('shinhanhae-policy-v1')).toContain('100000');
@@ -73,8 +73,20 @@ describe('support fund home', () => {
     fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '숙박비 50,000원 식비 200,000원 교통비 250,000원 카페 200,000원' } });
     fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
     fireEvent.change(screen.getByLabelText('주거비 계획 금액'), { target: { value: '60000' } });
-    expect(screen.getByText('정주비 510,000원 · 학습공간 200,000원')).toBeInTheDocument();
+    expect(screen.getByText('510,000원')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '검토 후 정책 확정' }));
     expect(window.localStorage.getItem('shinhanhae-policy-v1')).toContain('60000');
+  });
+  it('keeps the saved policy source and editable amounts when settings reopen', () => {
+    const source = '숙박비 60,000원 식비 200,000원 교통비 250,000원 카페 200,000원';
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: source } });
+    fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
+    fireEvent.click(screen.getByRole('button', { name: '검토 후 정책 확정' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    expect(screen.getByLabelText('계획표 내용')).toHaveValue(source);
+    expect(screen.getByLabelText('주거비 계획 금액')).toHaveValue(60000);
   });
 });
