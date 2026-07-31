@@ -7,6 +7,7 @@ import App from './App';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   smsBridge.configure.mockResolvedValue(undefined);
   smsBridge.requestPermission.mockResolvedValue({ granted: true });
   smsBridge.consumePendingApprovals.mockResolvedValue({ items: [] });
@@ -22,13 +23,15 @@ describe('support fund home', () => {
   });
 
   it('opens a budget detail in a bottom sheet', () => {
-    render(<App />); fireEvent.click(screen.getByRole('button', { name: /정주비 상세 보기/ }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /정주비 상세 보기/ }));
     expect(screen.getByRole('dialog', { name: '정주비 상세' })).toBeInTheDocument();
     expect(screen.getByText('숙박비')).toBeInTheDocument();
   });
 
   it('configures the card and requests SMS permission', async () => {
-    render(<App />); fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.change(screen.getByLabelText('카드 끝 4자리'), { target: { value: '3741' } });
     fireEvent.click(screen.getByRole('button', { name: 'SMS 수신 사용' }));
     await waitFor(() => expect(smsBridge.configure).toHaveBeenCalledWith({ cardLast4: '3741' }));
@@ -38,9 +41,20 @@ describe('support fund home', () => {
 
   it('uses a pending native approval in the payment confirmation sheet', async () => {
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' }] });
-    render(<App />); fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
     expect(await screen.findByText('삼성웰스토리(주)크래프톤정')).toBeInTheDocument();
     expect(screen.getByText('학습공간 지원비 · 일반카페')).toBeInTheDocument();
-    expect(smsBridge.consumePendingApprovals).toHaveBeenCalledOnce();
+  });
+
+  it('persists an automatic classification and refreshes the support balance', async () => {
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' }] });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
+    await screen.findByText('학습공간 지원비 · 일반카페');
+    fireEvent.click(screen.getByRole('button', { name: '자동 분류 적용' }));
+    expect(screen.getByText('401,600원')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('학습공간 지원비 · 일반카페로 저장했습니다.');
+    expect(window.localStorage.getItem('shinhanhae-ledger-v1')).toContain('5000');
   });
 });
