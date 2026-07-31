@@ -8,6 +8,7 @@ export type LedgerSource = 'demo' | 'sms' | 'excel' | 'manual';
 export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; approvalNumber?: string; source?: LedgerSource };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
+export type ManualClassification = { bucket: BudgetKey; category: string };
 export type ImportResult = { ledger: Ledger; imported: number; duplicates: number; excluded: number; undecided: number; skipped: number; replacedDemo: boolean };
 
 const initialEntries: LedgerEntry[] = [
@@ -71,6 +72,15 @@ export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyP
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }
 
+export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification): ApplyPaymentResult {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
+  const previousSpent = getSpent(ledger, classification.bucket);
+  const nextEntry: LedgerEntry = { ...entry, status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
+  const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
+  const currentSpent = getSpent(nextLedger, classification.bucket);
+  return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, BUDGET_LIMITS[classification.bucket], ledger.alertThresholds) };
+}
 export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Ledger = createInitialLedger): Ledger {
   try { const raw = storage.getItem(LEDGER_STORAGE_KEY); return raw ? JSON.parse(raw) as Ledger : fallback(); } catch { return fallback(); }
 }

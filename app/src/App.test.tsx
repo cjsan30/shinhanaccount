@@ -44,17 +44,17 @@ describe('support fund home', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
     expect(await screen.findByText('삼성웰스토리(주)크래프톤정')).toBeInTheDocument();
-    expect(screen.getByText('학습공간 지원비 · 일반카페')).toBeInTheDocument();
+    expect(screen.getByText('학습공간 지원비 · 카페')).toBeInTheDocument();
   });
 
   it('persists an automatic classification and refreshes the support balance', async () => {
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' }] });
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
-    await screen.findByText('학습공간 지원비 · 일반카페');
+    await screen.findByText('학습공간 지원비 · 카페');
     fireEvent.click(screen.getByRole('button', { name: '자동 분류 적용' }));
     expect(screen.getByText('401,600원')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('학습공간 지원비 · 일반카페로 저장했습니다.');
+    expect(screen.getByRole('status')).toHaveTextContent('학습공간 지원비 · 카페로 저장했습니다.');
     expect(window.localStorage.getItem('shinhanhae-ledger-v1')).toContain('5000');
   });
   it('reviews copied policy text before saving its limits', () => {
@@ -88,5 +88,16 @@ describe('support fund home', () => {
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     expect(screen.getByLabelText('계획표 내용')).toHaveValue(source);
     expect(screen.getByLabelText('주거비 계획 금액')).toHaveValue(60000);
+  });
+  it('lets a saved undecided payment be assigned to a support item', async () => {
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: 'Unknown shop' }] });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
+    await screen.findByText('Unknown shop');
+    fireEvent.click(screen.getByRole('button', { name: '미정으로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(screen.getByRole('button', { name: '교통비' }));
+    expect(screen.getByRole('status')).toHaveTextContent('교통비로 분류했습니다.');
+    expect(screen.getByRole('button', { name: '미정 지출 0건' })).toBeInTheDocument();
   });
 });

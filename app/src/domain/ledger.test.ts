@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, createInitialLedger, getSummary, importCardTransactions, loadLedger, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, createInitialLedger, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
@@ -47,5 +47,11 @@ describe('expense ledger', () => {
     const ledger = applyPayment(createInitialLedger(), wellstory5000).ledger;
     saveLedger(storage, ledger);
     expect(loadLedger(storage)).toEqual(ledger);
+  });
+  it('moves an undecided expense into a user-selected support item', () => {
+    const saved = saveAsUndecided(createInitialLedger(), wellstory5000);
+    const result = reclassifyUndecided(saved.ledger, saved.entry.id, { bucket: 'resident', category: 'transport' });
+    expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });
+    expect(getSummary(result.ledger, 'resident').spent).toBe(220700);
   });
 });
