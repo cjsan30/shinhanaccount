@@ -67,4 +67,14 @@ describe('support fund home', () => {
     expect(screen.getByText('456,600원')).toBeInTheDocument();
     expect(window.localStorage.getItem('shinhanhae-policy-v1')).toContain('100000');
   });
+  it('allows editing a support-item amount before policy confirmation', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '숙박비 50,000원 식비 200,000원 교통비 250,000원 카페 200,000원' } });
+    fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
+    fireEvent.change(screen.getByLabelText('주거비 계획 금액'), { target: { value: '60000' } });
+    expect(screen.getByText('정주비 510,000원 · 학습공간 200,000원')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '검토 후 정책 확정' }));
+    expect(window.localStorage.getItem('shinhanhae-policy-v1')).toContain('60000');
+  });
 });
