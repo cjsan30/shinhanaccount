@@ -27,9 +27,7 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
-    </application>
+        <receiver android:name=".SmsApprovalReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter></receiver>`n    </application>`n`n`n    <!-- Permissions -->
 
-    <!-- Permissions -->
-
-    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.INTERNET" />`n    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 </manifest>
