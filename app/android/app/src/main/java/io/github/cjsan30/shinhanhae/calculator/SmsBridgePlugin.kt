@@ -8,6 +8,7 @@ import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
+import com.getcapacitor.PermissionState
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
@@ -61,7 +62,7 @@ class SmsBridgePlugin : Plugin() {
 
     @PermissionCallback
     private fun permissionResult(call: PluginCall) {
-        call.resolve(JSObject().put("granted", getPermissionState("receiveSms").toString() == "GRANTED"))
+        call.resolve(JSObject().put("granted", getPermissionState("receiveSms") == PermissionState.GRANTED))
     }
 
     @com.getcapacitor.PluginMethod

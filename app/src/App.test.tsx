@@ -37,9 +37,10 @@ describe('support fund home', () => {
   });
 
   it('uses a pending native approval in the payment confirmation sheet', async () => {
-    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 8000, merchant: '삼성웰스토리(주)크래프톤정' }] });
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' }] });
     render(<App />); fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
     expect(await screen.findByText('삼성웰스토리(주)크래프톤정')).toBeInTheDocument();
+    expect(screen.getByText('학습공간 지원비 · 일반카페')).toBeInTheDocument();
     expect(smsBridge.consumePendingApprovals).toHaveBeenCalledOnce();
   });
 });
