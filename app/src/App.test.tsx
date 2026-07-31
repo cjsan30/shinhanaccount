@@ -57,4 +57,14 @@ describe('support fund home', () => {
     expect(screen.getByRole('status')).toHaveTextContent('학습공간 지원비 · 일반카페로 저장했습니다.');
     expect(window.localStorage.getItem('shinhanhae-ledger-v1')).toContain('5000');
   });
+  it('reviews copied policy text before saving its limits', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '숙박비 100,000원 식비 200,000원 교통비 250,000원 카페 200,000원' } });
+    fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
+    expect(screen.getByText('정주비 550,000원 · 학습공간 200,000원')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '검토 후 정책 확정' }));
+    expect(screen.getByText('456,600원')).toBeInTheDocument();
+    expect(window.localStorage.getItem('shinhanhae-policy-v1')).toContain('100000');
+  });
 });

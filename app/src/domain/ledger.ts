@@ -21,7 +21,7 @@ export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getSpent(ledger: Ledger, bucket: BudgetKey) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket).reduce((sum, entry) => sum + entry.amount, 0); }
-export function getSummary(ledger: Ledger, bucket: BudgetKey): BudgetSummary { return calculateBudgetSummary(BUDGET_LIMITS[bucket], getSpent(ledger, bucket)); }
+export function getSummary(ledger: Ledger, bucket: BudgetKey, limit = BUDGET_LIMITS[bucket]): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket)); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
