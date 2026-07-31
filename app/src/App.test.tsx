@@ -26,7 +26,7 @@ describe('support fund home', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /정주비 상세 보기/ }));
     expect(screen.getByRole('dialog', { name: '정주비 상세' })).toBeInTheDocument();
-    expect(screen.getByText('숙박비')).toBeInTheDocument();
+    expect(screen.getByText('주거비')).toBeInTheDocument();
   });
 
   it('configures the card and requests SMS permission', async () => {
