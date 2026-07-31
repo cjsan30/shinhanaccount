@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, createInitialLedger, getSummary, loadLedger, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, createInitialLedger, getSummary, importCardTransactions, loadLedger, saveAsUndecided, saveLedger } from './ledger';
+import { classifyPayment } from './sms';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
 
@@ -31,7 +32,16 @@ describe('expense ledger', () => {
     expect(result.entry.status).toBe('undecided');
     expect(getSummary(result.ledger, 'studySpace').spent).toBe(77700);
   });
-    it('round-trips the ledger through local storage', () => {
+
+  it('replaces demo entries once, then merges future exports by approval number', () => {
+    const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '374*', merchant: 'Samsung Wellstory', approvalNumber: '00459878', amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment('Samsung Wellstory', 5000) };
+    const first = importCardTransactions(createInitialLedger(), [transaction]);
+    expect(first).toMatchObject({ imported: 1, replacedDemo: true });
+    expect(first.ledger.entries).toHaveLength(1);
+    const second = importCardTransactions(first.ledger, [transaction]);
+    expect(second).toMatchObject({ imported: 0, duplicates: 1, replacedDemo: false });
+  });
+  it('round-trips the ledger through local storage', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };
     const ledger = applyPayment(createInitialLedger(), wellstory5000).ledger;

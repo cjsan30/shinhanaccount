@@ -3,7 +3,8 @@ import { CaretRight, ChatCircleDots, GearSix, ListBullets } from '@phosphor-icon
 import { BottomSheet } from './components/BottomSheet';
 import { Toast } from './components/Toast';
 import { BUDGET_LIMITS, type BudgetKey } from './domain/budget';
-import { applyPayment, getSummary, loadLedger, saveAsUndecided, saveLedger, type Ledger } from './domain/ledger';
+import { applyPayment, createEmptyLedger, createInitialLedger, getSummary, importCardTransactions, loadLedger, saveAsUndecided, saveLedger, type ImportResult, type Ledger } from './domain/ledger';
+import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { classifyPayment, type PaymentClassification } from './domain/sms';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import './App.css';
@@ -35,7 +36,9 @@ function App() {
   const [card, setCard] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [payment, setPayment] = useState<NativeApproval>(defaultPayment);
-  const [ledger, setLedger] = useState<Ledger>(() => loadLedger(window.localStorage));
+  const [ledger, setLedger] = useState<Ledger>(() => loadLedger(window.localStorage, import.meta.env.PROD ? createEmptyLedger : createInitialLedger));
+  const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const close = () => setPanel(null);
   const show = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3200); };
   useEffect(() => { saveLedger(window.localStorage, ledger); }, [ledger]);
@@ -53,6 +56,26 @@ function App() {
     if (card.length !== 4) { show('카드 끝 4자리를 입력해 주세요.'); return; }
     try { await SmsBridge.configure({ cardLast4: card }); const result = await SmsBridge.requestPermission(); show(result.granted ? 'SMS 수신을 사용할 수 있습니다.' : 'SMS 수신 권한이 필요합니다.'); }
     catch { show('이 기능은 Android 앱에서 사용할 수 있습니다.'); }
+  };
+  const previewCardExport = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const transactions = parseShinhanCardExport(await file.arrayBuffer());
+      setImportTransactions(transactions);
+      setImportResult(null);
+      show(`${transactions.length}건의 카드 내역을 확인했습니다.`);
+    } catch {
+      setImportTransactions(null);
+      show('신한카드 이용내역 파일 형식을 확인해 주세요.');
+    }
+  };
+  const applyCardExport = () => {
+    if (!importTransactions) return;
+    const result = importCardTransactions(ledger, importTransactions);
+    setLedger(result.ledger);
+    setImportResult(result);
+    setImportTransactions(null);
+    show(result.replacedDemo ? `데모 내역을 실제 ${result.imported}건으로 교체했습니다.` : `${result.imported}건을 가져왔습니다.`);
   };
   const openPayment = async () => {
     try { const result = await SmsBridge.consumePendingApprovals(); if (result.items[0]) setPayment(result.items[0]); }
@@ -72,7 +95,7 @@ function App() {
   else if (panel === 'study') content = <Table rows={rowsFor('studySpace')} />;
   else if (panel === 'undecided') content = undecidedCount ? <>{ledger.entries.filter((entry) => entry.status === 'undecided').map((entry) => <div className="item" key={entry.id}><strong>{entry.merchant}</strong><span>{won(entry.amount)}</span></div>)}</> : <p>미정으로 보관된 지출이 없습니다.</p>;
   else if (panel === 'recent') content = recent.length ? <>{recent.map((entry) => <div className="item" key={entry.id}><strong>{entry.merchant} · {entry.category ? categoryNames[entry.category as keyof typeof categoryNames] : ''}</strong><span>{won(entry.amount)}</span></div>)}</> : <p>저장된 결제가 없습니다.</p>;
-  else if (panel === 'settings') content = <><p>카드 끝 4자리가 일치하는 신한 체크 승인 문자만 처리합니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" inputMode="numeric" maxLength={4} value={card} onChange={(event) => setCard(event.target.value.replace(/\D/g, ''))} /></label><button className="sheet-action" onClick={enableSms}>SMS 수신 사용</button><label>첫 번째 경고 <b>{first}%</b><input aria-label="첫 번째 경고 기준" type="range" min="1" max="99" value={first} onChange={(event) => setFirst(+event.target.value)} /></label><label>두 번째 경고 <b>{second}%</b><input aria-label="두 번째 경고 기준" type="range" min="1" max="99" value={second} onChange={(event) => setSecond(+event.target.value)} /></label></>;
+  else if (panel === 'settings') content = <><p>카드 끝 4자리가 일치하는 신한 체크 승인 문자만 처리합니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" inputMode="numeric" maxLength={4} value={card} onChange={(event) => setCard(event.target.value.replace(/\D/g, ''))} /></label><button className="sheet-action" onClick={enableSms}>SMS 수신 사용</button><label>첫 번째 경고 <b>{first}%</b><input aria-label="첫 번째 경고 기준" type="range" min="1" max="99" value={first} onChange={(event) => setFirst(+event.target.value)} /></label><label>두 번째 경고 <b>{second}%</b><input aria-label="두 번째 경고 기준" type="range" min="1" max="99" value={second} onChange={(event) => setSecond(+event.target.value)} /></label><section className="import-card"><h3>사용 내역 가져오기</h3><p>신한카드 앱에서 내려받은 .xls 또는 .xlsx 파일을 읽습니다. 첫 가져오기는 데모 내역을 실제 내역으로 교체하며, 이후에는 승인번호로 중복을 제외합니다.</p><label className="file-picker">엑셀 파일 선택<input aria-label="신한카드 엑셀 파일" type="file" accept=".xls,.xlsx" onChange={(event) => void previewCardExport(event.target.files?.[0])} /></label>{importTransactions && <div className="import-preview"><strong>{importTransactions.length}건 확인</strong><span>가져오기 전 분류 결과를 적용합니다.</span><button className="sheet-action" onClick={applyCardExport}>내역 가져오기</button></div>}{importResult && <p className="success">신규 {importResult.imported}건 · 중복 {importResult.duplicates}건 · 제외 {importResult.excluded}건 · 미정 {importResult.undecided}건</p>}</section></>;
   else content = <><p>수신된 승인 문자를 확인하고 분류합니다.</p><div className="item"><strong>{payment.merchant}</strong><span>{payment.occurredAt.slice(0, 10)} · {won(payment.amount)}</span></div><p className="prediction">자동 분류: <strong>{classificationText(classifyPayment(payment.merchant, payment.amount))}</strong></p><div className="choices"><button onClick={saveUndecided}>미정으로 저장</button><button aria-label="자동 분류 적용" onClick={applyAutomatic}>자동 분류 적용</button></div></>;
 
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간 지원비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '최근 결제' : panel === 'settings' ? '설정' : '새 결제 확인';
