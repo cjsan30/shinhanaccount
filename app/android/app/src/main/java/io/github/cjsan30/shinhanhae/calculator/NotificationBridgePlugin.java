@@ -21,6 +21,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 @CapacitorPlugin(name = "NotificationBridge", permissions = { @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }) })
 public class NotificationBridgePlugin extends Plugin {
     private static final String CHANNEL_ID = "budget_alerts_v2";
+    private static final int BUDGET_ALERT_NOTIFICATION_ID = 1001;
 
     @com.getcapacitor.PluginMethod
     public void requestPermission(PluginCall call) {
@@ -53,7 +54,9 @@ public class NotificationBridgePlugin extends Plugin {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_VIBRATE)
             .setAutoCancel(true);
-        NotificationManagerCompat.from(getContext()).notify((int) System.currentTimeMillis(), notification.build());
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(getContext());
+        notificationManager.cancelAll();
+        notificationManager.notify(BUDGET_ALERT_NOTIFICATION_ID, notification.build());
         call.resolve();
     }
 
