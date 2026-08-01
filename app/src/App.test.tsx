@@ -100,4 +100,12 @@ describe('support fund home', () => {
     expect(screen.getByRole('status')).toHaveTextContent('교통비로 분류했습니다.');
     expect(screen.getByRole('button', { name: '미정 지출 0건' })).toBeInTheDocument();
   });
+  it('requires explicit confirmation before removing a recent payment from the budget', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '최근 결제 보기' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '이 결제 취소 확인' })[0]);
+    expect(screen.getByRole('dialog', { name: '취소 확인' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '취소 확정' }));
+    expect(screen.getByRole('status')).toHaveTextContent('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
+  });
 });

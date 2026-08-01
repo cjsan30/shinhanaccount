@@ -3,9 +3,9 @@ import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 
-export type LedgerStatus = 'classified' | 'excluded' | 'undecided';
+export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'excel' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; approvalNumber?: string; source?: LedgerSource };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -72,6 +72,11 @@ export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyP
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }
 
+export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: string): Ledger {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  if (!entry || entry.status === 'cancelled') return ledger;
+  return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, status: 'cancelled', cancelledAt } : candidate) };
+}
 export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');

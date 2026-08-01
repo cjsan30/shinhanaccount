@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, createInitialLedger, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
@@ -53,5 +53,11 @@ describe('expense ledger', () => {
     const result = reclassifyUndecided(saved.ledger, saved.entry.id, { bucket: 'resident', category: 'transport' });
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });
     expect(getSummary(result.ledger, 'resident').spent).toBe(220700);
+  });
+  it('removes a confirmed cancellation from the affected budget without deleting its history', () => {
+    const applied = applyPayment(createInitialLedger(), wellstory5000);
+    const cancelled = cancelPayment(applied.ledger, applied.entry.id, '2026-07-25T10:00:00+09:00');
+    expect(cancelled.entries.find((entry) => entry.id === applied.entry.id)).toMatchObject({ status: 'cancelled', cancelledAt: '2026-07-25T10:00:00+09:00' });
+    expect(getSummary(cancelled, 'studySpace').spent).toBe(77700);
   });
 });
