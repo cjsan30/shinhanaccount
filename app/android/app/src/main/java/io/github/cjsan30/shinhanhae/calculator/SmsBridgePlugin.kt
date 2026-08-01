@@ -3,6 +3,8 @@ package io.github.cjsan30.shinhanhae.calculator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
@@ -170,6 +172,26 @@ class SmsBridgePlugin : Plugin() {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(2002, notification)
+    }
+    @com.getcapacitor.PluginMethod
+    fun scheduleTestApproval(call: PluginCall) {
+        val approvalObject = call.getObject("approval") ?: JSObject()
+        val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val approval = Approval(
+            card,
+            approvalObject.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
+            approvalObject.getInteger("amount") ?: 30000,
+            approvalObject.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+        )
+        val delayMs = call.getInt("delayMs")?.coerceIn(1_000, 60_000) ?: 10_000
+        Handler(Looper.getMainLooper()).postDelayed({
+            val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+            queue.put(approval.toJson())
+            while (queue.length() > 20) queue.remove(0)
+            prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+            showInjectedNotification(consumeBudgetAlert(prefs, approval))
+        }, delayMs.toLong())
+        call.resolve()
     }
     @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {

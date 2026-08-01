@@ -6,6 +6,7 @@ type SmsBridgePlugin = {
   configure(options: { cardLast4: string }): Promise<void>;
   syncBudgetState(state: NativeBudgetState): Promise<void>;
   injectTestApproval(approval: NativeApproval): Promise<void>;
+  scheduleTestApproval(options: { approval: NativeApproval; delayMs: number }): Promise<void>;
   requestPermission(): Promise<{ granted: boolean }>;
   consumePendingApprovals(): Promise<{ items: NativeApproval[] }>;
 };
