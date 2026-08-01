@@ -11,3 +11,5 @@
 .reclassify-card+.reclassify-card{margin-top:22px}.reclassify-card .item{margin-top:0}.reclassify-options{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}.reclassify-options button{padding:9px 10px;border:1px solid #e6eaf044;border-radius:9px;color:#eef0f2;background:#ffffff12;font-size:13px}
 .recent-card+.recent-card{margin-top:12px}.recent-card .item{margin-top:0}.cancel-action{margin-top:10px;padding:8px 10px;border:1px solid #f0a7a744;border-radius:8px;color:#ffc5c5;background:#ff59591a;font-size:12px}.danger-action{background:#c94a4a!important;color:#fff!important}
 .test-tools{margin-top:30px;padding-top:22px;border-top:1px solid #e6eaf022}.test-tools h3{margin:0;font-size:17px;letter-spacing:-.04em}.test-tools p{margin-top:8px}
+
+.budget>span{display:grid;grid-template-columns:minmax(0,1fr) auto 27px;gap:10px}.budget strong{min-width:0;white-space:nowrap}.budget em{margin-left:0}.budget>span svg{justify-self:end}
