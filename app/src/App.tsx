@@ -3,9 +3,9 @@ import { CaretRight, ChatCircleDots, GearSix, ListBullets } from '@phosphor-icon
 import { BottomSheet } from './components/BottomSheet';
 import { Toast } from './components/Toast';
 import { type BudgetKey } from './domain/budget';
-import { applyPayment, cancelPayment, createEmptyLedger, createInitialLedger, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
+import { applyPayment, cancelPayment, createEmptyLedger, createInitialLedger, getEntryPeriodKey, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
-import { getPolicyLimit, loadPolicy, parsePolicyText, POLICY_ITEMS, savePolicy, type PolicyItem, type SupportPolicy } from './domain/policy';
+import { confirmPolicyForPeriod, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, getPolicyVersion, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
 import { classifyPayment, type PaymentClassification } from './domain/sms';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import { createTestApproval } from './native/testApproval';
@@ -37,25 +37,28 @@ function App() {
   const [ledger, setLedger] = useState<Ledger>(() => loadLedger(window.localStorage, import.meta.env.PROD ? createEmptyLedger : createInitialLedger));
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [policy, setPolicy] = useState<SupportPolicy>(() => loadPolicy(window.localStorage));
+  const now = useMemo(() => new Date(), []);
+  const [policyBook, setPolicyBook] = useState(() => loadPolicyBook(window.localStorage, now));
+  const activePolicy = getEffectivePolicy(policyBook, now);
+  const policy = activePolicy.policy;
   const [policyText, setPolicyText] = useState('');
   const [policyDraft, setPolicyDraft] = useState<SupportPolicy | null>(null);
   const [cancellationTarget, setCancellationTarget] = useState<LedgerEntry | null>(null);
   const close = () => setPanel(null);
   const show = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3200); };
   useEffect(() => { saveLedger(window.localStorage, ledger); }, [ledger]);
-  useEffect(() => { savePolicy(window.localStorage, policy); }, [policy]);
+  useEffect(() => { savePolicyBook(window.localStorage, policyBook); }, [policyBook]);
 
   const budgetLimits = { resident: getPolicyLimit(policy, 'resident'), studySpace: getPolicyLimit(policy, 'studySpace') };
   const [first, second] = ledger.alertThresholds;
-  const resident = getSummary(ledger, 'resident', budgetLimits.resident);
-  const study = getSummary(ledger, 'studySpace', budgetLimits.studySpace);
+  const resident = getSummary(ledger, 'resident', budgetLimits.resident, activePolicy.periodKey);
+  const study = getSummary(ledger, 'studySpace', budgetLimits.studySpace, activePolicy.periodKey);
   const totalSpent = resident.spent + study.spent;
   const totalLimit = budgetLimits.resident + budgetLimits.studySpace;
   const totalUsage = (totalSpent / totalLimit) * 100;
-  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => [item.label, policy.plans[item.key], ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
-  const undecidedCount = ledger.entries.filter((entry) => entry.status === 'undecided').length;
-  const recent = useMemo(() => ledger.entries.filter((entry) => entry.status === 'classified' || entry.status === 'cancelled').slice(-8).reverse(), [ledger.entries]);
+  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => [item.label, policy.plans[item.key], ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && getEntryPeriodKey(entry) === activePolicy.periodKey && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
+  const undecidedCount = ledger.entries.filter((entry) => entry.status === 'undecided' && getEntryPeriodKey(entry) === activePolicy.periodKey).length;
+  const recent = useMemo(() => ledger.entries.filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && getEntryPeriodKey(entry) === activePolicy.periodKey).slice(-8).reverse(), [ledger.entries, activePolicy.periodKey]);
 
   const updateAlertThreshold = (index: 0 | 1, rawValue: number) => {
     setLedger((current) => {
@@ -127,14 +130,15 @@ function App() {
   };
   const confirmPolicy = () => {
     if (!policyDraft) return;
-    setPolicy(policyDraft);
+    setPolicyBook((current) => confirmPolicyForPeriod(current, policyDraft, getNextPolicyPeriodKey(now))); 
     setPolicyDraft(null);
     setPolicyText('');
-    show('검토한 계획 금액을 정책에 적용했습니다.');
+    show(`${getNextPolicyPeriodKey(now)} 기간 정책을 저장했습니다.`);
   };
   const openSettings = () => {
-    setPolicyText(policy.sourceText);
-    setPolicyDraft(structuredClone(policy));
+    const scheduled = getPolicyVersion(policyBook, getNextPolicyPeriodKey(now)) ?? policy;
+    setPolicyText(scheduled.sourceText);
+    setPolicyDraft(structuredClone(scheduled));
     setPanel('settings');
   };
   const openPayment = async () => {

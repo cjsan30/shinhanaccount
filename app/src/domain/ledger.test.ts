@@ -5,6 +5,13 @@ import { classifyPayment } from './sms';
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
 
 describe('expense ledger', () => {
+  it('separates spending by the policy period beginning on the 10th', () => {
+    const ledger = { ...createInitialLedger(), entries: [] };
+    const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-09T23:59:00+09:00', amount: 8000 });
+    const second = applyPayment(first.ledger, { ...wellstory5000, occurredAt: '2026-08-10T00:00:00+09:00', amount: 8000 });
+    expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
+    expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
+  });
   it('stores a 5,000 won Samsung Wellstory approval in study-space general cafe', () => {
     const result = applyPayment(createInitialLedger(), wellstory5000);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'studySpace', category: 'generalCafe' });

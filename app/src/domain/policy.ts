@@ -1,4 +1,4 @@
-import type { BudgetKey } from './budget';
+import { getPolicyPeriodKey, type BudgetKey } from './budget';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
 export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string };
@@ -65,3 +65,48 @@ export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
   catch { return structuredClone(defaultPolicy); }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
+export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string };
+export type PolicyBook = { versions: PolicyVersion[] };
+export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
+
+export function getNextPolicyPeriodKey(date: Date) {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + 10);
+  return getPolicyPeriodKey(next);
+}
+
+export function createPolicyBook(policy: SupportPolicy = defaultPolicy, date: Date = new Date()): PolicyBook {
+  return { versions: [{ ...structuredClone(policy), periodKey: getPolicyPeriodKey(date), confirmedAt: date.toISOString() }] };
+}
+
+export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, date: Date = new Date()): PolicyBook {
+  try {
+    const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as PolicyBook;
+      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...defaultPolicy.plans, ...version.plans } })) };
+    }
+    return createPolicyBook(loadPolicy(storage), date);
+  } catch { return createPolicyBook(defaultPolicy, date); }
+}
+
+export function savePolicyBook(storage: Pick<Storage, 'setItem'>, book: PolicyBook) {
+  storage.setItem(POLICY_BOOK_STORAGE_KEY, JSON.stringify(book));
+}
+
+export function getPolicyVersion(book: PolicyBook, periodKey: string) {
+  return book.versions.find((version) => version.periodKey === periodKey) ?? null;
+}
+
+export function getEffectivePolicy(book: PolicyBook, date: Date) {
+  const periodKey = getPolicyPeriodKey(date);
+  const exact = getPolicyVersion(book, periodKey);
+  if (exact) return { policy: exact as SupportPolicy, periodKey, confirmed: true };
+  const fallback = [...book.versions].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).at(-1) ?? createPolicyBook(defaultPolicy, date).versions[0];
+  return { policy: fallback as SupportPolicy, periodKey, confirmed: false };
+}
+
+export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, periodKey: string, confirmedAt: string = new Date().toISOString()): PolicyBook {
+  const version: PolicyVersion = { ...structuredClone(policy), periodKey, confirmedAt };
+  return { versions: [...book.versions.filter((candidate) => candidate.periodKey !== periodKey), version].sort((a, b) => a.periodKey.localeCompare(b.periodKey)) };
+}
