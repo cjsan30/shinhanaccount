@@ -25,6 +25,12 @@ describe('expense ledger', () => {
     expect(getSummary(result.ledger, 'resident').spent).toBe(0);
   });
 
+  it('uses the selected support-item plan instead of the whole budget for alerts', () => {
+    const ledger = { ...createInitialLedger(), entries: [], alertThresholds: [50, 80] as [number, number] };
+    const result = applyPayment(ledger, { ...wellstory5000, amount: 130000 }, { resident: 500000, studySpace: 200000 }, { generalCafe: 250000 });
+    expect(result.alerts).toEqual([50]);
+  });
+
   it('keeps excluded payments out of budget spending and prevents duplicates', () => {
     const payment = { ...wellstory5000, merchant: '주식회사 아이햅슨', amount: 12500 };
     const once = applyPayment(createInitialLedger(), payment);

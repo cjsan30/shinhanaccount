@@ -3,6 +3,10 @@ package io.github.cjsan30.shinhanhae.calculator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import android.provider.Telephony
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -42,6 +46,23 @@ class SmsApprovalReceiver : BroadcastReceiver() {
         queue.put(approval.toJson())
         while (queue.length() > 20) queue.remove(0)
         prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+        notifyApproval(context)
+    }
+
+    private fun notifyApproval(context: Context) {
+        val channelId = "sms_approvals"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
+            NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("새 승인 결제")
+            .setContentText("승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(2001, notification)
     }
 }
 

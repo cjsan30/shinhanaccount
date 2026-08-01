@@ -24,6 +24,7 @@ export function createEmptyLedger(): Ledger { return { entries: [], alertThresho
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return entry.periodKey ?? getPolicyPeriodKey(new Date(entry.occurredAt)); }
 export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
 export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number = BUDGET_LIMITS[bucket], periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
+export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -57,14 +58,14 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   }
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS): ApplyPaymentResult {
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
   const classification = classifyPayment(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
-  const previousSpent = classification.status === 'classified' ? getSpent(ledger, classification.bucket, entry.periodKey) : 0;
+  const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey) : 0;
   const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
-  const currentSpent = classification.status === 'classified' ? getSpent(nextLedger, classification.bucket, entry.periodKey) : previousSpent;
-  const alerts = classification.status === 'classified' ? getCrossedAlertThresholds(previousSpent, currentSpent, limits[classification.bucket], ledger.alertThresholds) : [];
+  const currentSpent = classification.status === 'classified' ? getCategorySpent(nextLedger, classification.bucket, classification.category, entry.periodKey) : previousSpent;
+  const alerts = classification.status === 'classified' ? getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) : [];
   return { ledger: nextLedger, entry, alerts };
 }
 
@@ -79,14 +80,14 @@ export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: stri
   if (!entry || entry.status === 'cancelled') return ledger;
   return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, status: 'cancelled', cancelledAt } : candidate) };
 }
-export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number> = BUDGET_LIMITS): ApplyPaymentResult {
+export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
-  const previousSpent = getSpent(ledger, classification.bucket, getEntryPeriodKey(entry));
+  const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry));
   const nextEntry: LedgerEntry = { ...entry, status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
   const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
-  const currentSpent = getSpent(nextLedger, classification.bucket, getEntryPeriodKey(nextEntry));
-  return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, limits[classification.bucket], ledger.alertThresholds) };
+  const currentSpent = getCategorySpent(nextLedger, classification.bucket, classification.category, getEntryPeriodKey(nextEntry));
+  return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) };
 }
 export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Ledger = createInitialLedger): Ledger {
   try { const raw = storage.getItem(LEDGER_STORAGE_KEY); return raw ? JSON.parse(raw) as Ledger : fallback(); } catch { return fallback(); }

@@ -110,3 +110,10 @@ export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, 
   const version: PolicyVersion = { ...structuredClone(policy), periodKey, confirmedAt };
   return { versions: [...book.versions.filter((candidate) => candidate.periodKey !== periodKey), version].sort((a, b) => a.periodKey.localeCompare(b.periodKey)) };
 }
+export function getCategoryLimit(policy: SupportPolicy, category: string) {
+  const item = POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category));
+  return item ? policy.plans[item.key] : 0;
+}
+export function getCategoryLabel(category: string) {
+  return POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category))?.label ?? category;
+}

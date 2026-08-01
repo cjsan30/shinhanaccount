@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CaretRight, ChatCircleDots, GearSix, ListBullets } from '@phosphor-icons/react';
 import { BottomSheet } from './components/BottomSheet';
 import { Toast } from './components/Toast';
 import { type BudgetKey } from './domain/budget';
 import { applyPayment, cancelPayment, createEmptyLedger, createInitialLedger, getEntryPeriodKey, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
-import { confirmPolicyForPeriod, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, getPolicyVersion, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
+import { confirmPolicyForPeriod, getEffectivePolicy, getCategoryLabel, getCategoryLimit, getNextPolicyPeriodKey, getPolicyLimit, getPolicyVersion, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
 import { classifyPayment, type PaymentClassification } from './domain/sms';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import { createTestApproval } from './native/testApproval';
@@ -35,6 +35,7 @@ function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [payment, setPayment] = useState<NativeApproval>(defaultPayment);
   const [ledger, setLedger] = useState<Ledger>(() => loadLedger(window.localStorage, import.meta.env.PROD ? createEmptyLedger : createInitialLedger));
+  const ledgerRef = useRef(ledger);
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const now = useMemo(() => new Date(), []);
@@ -46,10 +47,36 @@ function App() {
   const [cancellationTarget, setCancellationTarget] = useState<LedgerEntry | null>(null);
   const close = () => setPanel(null);
   const show = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3200); };
-  useEffect(() => { saveLedger(window.localStorage, ledger); }, [ledger]);
+  useEffect(() => { ledgerRef.current = ledger; saveLedger(window.localStorage, ledger); }, [ledger]);
   useEffect(() => { savePolicyBook(window.localStorage, policyBook); }, [policyBook]);
+  // Pending native approvals are consumed only once at startup.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await SmsBridge.consumePendingApprovals();
+          if (!result.items.length) return;
+          let nextLedger = ledgerRef.current;
+          const crossed = [] as Array<{ alerts: number[]; bucket: BudgetKey; category?: string }>; 
+          for (const approval of result.items) {
+            const applied = applyPayment(nextLedger, approval, budgetLimits, categoryLimits);
+            nextLedger = applied.ledger;
+            if (applied.alerts.length) crossed.push({ alerts: applied.alerts, bucket: applied.entry.bucket ?? 'resident', category: applied.entry.category });
+          }
+          ledgerRef.current = nextLedger;
+          setLedger(nextLedger);
+          crossed.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
+          show(`${result.items.length}건의 승인 결제를 자동 반영했습니다.`);
+        } catch { /* Android SMS bridge is optional in browser preview. */ }
+      })();
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const budgetLimits = { resident: getPolicyLimit(policy, 'resident'), studySpace: getPolicyLimit(policy, 'studySpace') };
+  const categoryLimits = Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, getCategoryLimit(policy, category)]))); 
   const [first, second] = ledger.alertThresholds;
   const resident = getSummary(ledger, 'resident', budgetLimits.resident, activePolicy.periodKey);
   const study = getSummary(ledger, 'studySpace', budgetLimits.studySpace, activePolicy.periodKey);
@@ -71,9 +98,10 @@ function App() {
     try { const result = await NotificationBridge.requestPermission(); show(result.granted ? '예산 경고 알림을 사용합니다.' : '알림 권한이 필요합니다.'); }
     catch { show('이 기능은 Android 앱에서 사용할 수 있습니다.'); }
   };
-  const sendBudgetAlerts = async (alerts: number[], bucket: BudgetKey) => {
+  const sendBudgetAlerts = async (alerts: number[], bucket: BudgetKey, category?: string) => {
     if (!alerts.length) return;
-    try { await NotificationBridge.show({ title: '지원금 사용 경고', body: `${bucket === 'resident' ? '정주비' : '학습공간비'}가 ${alerts.map((value) => `${value}%`).join(', ')} 기준에 도달했습니다.` }); }
+    const target = category ? getCategoryLabel(category) : (bucket === 'resident' ? '정주비' : '학습공간비');
+    try { await NotificationBridge.show({ title: '지원금 사용 경고', body: `${target}가 ${alerts.map((value) => `${value}%`).join(', ')} 기준에 도달했습니다.` }); }
     catch { show('경고 기준에 도달했습니다. 알림 권한을 확인해 주세요.'); }
   };
   const sendTestNotification = async () => {
@@ -152,9 +180,9 @@ function App() {
     show('테스트 승인 결제를 추가했습니다. 실제 SMS·카드 내역에는 저장되지 않습니다.');
   };
   const applyAutomatic = () => {
-    const result = applyPayment(ledger, payment, budgetLimits);
+    const result = applyPayment(ledger, payment, budgetLimits, categoryLimits);
     setLedger(result.ledger);
-    void sendBudgetAlerts(result.alerts, result.entry.bucket ?? 'resident');
+    void sendBudgetAlerts(result.alerts, result.entry.bucket ?? 'resident', result.entry.category);
     const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
     close(); show(`${classificationText(classifyPayment(payment.merchant, payment.amount))}로 저장했습니다.${alert}`);
   };
@@ -166,9 +194,9 @@ function App() {
     show('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
   };
   const applyManualClassification = (entryId: string, item: (typeof POLICY_ITEMS)[number]) => {
-    const result = reclassifyUndecided(ledger, entryId, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits);
+    const result = reclassifyUndecided(ledger, entryId, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits, categoryLimits);
     setLedger(result.ledger);
-    void sendBudgetAlerts(result.alerts, item.bucket);
+    void sendBudgetAlerts(result.alerts, item.bucket, item.ledgerCategories[0]);
     const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
     show(`${item.label}로 분류했습니다.${alert}`);
   };
