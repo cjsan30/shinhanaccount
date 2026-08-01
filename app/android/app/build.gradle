@@ -17,6 +17,17 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def storeFilePath = System.getenv('SHINHANHAE_STORE_FILE')
+            if (storeFilePath) {
+                storeFile file(storeFilePath)
+                storePassword System.getenv('SHINHANHAE_STORE_PASSWORD')
+                keyAlias System.getenv('SHINHANHAE_KEY_ALIAS')
+                keyPassword System.getenv('SHINHANHAE_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

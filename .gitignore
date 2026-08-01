@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 coverage/
 .env
@@ -10,3 +10,5 @@ coverage/
 *.keystore
 android/.gradle/
 android/app/build/
+
+keystore.properties
