@@ -93,3 +93,22 @@ export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Le
   try { const raw = storage.getItem(LEDGER_STORAGE_KEY); return raw ? JSON.parse(raw) as Ledger : fallback(); } catch { return fallback(); }
 }
 export function saveLedger(storage: Pick<Storage, 'setItem'>, ledger: Ledger) { storage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(ledger)); }
+export type CancellationNotice = NativeApproval;
+export type CancellationMatch = { entry: LedgerEntry; score: number };
+function normalizedMerchant(value: string) { return value.toLowerCase().replace(/[\s().,]/g, ''); }
+export function findCancellationCandidates(ledger: Ledger, notice: CancellationNotice): CancellationMatch[] {
+  const merchant = normalizedMerchant(notice.merchant);
+  return ledger.entries
+    .filter((entry) => entry.status === 'classified' && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
+    .map((entry) => {
+      const sameMerchant = normalizedMerchant(entry.merchant) === merchant;
+      const sameCard = Boolean(notice.cardLast4) && entry.cardLast4 === notice.cardLast4;
+      return { entry, score: 3 + (sameMerchant ? 4 : 0) + (sameCard ? 2 : 0) };
+    })
+    .filter((candidate) => candidate.score >= 7)
+    .sort((a, b) => b.score - a.score || b.entry.occurredAt.localeCompare(a.entry.occurredAt));
+}
+export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNotice) {
+  const candidates = findCancellationCandidates(ledger, notice);
+  return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
+}
