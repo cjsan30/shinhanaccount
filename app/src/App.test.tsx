@@ -107,7 +107,16 @@ describe('support fund home', () => {
     expect(screen.getByRole('status')).toHaveTextContent('교통비로 분류했습니다.');
     expect(screen.getByRole('button', { name: '미정 지출 0건' })).toBeInTheDocument();
   });
-  it('requires explicit confirmation before removing a recent payment from the budget', () => {
+  it('sends a budget alert when manual classification crosses a threshold', async () => {
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-08-01T15:00:00+09:00', amount: 50000, merchant: 'Unknown shop' }] });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
+    await screen.findByText('Unknown shop');
+    fireEvent.click(screen.getByRole('button', { name: '미정으로 저장' }));
+    fireEvent.click(screen.getByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(screen.getByRole('button', { name: '교통비' }));
+    await waitFor(() => expect(notificationBridge.show).toHaveBeenCalledWith(expect.objectContaining({ title: '지원금 사용 경고' })));
+  });  it('requires explicit confirmation before removing a recent payment from the budget', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: '최근 결제 보기' }));
     fireEvent.click(screen.getAllByRole('button', { name: '이 결제 취소 확인' })[0]);

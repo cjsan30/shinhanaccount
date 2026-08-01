@@ -3,6 +3,9 @@ package io.github.cjsan30.shinhanhae.calculator;
 import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.content.Context;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
@@ -17,7 +20,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 @CapacitorPlugin(name = "NotificationBridge", permissions = { @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS }) })
 public class NotificationBridgePlugin extends Plugin {
-    private static final String CHANNEL_ID = "budget_alerts";
+    private static final String CHANNEL_ID = "budget_alerts_v2";
 
     @com.getcapacitor.PluginMethod
     public void requestPermission(PluginCall call) {
@@ -48,6 +51,7 @@ public class NotificationBridgePlugin extends Plugin {
             .setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_VIBRATE)
             .setAutoCancel(true);
         NotificationManagerCompat.from(getContext()).notify((int) System.currentTimeMillis(), notification.build());
         call.resolve();
@@ -57,6 +61,10 @@ public class NotificationBridgePlugin extends Plugin {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "지원금 경고", NotificationManager.IMPORTANCE_HIGH);
         channel.setDescription("지원금 예산 사용 경고");
+        Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        AudioAttributes attributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build();
+        channel.setSound(sound, attributes);
+        channel.enableVibration(true);
         ((NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
     }
 }

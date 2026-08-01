@@ -164,7 +164,9 @@ function App() {
   const applyManualClassification = (entryId: string, item: (typeof POLICY_ITEMS)[number]) => {
     const result = reclassifyUndecided(ledger, entryId, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits);
     setLedger(result.ledger);
-    show(`${item.label}로 분류했습니다.`);
+    void sendBudgetAlerts(result.alerts, item.bucket);
+    const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
+    show(`${item.label}로 분류했습니다.${alert}`);
   };
   const saveUndecided = () => { const result = saveAsUndecided(ledger, payment); setLedger(result.ledger); close(); show('미정 지출로 저장했습니다.'); };
 
