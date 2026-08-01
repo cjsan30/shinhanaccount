@@ -22,6 +22,45 @@ import java.util.Calendar
 private const val PREFS = "sms_approval_queue"
 private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
+private const val BUDGET_STATE_KEY = "budget_state"
+
+private data class NativeClassification(val category: String, val label: String)
+
+private fun classifyForBudget(merchant: String, amount: Int): NativeClassification? {
+    val normalized = merchant.lowercase().replace(Regex("""[\s().,]"""), "")
+    if (normalized.contains("아이햅슨")) return null
+    if (normalized.contains("놀유니버스")) return NativeClassification("lodging", "주거비")
+    if (normalized == "sr") return NativeClassification("transport", "교통비")
+    if (normalized.contains("삼성웰스토리")) {
+        return if (amount == 8000) NativeClassification("food", "식비") else NativeClassification("generalCafe", "카페")
+    }
+    if (normalized.contains("서브웨이") || normalized.contains("써브웨이") || normalized.contains("맘스터치") || normalized.contains("맥도날드")) {
+        return NativeClassification("generalCafe", "카페")
+    }
+    return null
+}
+
+private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
+    val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
+    val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+    val limits = state.optJSONObject("categoryLimits") ?: return null
+    val spent = state.optJSONObject("categorySpent") ?: JSONObject()
+    val thresholds = state.optJSONArray("thresholds") ?: return null
+    val limit = limits.optInt(classification.category, 0)
+    if (limit <= 0) return null
+    val previous = spent.optInt(classification.category, 0)
+    val current = previous + approval.amount
+    spent.put(classification.category, current)
+    state.put("categorySpent", spent)
+    prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
+    val crossed = mutableListOf<Int>()
+    for (index in 0 until thresholds.length()) {
+        val threshold = thresholds.optInt(index, 0)
+        val boundary = limit * threshold / 100.0
+        if (previous < boundary && current >= boundary) crossed.add(threshold)
+    }
+    return if (crossed.isEmpty()) null else classification.label + " 사용액이 " + crossed.joinToString(", ") { it.toString() + "%" } + " 기준을 넘었습니다."
+}
 private val approvalRegex = Regex("""^\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+\(금액\)([\d,]+)원\s+(.+)$""")
 
 data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
@@ -46,10 +85,10 @@ class SmsApprovalReceiver : BroadcastReceiver() {
         queue.put(approval.toJson())
         while (queue.length() > 20) queue.remove(0)
         prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
-        notifyApproval(context)
+        notifyApproval(context, consumeBudgetAlert(prefs, approval))
     }
 
-    private fun notifyApproval(context: Context) {
+    private fun notifyApproval(context: Context, budgetAlert: String?) {
         val channelId = "sms_approvals"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
@@ -57,8 +96,8 @@ class SmsApprovalReceiver : BroadcastReceiver() {
         }
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("새 승인 결제")
-            .setContentText("승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
+            .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
+            .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
@@ -86,6 +125,20 @@ class SmsBridgePlugin : Plugin() {
         call.resolve(JSObject().put("granted", getPermissionState("receiveSms") == PermissionState.GRANTED))
     }
 
+    @com.getcapacitor.PluginMethod
+    fun syncBudgetState(call: PluginCall) {
+        val categoryLimits = call.getObject("categoryLimits") ?: JSObject()
+        val categorySpent = call.getObject("categorySpent") ?: JSObject()
+        val thresholds = call.getArray("thresholds") ?: JSArray()
+        val periodKey = call.getString("periodKey") ?: ""
+        val state = JSONObject()
+            .put("categoryLimits", JSONObject(categoryLimits.toString()))
+            .put("categorySpent", JSONObject(categorySpent.toString()))
+            .put("thresholds", thresholds)
+            .put("periodKey", periodKey)
+        prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
+        call.resolve()
+    }
     @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
