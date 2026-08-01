@@ -115,7 +115,12 @@ describe('support fund home', () => {
     fireEvent.click(screen.getByRole('button', { name: '취소 확정' }));
     expect(screen.getByRole('status')).toHaveTextContent('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
   });
-  it('persists alert thresholds and requests Android notification permission', async () => {
+  it('sends a direct test notification from the development tools', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: '테스트 알림 보내기' }));
+    await waitFor(() => expect(notificationBridge.show).toHaveBeenCalledWith({ title: '지원금 알림 테스트', body: '알림 권한과 표시 상태가 정상입니다.' }));
+  });  it('persists alert thresholds and requests Android notification permission', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.change(screen.getByLabelText('첫 번째 경고 기준'), { target: { value: '55' } });
