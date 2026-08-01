@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+Set-Location -LiteralPath $PSScriptRoot
 $storeFile = 'C:\Users\lAte\Keys\shinhanhae-release.jks'
 if (-not (Test-Path -LiteralPath $storeFile)) { throw "Keystore not found: $storeFile" }
 $storePassword = Read-Host 'Keystore password' -AsSecureString
