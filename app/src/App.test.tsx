@@ -5,6 +5,7 @@ const { smsBridge, notificationBridge } = vi.hoisted(() => ({ smsBridge: { confi
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
 vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
 import App from './App';
+import { createTestApproval } from './native/testApproval';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -17,6 +18,9 @@ beforeEach(() => {
 });
 
 describe('support fund home', () => {
+  it('creates a unique-looking Samsung Wellstory approval for the test tool', () => {
+    expect(createTestApproval('3741', '2026-08-01T13:30:00+09:00')).toEqual({ cardLast4: '3741', occurredAt: '2026-08-01T13:30:00+09:00', amount: 30000, merchant: '삼성웰스토리(주)크래프톤정' });
+  });
   it('shows the primary budget summary and quick actions', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: '지원금 관리' })).toBeInTheDocument();
