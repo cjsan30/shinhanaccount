@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(SmsBridgePlugin.class);
         registerPlugin(PolicyOcrPlugin.class);
+        registerPlugin(NotificationBridgePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

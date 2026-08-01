@@ -22,7 +22,7 @@ export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getSpent(ledger: Ledger, bucket: BudgetKey) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket).reduce((sum, entry) => sum + entry.amount, 0); }
-export function getSummary(ledger: Ledger, bucket: BudgetKey, limit = BUDGET_LIMITS[bucket]): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket)); }
+export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number = BUDGET_LIMITS[bucket]): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket)); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -55,14 +55,14 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   }
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval): ApplyPaymentResult {
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS): ApplyPaymentResult {
   const classification = classifyPayment(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
   const previousSpent = classification.status === 'classified' ? getSpent(ledger, classification.bucket) : 0;
   const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
   const currentSpent = classification.status === 'classified' ? getSpent(nextLedger, classification.bucket) : previousSpent;
-  const alerts = classification.status === 'classified' ? getCrossedAlertThresholds(previousSpent, currentSpent, BUDGET_LIMITS[classification.bucket], ledger.alertThresholds) : [];
+  const alerts = classification.status === 'classified' ? getCrossedAlertThresholds(previousSpent, currentSpent, limits[classification.bucket], ledger.alertThresholds) : [];
   return { ledger: nextLedger, entry, alerts };
 }
 
@@ -77,14 +77,14 @@ export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: stri
   if (!entry || entry.status === 'cancelled') return ledger;
   return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, status: 'cancelled', cancelledAt } : candidate) };
 }
-export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification): ApplyPaymentResult {
+export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number> = BUDGET_LIMITS): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
   const previousSpent = getSpent(ledger, classification.bucket);
   const nextEntry: LedgerEntry = { ...entry, status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
   const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
   const currentSpent = getSpent(nextLedger, classification.bucket);
-  return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, BUDGET_LIMITS[classification.bucket], ledger.alertThresholds) };
+  return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, limits[classification.bucket], ledger.alertThresholds) };
 }
 export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Ledger = createInitialLedger): Ledger {
   try { const raw = storage.getItem(LEDGER_STORAGE_KEY); return raw ? JSON.parse(raw) as Ledger : fallback(); } catch { return fallback(); }

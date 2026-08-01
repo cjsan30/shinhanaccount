@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { smsBridge } = vi.hoisted(() => ({ smsBridge: { configure: vi.fn(), requestPermission: vi.fn(), consumePendingApprovals: vi.fn() } }));
+const { smsBridge, notificationBridge } = vi.hoisted(() => ({ smsBridge: { configure: vi.fn(), requestPermission: vi.fn(), consumePendingApprovals: vi.fn() }, notificationBridge: { requestPermission: vi.fn(), show: vi.fn() } }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
+vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
 import App from './App';
 
 beforeEach(() => {
@@ -11,6 +12,8 @@ beforeEach(() => {
   smsBridge.configure.mockResolvedValue(undefined);
   smsBridge.requestPermission.mockResolvedValue({ granted: true });
   smsBridge.consumePendingApprovals.mockResolvedValue({ items: [] });
+  notificationBridge.requestPermission.mockResolvedValue({ granted: true });
+  notificationBridge.show.mockResolvedValue(undefined);
 });
 
 describe('support fund home', () => {
@@ -107,5 +110,22 @@ describe('support fund home', () => {
     expect(screen.getByRole('dialog', { name: '취소 확인' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '취소 확정' }));
     expect(screen.getByRole('status')).toHaveTextContent('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
+  });
+  it('persists alert thresholds and requests Android notification permission', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.change(screen.getByLabelText('첫 번째 경고 기준'), { target: { value: '55' } });
+    fireEvent.click(screen.getByRole('button', { name: '예산 경고 알림 사용' }));
+    await waitFor(() => expect(notificationBridge.requestPermission).toHaveBeenCalledOnce());
+    expect(window.localStorage.getItem('shinhanhae-ledger-v1')).toContain('[55,80]');
+  });
+
+  it('sends an alert when a confirmed payment crosses a saved threshold', async () => {
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 30000, merchant: '삼성웰스토리(주)크래프톤정' }] });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '새 결제 확인' }));
+    await screen.findByText('삼성웰스토리(주)크래프톤정');
+    fireEvent.click(screen.getByRole('button', { name: '자동 분류 적용' }));
+    await waitFor(() => expect(notificationBridge.show).toHaveBeenCalledWith(expect.objectContaining({ title: '지원금 사용 경고' })));
   });
 });
