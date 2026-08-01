@@ -140,6 +140,38 @@ class SmsBridgePlugin : Plugin() {
         call.resolve()
     }
     @com.getcapacitor.PluginMethod
+    fun injectTestApproval(call: PluginCall) {
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val approval = Approval(
+            card,
+            call.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
+            call.getInt("amount") ?: 30000,
+            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+        )
+        val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+        queue.put(approval.toJson())
+        while (queue.length() > 20) queue.remove(0)
+        prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+        showInjectedNotification(consumeBudgetAlert(prefs, approval))
+        call.resolve()
+    }
+
+    private fun showInjectedNotification(budgetAlert: String?) {
+        val channelId = "sms_approvals"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
+            NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(if (budgetAlert == null) "테스트 승인 결제" else "지원금 사용 경고")
+            .setContentText(budgetAlert ?: "테스트 승인 결제가 수신되었습니다.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(2002, notification)
+    }
+    @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
         prefs.edit().remove(QUEUE_KEY).apply()

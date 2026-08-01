@@ -5,6 +5,7 @@ export type NativeBudgetState = { categoryLimits: Record<string, number>; catego
 type SmsBridgePlugin = {
   configure(options: { cardLast4: string }): Promise<void>;
   syncBudgetState(state: NativeBudgetState): Promise<void>;
+  injectTestApproval(approval: NativeApproval): Promise<void>;
   requestPermission(): Promise<{ granted: boolean }>;
   consumePendingApprovals(): Promise<{ items: NativeApproval[] }>;
 };
