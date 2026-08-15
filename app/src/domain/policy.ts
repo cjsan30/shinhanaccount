@@ -35,9 +35,53 @@ function parseExpectedAmountColumn(text: string): number[] {
   return [...column.matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(',', ''))).filter(Number.isFinite);
 }
 
+const rowFields: Array<[PolicyItem, RegExp]> = [
+  ['housing', /(?:주거비|숙박비)/],
+  ['food', /식비/],
+  ['education', /교육비/],
+  ['transport', /교통비/],
+  ['studyCafe', /스터디카페/],
+  ['cafe', /카페/],
+  ['readingRoom', /독서실/],
+];
+
+function parsePlansByVisualRow(text: string): Partial<Record<PolicyItem, number>> {
+  const plans: Partial<Record<PolicyItem, number>> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const matchedFields = rowFields.filter(([, pattern]) => pattern.test(line));
+    if (matchedFields.length !== 1) continue;
+    const amount = [...line.matchAll(/(\d[\d,]*)\s*원/g)].at(-1)?.[1];
+    if (!amount) continue;
+    const value = Number(amount.replaceAll(',', ''));
+    if (Number.isFinite(value)) plans[matchedFields[0][0]] = value;
+  }
+  return plans;
+}
+
+function hasCompleteExpectedAmountColumn(amounts: number[]) {
+  if (amounts.length < 10) return false;
+  const lineItems = amounts.slice(0, 7);
+  const total = amounts[7];
+  const resident = amounts[8];
+  const study = amounts[9];
+  return lineItems.reduce((sum, amount) => sum + amount, 0) === total
+    && lineItems.slice(0, 4).reduce((sum, amount) => sum + amount, 0) === resident
+    && lineItems.slice(4).reduce((sum, amount) => sum + amount, 0) === study;
+}
+
 export function parsePolicyText(text: string): SupportPolicy {
   const plans = structuredClone(defaultPolicy.plans);
+  const visualRows = parsePlansByVisualRow(text);
+  if (Object.keys(visualRows).length >= 2) return { plans: { ...plans, ...visualRows }, sourceText: text };
+
   const amounts = parseExpectedAmountColumn(text);
+  if (hasCompleteExpectedAmountColumn(amounts)) {
+    const [housing, food, education, transport, studyCafe, cafe, readingRoom] = amounts;
+    return { plans: { housing, food, education, transport, studyCafe, cafe, readingRoom }, sourceText: text };
+  }
+
+  // Older OCR output may flatten table columns and omit some zero values. It is only
+  // used after row-based and fully validated column parsing have both failed.
   if (amounts.length >= 4) {
     plans.housing = amounts[0];
     plans.food = amounts[1];
@@ -48,6 +92,7 @@ export function parsePolicyText(text: string): SupportPolicy {
     if (nonZero.length) { plans.transport = nonZero[0]; plans.cafe = nonZero.at(-1) ?? plans.cafe; }
     return { plans, sourceText: text };
   }
+
   for (const [item, pattern] of fields) {
     const match = text.match(pattern);
     if (!match) continue;
@@ -56,7 +101,6 @@ export function parsePolicyText(text: string): SupportPolicy {
   }
   return { plans, sourceText: text };
 }
-
 export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
   return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0);
 }
