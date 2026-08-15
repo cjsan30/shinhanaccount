@@ -3,91 +3,63 @@ import { PDFDocument } from 'pdf-lib';
 
 type Group = 'resident' | 'study';
 type Evidence = { id: string; file: File; url: string };
-
 const A4: [number, number] = [595.28, 841.89];
+const MAX_BYTES = 5 * 1024 * 1024;
+
+async function compressImage(file: File, maxEdge: number, quality: number): Promise<Uint8Array> {
+  const bitmap = await createImageBitmap(file);
+  const ratio = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * ratio));
+  canvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('이미지를 압축할 수 없습니다.');
+  context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
+  return new Uint8Array(await (await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('이미지를 압축할 수 없습니다.')), 'image/jpeg', quality))).arrayBuffer());
+}
 
 export function EvidenceExport() {
   const [resident, setResident] = useState<Evidence[]>([]);
   const [study, setStudy] = useState<Evidence[]>([]);
   const [dragging, setDragging] = useState<{ group: Group; index: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const update = (group: Group, action: (items: Evidence[]) => Evidence[]) =>
-    (group === 'resident' ? setResident : setStudy)(action);
-
+  const [message, setMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const update = (group: Group, action: (items: Evidence[]) => Evidence[]) => (group === 'resident' ? setResident : setStudy)(action);
   const addFiles = (group: Group, files: FileList | null) => {
     if (!files) return;
-    const unsupported = [...files].some((file) => !['image/jpeg', 'image/png'].includes(file.type));
-    if (unsupported) setError('JPG 또는 PNG 이미지만 추가할 수 있습니다.');
-    const items = [...files]
-      .filter((file) => ['image/jpeg', 'image/png'].includes(file.type))
-      .map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) }));
-    update(group, (current) => [...current, ...items]);
+    const valid = [...files].filter((file) => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
+    if (valid.length !== files.length) setMessage('JPG, PNG, WEBP 이미지만 추가했습니다.');
+    update(group, (current) => [...current, ...valid.map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
   };
-
   const reorder = (group: Group, target: number) => {
     if (!dragging || dragging.group !== group || dragging.index === target) return;
-    update(group, (current) => {
-      const next = [...current];
-      const [item] = next.splice(dragging.index, 1);
-      next.splice(target, 0, item);
-      return next;
-    });
-    setDragging(null);
+    update(group, (current) => { const next = [...current]; const [item] = next.splice(dragging.index, 1); next.splice(target, 0, item); return next; }); setDragging(null);
   };
-
-  const remove = (group: Group, item: Evidence) => {
-    URL.revokeObjectURL(item.url);
-    update(group, (current) => current.filter((candidate) => candidate.id !== item.id));
-  };
-
+  const remove = (group: Group, item: Evidence) => { URL.revokeObjectURL(item.url); update(group, (current) => current.filter((candidate) => candidate.id !== item.id)); };
   const exportPdf = async () => {
-    const items = [...resident, ...study];
-    if (!items.length) return;
-    const pdf = await PDFDocument.create();
-    for (const item of items) {
-      const bytes = await item.file.arrayBuffer();
-      const image = item.file.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
-      const page = pdf.addPage(A4);
-      const scale = Math.min(523 / image.width, 770 / image.height);
-      const width = image.width * scale;
-      const height = image.height * scale;
-      page.drawImage(image, { x: (A4[0] - width) / 2, y: (A4[1] - height) / 2, width, height });
-    }
-    const pdfBytes = await pdf.save();
-    const blob = new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = '지원금_제출증빙.pdf';
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const items = [...resident, ...study]; if (!items.length) return; setExporting(true); setMessage('이미지를 PDF로 정리하고 있습니다.');
+    try {
+      let maxEdge = 1800; let quality = .82; let pdfBytes: Uint8Array<ArrayBufferLike> = new Uint8Array();
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const pdf = await PDFDocument.create();
+        for (const item of items) {
+          const bytes = await compressImage(item.file, maxEdge, quality);
+          const image = await pdf.embedJpg(bytes); const page = pdf.addPage(A4);
+          const scale = Math.min(523 / image.width, 770 / image.height);
+          page.drawImage(image, { x: (A4[0] - image.width * scale) / 2, y: (A4[1] - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
+        }
+        pdfBytes = await pdf.save({ useObjectStreams: true });
+        if (pdfBytes.byteLength <= MAX_BYTES) break;
+        maxEdge = Math.round(maxEdge * .78); quality -= .12;
+      }
+      if (pdfBytes.byteLength > MAX_BYTES) throw new Error('이미지가 많아 5MB 이하로 줄이지 못했습니다. 일부 이미지를 나눠 올리거나 더 작은 이미지로 다시 시도해 주세요.');
+      const url = URL.createObjectURL(new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' }));
+      const link = document.createElement('a'); link.href = url; link.download = '신청해_사용보고서_증빙.pdf'; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(`PDF를 저장했습니다. ${(pdfBytes.byteLength / 1024 / 1024).toFixed(2)}MB · 정주비 ${resident.length}장, 학습공간비 ${study.length}장`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
+    finally { setExporting(false); }
   };
-
-  const renderGroup = (title: string, group: Group, items: Evidence[]) => (
-    <section className="evidence-group">
-      <h3>{title} <span>{items.length}장</span></h3>
-      <label className="file-picker">이미지 여러 장 추가
-        <input type="file" accept="image/jpeg,image/png" multiple onChange={(event) => addFiles(group, event.target.files)} />
-      </label>
-      <div className="evidence-list">
-        {items.map((item, index) => (
-          <article key={item.id} draggable onDragStart={() => setDragging({ group, index })} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(group, index)}>
-            <img src={item.url} alt={title + ' 증빙 ' + (index + 1)} />
-            <span>{index + 1}. {item.file.name}</span>
-            <button type="button" onClick={() => remove(group, item)}>삭제</button>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-
-  return <section className="evidence-export">
-    <p>정주비 이미지를 먼저, 학습공간비 이미지를 다음에 추가하세요. 각 영역에서 드래그해 순서를 바꾼 뒤 한 PDF로 만듭니다.</p>
-    {renderGroup('정주비 증빙', 'resident', resident)}
-    {renderGroup('학습공간비 증빙', 'study', study)}
-    {error && <p className="evidence-error">{error}</p>}
-    <button className="sheet-action" disabled={!resident.length && !study.length} onClick={() => void exportPdf()}>제출용 PDF 만들기</button>
-  </section>;
+  const renderGroup = (title: string, group: Group, items: Evidence[]) => <section className="evidence-group"><h3>{title} <span>{items.length}장</span></h3><p>여러 장을 한 번에 고른 뒤, 목록을 길게 눌러 순서를 바꿀 수 있습니다.</p><label className="file-picker">이미지 여러 장 추가<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => addFiles(group, event.target.files)} /></label><div className="evidence-list">{items.map((item, index) => <article key={item.id} draggable onDragStart={() => setDragging({ group, index })} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(group, index)}><img src={item.url} alt={`${title} 증빙 ${index + 1}`} /><span>{index + 1}. {item.file.name}</span><button type="button" onClick={() => remove(group, item)}>삭제</button></article>)}</div></section>;
+  return <section className="evidence-export"><p>증빙 내용을 해석하거나 자동 판정하지 않습니다. 사용자가 확인한 이미지를 정주비 먼저, 학습공간비 다음 순서로 한 PDF에 합칩니다.</p>{renderGroup('정주비 증빙', 'resident', resident)}{renderGroup('학습공간비 증빙', 'study', study)}{message && <p className="evidence-message">{message}</p>}<button className="sheet-action" disabled={exporting || (!resident.length && !study.length)} onClick={() => void exportPdf()}>{exporting ? 'PDF 만드는 중…' : '5MB 이하 PDF 만들기'}</button></section>;
 }
