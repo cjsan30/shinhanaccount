@@ -58,8 +58,8 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   }
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
-  const classification = classifyPayment(payment.merchant, payment.amount);
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
+  const classification = classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
   const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey) : 0;

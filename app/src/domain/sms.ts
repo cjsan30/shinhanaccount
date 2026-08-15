@@ -6,7 +6,7 @@ export type ParsedApproval = {
 };
 
 export type PaymentClassification =
-  | { status: 'classified'; bucket: 'resident' | 'studySpace'; category: 'lodging' | 'food' | 'transport' | 'generalCafe' }
+  | { status: 'classified'; bucket: 'resident' | 'studySpace'; category: 'lodging' | 'food' | 'education' | 'transport' | 'studyCafe' | 'generalCafe' | 'readingRoom' }
   | { status: 'excluded' }
   | { status: 'undecided' };
 
