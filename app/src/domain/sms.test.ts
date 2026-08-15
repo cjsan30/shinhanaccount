@@ -17,6 +17,14 @@ describe('Shinhan approval SMS parser', () => {
     expect(parseApprovalSms(sample, '1111', 2026)).toBeNull();
     expect(parseApprovalSms('승인 완료 8,000원', '3741', 2026)).toBeNull();
   });
+
+  it('accepts a web-sent prefix and masked account holder name', () => {
+    expect(parseApprovalSms('[Web발신]\n[신한체크승인] 박*석(3741) 07/24 17:58 (금액) 8,000원\n삼성웰스토리(주)크래프톤정', '3741', 2026)).toMatchObject({
+      cardLast4: '3741',
+      amount: 8000,
+      merchant: '삼성웰스토리(주)크래프톤정',
+    });
+  });
 });
 
 describe('automatic classification', () => {

@@ -10,10 +10,11 @@ export type PaymentClassification =
   | { status: 'excluded' }
   | { status: 'undecided' };
 
-const approvalPattern = /^\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})\s+\(금액\)([\d,]+)원\s+(.+)$/;
+const approvalPattern = /\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$/;
 
 export function parseApprovalSms(message: string, expectedCardLast4: string, year: number): ParsedApproval | null {
-  const matched = message.trim().match(approvalPattern);
+  const normalized = message.replace(/\s+/g, ' ').trim();
+  const matched = normalized.match(approvalPattern);
   if (!matched) return null;
 
   const [, cardLast4, month, day, hour, minute, rawAmount, merchant] = matched;

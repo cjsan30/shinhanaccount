@@ -63,14 +63,15 @@ private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approva
     }
     return if (crossed.isEmpty()) null else classification.label + " 사용액이 " + crossed.joinToString(", ") { it.toString() + "%" } + " 기준을 넘었습니다."
 }
-private val approvalRegex = Regex("""^\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+\(금액\)([\d,]+)원\s+(.+)$""")
+private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
 data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
     fun toJson() = JSONObject().put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
 }
 
 private fun parseApproval(body: String, cardLast4: String): Approval? {
-    val match = approvalRegex.matchEntire(body.trim()) ?: return null
+    val normalized = body.replace(Regex("""\s+"""), " ").trim()
+    val match = approvalRegex.find(normalized) ?: return null
     if (match.groupValues[1] != cardLast4) return null
     val year = Calendar.getInstance().get(Calendar.YEAR)
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
@@ -127,7 +128,11 @@ class SmsBridgePlugin : Plugin() {
         call.resolve(JSObject().put("granted", getPermissionState("receiveSms") == PermissionState.GRANTED))
     }
 
+
     @com.getcapacitor.PluginMethod
+    fun getConfiguration(call: PluginCall) {
+        call.resolve(JSObject().put("cardLast4", prefs.getString(CARD_KEY, "") ?: ""))
+    }    @com.getcapacitor.PluginMethod
     fun syncBudgetState(call: PluginCall) {
         val categoryLimits = call.getObject("categoryLimits") ?: JSObject()
         val categorySpent = call.getObject("categorySpent") ?: JSObject()
