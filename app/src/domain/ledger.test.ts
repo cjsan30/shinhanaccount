@@ -48,10 +48,11 @@ describe('expense ledger', () => {
 
   it('replaces demo entries once, then merges future exports by approval number', () => {
     const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '374*', merchant: 'Samsung Wellstory', approvalNumber: '00459878', amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment('Samsung Wellstory', 5000) };
-    const first = importCardTransactions(createInitialLedger(), [transaction]);
+    const first = importCardTransactions(createInitialLedger(), [transaction], '3741');
     expect(first).toMatchObject({ imported: 1, replacedDemo: true });
     expect(first.ledger.entries).toHaveLength(1);
-    const second = importCardTransactions(first.ledger, [transaction]);
+    expect(first.ledger.entries[0].cardLast4).toBe('3741');
+    const second = importCardTransactions(first.ledger, [transaction], '3741');
     expect(second).toMatchObject({ imported: 0, duplicates: 1, replacedDemo: false });
   });
   it('round-trips the ledger through local storage', () => {

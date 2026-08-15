@@ -33,13 +33,13 @@ function toEntry(payment: NativeApproval, classification: PaymentClassification)
   return { ...payment, id, periodKey, status: classification.status };
 }
 
-function transactionToEntry(transaction: ImportedCardTransaction): LedgerEntry {
-  const payment: NativeApproval = { cardLast4: '', occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
+function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string): LedgerEntry {
+  const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
   const entry = toEntry(payment, transaction.classification);
   return { ...entry, id: `approval-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[]): ImportResult {
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = ''): ImportResult {
   const importable = transactions.filter(isImportable);
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
@@ -49,7 +49,7 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   let undecided = 0;
   const entries = [...baseline];
   for (const transaction of importable) {
-    const entry = transactionToEntry(transaction);
+    const entry = transactionToEntry(transaction, cardLast4);
     if (entries.some((existing) => existing.approvalNumber === entry.approvalNumber || existing.id === entry.id)) { duplicates += 1; continue; }
     entries.push(entry);
     imported += 1;

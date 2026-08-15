@@ -1,0 +1,10 @@
+import { useState } from 'react';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
+import { NotificationBridge } from '../native/notificationBridge';
+import { SmsBridge } from '../native/smsBridge';
+
+export function FirstRunPermission({ onComplete }: { onComplete: (cardLast4: string) => void }) {
+  const [cardLast4, setCardLast4] = useState(''); const [visible, setVisible] = useState(false); const [message, setMessage] = useState<string | null>(null); const [saving, setSaving] = useState(false);
+  const start = async () => { if (!/^\d{4}$/.test(cardLast4)) { setMessage('카드 끝 4자리를 입력해 주세요.'); return; } setSaving(true); setMessage(null); try { const sms = await SmsBridge.requestPermission(); const notifications = await NotificationBridge.requestPermission(); if (!sms.granted || !notifications.granted) { setMessage('자동 관리를 사용하려면 SMS와 알림 권한을 모두 허용해 주세요.'); return; } onComplete(cardLast4); } catch { setMessage('권한 설정을 완료할 수 없습니다. Android 앱에서 다시 시도해 주세요.'); } finally { setSaving(false); } };
+  return <main className="first-run"><div className="first-run__mark">지원금 관리 · 1/3</div><h1>자동 관리를<br />시작할게요</h1><p>권한을 먼저 설정한 뒤 실제 사용 계획을 확정합니다.</p><section className="first-run__card"><label>카드 끝 4자리<div className="first-run__input"><input aria-label="초기 카드 끝 4자리" type={visible ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={cardLast4} onChange={(event) => setCardLast4(event.target.value.replace(/\D/g, ''))} /><button type="button" aria-label={visible ? '카드 끝자리 숨기기' : '카드 끝자리 보기'} onClick={() => setVisible((current) => !current)}>{visible ? <EyeSlash size={20} /> : <Eye size={20} />}</button></div></label></section><section className="first-run__notice"><strong>권한 안내</strong><span>정책 확정 전 승인 문자는 임시 보관되며, 확정 후 미정 지출로 불러오거나 삭제할 수 있습니다.</span></section>{message && <p role="alert" className="first-run__error">{message}</p>}<button className="first-run__start" type="button" onClick={() => void start()} disabled={saving}>{saving ? '권한 확인 중…' : '권한 허용 후 시작'}</button></main>;
+}

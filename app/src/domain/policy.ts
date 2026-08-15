@@ -14,7 +14,7 @@ export const POLICY_ITEMS: PolicyItemDefinition[] = [
   { key: 'cafe', bucket: 'studySpace', label: '카페', ledgerCategories: ['generalCafe'] },
   { key: 'readingRoom', bucket: 'studySpace', label: '독서실', ledgerCategories: ['readingRoom'] },
 ];
-export const defaultPolicy: SupportPolicy = { plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 }, sourceText: '' };
+export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '' };
 
 const fields: Array<[PolicyItem, RegExp]> = [
   ['housing', /숙박비[\s\S]{0,80}?([\d,]+)\s*원?/],
@@ -70,10 +70,20 @@ function hasCompleteExpectedAmountColumn(amounts: number[]) {
 }
 
 export function parsePolicyText(text: string): SupportPolicy {
-  const plans = structuredClone(defaultPolicy.plans);
+  const plans = structuredClone(emptyPolicy.plans);
   const visualRows = parsePlansByVisualRow(text);
-  if (Object.keys(visualRows).length >= 2) return { plans: { ...plans, ...visualRows }, sourceText: text };
+  if (Object.keys(visualRows).length >= 7) {
+    const visualPolicy = { plans: { ...plans, ...visualRows }, sourceText: text };
+    if (getPolicyLimit(visualPolicy, 'resident') === 500_000 && getPolicyLimit(visualPolicy, 'studySpace') === 200_000) return visualPolicy;
+  }
 
+  const flattenedNumbers = [...text.slice(Math.max(0, text.indexOf('예상금액'))).split('비율')[0].matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(',', '')));
+  if (flattenedNumbers.length >= 6 && flattenedNumbers.includes(700_000) && flattenedNumbers.includes(500_000) && flattenedNumbers.includes(200_000)) {
+    const [housing, food, transport, , , cafe] = flattenedNumbers;
+    if (housing + food + transport === 500_000 && cafe === 200_000) {
+      return { plans: { ...plans, housing, food, transport, cafe }, sourceText: text };
+    }
+  }
   const amounts = parseExpectedAmountColumn(text);
   if (hasCompleteExpectedAmountColumn(amounts)) {
     const [housing, food, education, transport, studyCafe, cafe, readingRoom] = amounts;
@@ -105,8 +115,12 @@ export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
   return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0);
 }
 export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
-  try { const raw = storage.getItem(POLICY_STORAGE_KEY); return raw ? { plans: { ...defaultPolicy.plans, ...(JSON.parse(raw) as SupportPolicy).plans }, sourceText: (JSON.parse(raw) as SupportPolicy).sourceText ?? '' } : structuredClone(defaultPolicy); }
-  catch { return structuredClone(defaultPolicy); }
+  try {
+    const raw = storage.getItem(POLICY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SupportPolicy;
+    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '' };
+  } catch { return null; }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
 export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string };
@@ -119,19 +133,19 @@ export function getNextPolicyPeriodKey(date: Date) {
   return getPolicyPeriodKey(next);
 }
 
-export function createPolicyBook(policy: SupportPolicy = defaultPolicy, date: Date = new Date()): PolicyBook {
+export function createPolicyBook(policy: SupportPolicy, date: Date = new Date()): PolicyBook {
   return { versions: [{ ...structuredClone(policy), periodKey: getPolicyPeriodKey(date), confirmedAt: date.toISOString() }] };
 }
 
-export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, date: Date = new Date()): PolicyBook {
+export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = new Date()): PolicyBook {
   try {
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...defaultPolicy.plans, ...version.plans } })) };
+      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans } })) };
     }
-    return createPolicyBook(loadPolicy(storage), date);
-  } catch { return createPolicyBook(defaultPolicy, date); }
+    return { versions: [] };
+  } catch { return { versions: [] }; }
 }
 
 export function savePolicyBook(storage: Pick<Storage, 'setItem'>, book: PolicyBook) {
@@ -146,8 +160,8 @@ export function getEffectivePolicy(book: PolicyBook, date: Date) {
   const periodKey = getPolicyPeriodKey(date);
   const exact = getPolicyVersion(book, periodKey);
   if (exact) return { policy: exact as SupportPolicy, periodKey, confirmed: true };
-  const fallback = [...book.versions].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).at(-1) ?? createPolicyBook(defaultPolicy, date).versions[0];
-  return { policy: fallback as SupportPolicy, periodKey, confirmed: false };
+  const fallback = [...book.versions].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).at(-1);
+  return { policy: (fallback ?? emptyPolicy) as SupportPolicy, periodKey, confirmed: false };
 }
 
 export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, periodKey: string, confirmedAt: string = new Date().toISOString()): PolicyBook {

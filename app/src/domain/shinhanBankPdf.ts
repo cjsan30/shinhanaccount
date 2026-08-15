@@ -5,6 +5,10 @@ type PdfTextItem = { str: string; transform: number[] };
 
 export function parseShinhanBankPdfText(text: string): ImportedCardTransaction[] {
   const rows: ImportedCardTransaction[] = [];
+  const cardMasks = [...text.matchAll(/(\d{3}\*)/g)].map((match) => match[1]);
+  const uniqueCardMasks = [...new Set(cardMasks)];
+  if (uniqueCardMasks.length > 1) throw new Error('카드 하나만 선택해 결제 내역을 다시 받아 주세요.');
+  const cardMasked = uniqueCardMasks[0] ?? '';
   const linePattern = /^\s*(\d{8})\s+(\d{2}:\d{2}:\d{2})\s+(\S+)\s+([\d,]+)\s+([\d,]+)\s+(.+?)\s+([\d,]+)\s+(\S+)\s*$/u;
   for (const line of text.split(/\r?\n/)) {
     const match = line.match(linePattern);
@@ -15,7 +19,7 @@ export function parseShinhanBankPdfText(text: string): ImportedCardTransaction[]
     const cleanedMerchant = merchant.replace(/\s+/g, ' ').trim();
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
     const approvalNumber = `bank-${date}-${time.replaceAll(':', '')}-${amount}-${cleanedMerchant}`;
-    rows.push({ occurredAt, cardMasked: '', merchant: cleanedMerchant, approvalNumber, amount, paymentStatus: '결제확정', cancellationStatus: '', classification: classifyPayment(cleanedMerchant, amount) });
+    rows.push({ occurredAt, cardMasked, merchant: cleanedMerchant, approvalNumber, amount, paymentStatus: '결제확정', cancellationStatus: '', classification: classifyPayment(cleanedMerchant, amount) });
   }
   if (!rows.length) throw new Error('신한은행 PDF에서 체크카드 출금 내역을 찾지 못했습니다.');
   return rows;

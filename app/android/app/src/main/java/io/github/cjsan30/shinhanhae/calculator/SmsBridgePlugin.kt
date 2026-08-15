@@ -66,7 +66,8 @@ private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approva
 private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
 data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
-    fun toJson() = JSONObject().put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
+    fun queueId() = "$cardLast4|$occurredAt|$amount|$merchant"
+    fun toJson() = JSONObject().put("id", queueId()).put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
 }
 
 private fun parseApproval(body: String, cardLast4: String): Approval? {
@@ -200,8 +201,23 @@ class SmsBridgePlugin : Plugin() {
     }
     @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {
+        // Reading is deliberately non-destructive. JavaScript acknowledges only after its local ledger is saved.
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
-        prefs.edit().remove(QUEUE_KEY).apply()
         call.resolve(JSObject().put("items", queue))
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun acknowledgePendingApprovals(call: PluginCall) {
+        val ids = call.getArray("ids") ?: JSArray()
+        val acknowledged = (0 until ids.length()).mapNotNull { ids.optString(it, null) }.toSet()
+        val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+        val remaining = JSArray()
+        for (index in 0 until queue.length()) {
+            val item = queue.optJSONObject(index) ?: continue
+            val id = item.optString("id", "${item.optString("cardLast4")}|${item.optString("occurredAt")}|${item.optInt("amount")}|${item.optString("merchant")}")
+            if (!acknowledged.contains(id)) remaining.put(item)
+        }
+        prefs.edit().putString(QUEUE_KEY, remaining.toString()).apply()
+        call.resolve()
     }
 }
