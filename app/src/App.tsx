@@ -18,6 +18,7 @@ import { createTestApproval } from './native/testApproval';
 import { PolicyOcr } from './native/policyOcr';
 import { NotificationBridge } from './native/notificationBridge';
 import type { BackupPayload } from './domain/backup';
+import { loadEncryptedAppState, saveEncryptedAppState } from './native/encryptedStore';
 import './App.css';
 
 type Panel = 'resident' | 'study' | 'undecided' | 'recent' | 'cancel' | 'settings' | 'evidence' | 'payment' | null;
@@ -63,6 +64,18 @@ function App() {
   const close = () => setPanel(null);
   const show = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3200); };
   useEffect(() => { ledgerRef.current = ledger; saveLedger(window.localStorage, ledger); }, [ledger]);
+  useEffect(() => {
+    let active = true;
+    void loadEncryptedAppState().then((stored) => {
+      if (!active) return;
+      if (stored) { ledgerRef.current = stored.ledger; setLedger(stored.ledger); setPolicyBook(stored.policyBook); setMerchantRules(stored.merchantRules); }
+      else void saveEncryptedAppState({ ledger: ledgerRef.current, policyBook, merchantRules });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  // Native encrypted storage is intentionally optional in browser preview.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { void saveEncryptedAppState({ ledger, policyBook, merchantRules }).catch(() => undefined); }, [ledger, policyBook, merchantRules]);
   useEffect(() => { savePolicyBook(window.localStorage, policyBook); }, [policyBook]);
   useEffect(() => { saveMerchantRules(window.localStorage, merchantRules); }, [merchantRules]);
 
