@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { decryptBackup, encryptBackup, validateBackupPassphrase, type BackupPayload } from '../domain/backup';
 import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
+import type { MerchantRule } from '../domain/merchantRules';
 
-type Props = { ledger: Ledger; policyBook: PolicyBook; onRestore: (payload: BackupPayload) => void; notify: (message: string) => void };
+type Props = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; onRestore: (payload: BackupPayload) => void; notify: (message: string) => void };
 
-export function BackupRestore({ ledger, policyBook, onRestore, notify }: Props) {
+export function BackupRestore({ ledger, policyBook, merchantRules, onRestore, notify }: Props) {
   const [exportPassword, setExportPassword] = useState('');
   const [restorePassword, setRestorePassword] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const download = async () => {
     const reason = validateBackupPassphrase(exportPassword);
     if (reason) return notify(reason);
-    const blob = await encryptBackup({ format: 'shinhanhae-backup', version: 1, exportedAt: new Date().toISOString(), ledger, policyBook }, exportPassword);
+    const blob = await encryptBackup({ format: 'shinhanhae-backup', version: 1, exportedAt: new Date().toISOString(), ledger, policyBook, merchantRules }, exportPassword);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url; link.download = `신청해계산기_백업_${new Date().toISOString().slice(0, 10)}.shb`;

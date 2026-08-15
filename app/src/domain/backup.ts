@@ -1,5 +1,6 @@
 import type { Ledger } from './ledger';
 import type { PolicyBook } from './policy';
+import type { MerchantRule } from './merchantRules';
 
 export type BackupPayload = {
   format: 'shinhanhae-backup';
@@ -7,6 +8,7 @@ export type BackupPayload = {
   exportedAt: string;
   ledger: Ledger;
   policyBook: PolicyBook;
+  merchantRules: MerchantRule[];
 };
 
 type EncryptedBackup = {

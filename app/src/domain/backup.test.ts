@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decryptBackup, encryptBackup, validateBackupPassphrase } from './backup';
 import { createEmptyLedger } from './ledger';
 
-const payload = { format: 'shinhanhae-backup' as const, version: 1 as const, exportedAt: '2026-08-16T00:00:00.000Z', ledger: createEmptyLedger(), policyBook: { versions: [] } };
+const payload = { format: 'shinhanhae-backup' as const, version: 1 as const, exportedAt: '2026-08-16T00:00:00.000Z', ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [] };
 
 describe('encrypted backup', () => {
   it('round-trips only with its passphrase', async () => {
