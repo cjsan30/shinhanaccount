@@ -27,7 +27,8 @@ export function parseShinhanBankPdfText(text: string): ImportedCardTransaction[]
 
 async function extractPdfText(data: ArrayBuffer, password: string) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const document = await pdfjs.getDocument({ data: new Uint8Array(data), password }).promise;
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.mjs', import.meta.url).toString();
+  const document = await pdfjs.getDocument({ data: new Uint8Array(data), ...(password.trim() ? { password } : {}) }).promise;
   const pages: string[] = [];
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
