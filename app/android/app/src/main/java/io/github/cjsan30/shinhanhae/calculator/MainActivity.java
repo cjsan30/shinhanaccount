@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SmsBridgePlugin.class);
         registerPlugin(PolicyOcrPlugin.class);
         registerPlugin(NotificationBridgePlugin.class);
+        registerPlugin(WidgetBridgePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

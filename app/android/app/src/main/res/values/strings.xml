@@ -1,7 +1,16 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">신청해 계산기</string>
-    <string name="title_activity_main">신청해 계산기</string>
+    <string name="app_name">&#xC2E0;&#xCCAD;&#xD574; &#xACC4;&#xC0B0;&#xAE30;</string>
+    <string name="title_activity_main">&#xC2E0;&#xCCAD;&#xD574; &#xACC4;&#xC0B0;&#xAE30;</string>
     <string name="package_name">io.github.cjsan30.shinhanhae.calculator</string>
     <string name="custom_url_scheme">io.github.cjsan30.shinhanhae.calculator</string>
+    <string name="widget_name_4x1">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xAC04;&#xB2E8;</string>
+    <string name="widget_name_4x2">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xD604;&#xD669;</string>
+    <string name="widget_name_2x1">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xBE44;&#xAD50;</string>
+    <string name="widget_name_1x1">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xC0AC;&#xC6A9;&#xB960;</string>
+    <string name="widget_description">&#xC9C0;&#xC6D0;&#xAE08; &#xC0AC;&#xC6A9; &#xD604;&#xD669;&#xC744; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</string>
+    <string name="widget_description_4x1">&#xC804;&#xCCB4; &#xC794;&#xC561;&#xACFC; &#xC0AC;&#xC6A9;&#xB960;&#xC744; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</string>
+    <string name="widget_description_4x2">&#xC804;&#xCCB4;&#xC640; &#xD56D;&#xBAA9;&#xBCC4; &#xC794;&#xC561;&#xC744; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</string>
+    <string name="widget_description_2x1">&#xC815;&#xC8FC;&#xBE44;&#xC640; &#xD559;&#xC2B5;&#xACF5;&#xAC04;&#xBE44;&#xB97C; &#xBE44;&#xAD50;&#xD569;&#xB2C8;&#xB2E4;.</string>
+    <string name="widget_description_1x1">&#xC804;&#xCCB4; &#xC0AC;&#xC6A9;&#xB960;&#xC744; &#xD655;&#xC778;&#xD569;&#xB2C8;&#xB2E4;.</string>
 </resources>

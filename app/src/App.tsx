@@ -16,6 +16,7 @@ import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import { createTestApproval } from './native/testApproval';
 import { PolicyOcr } from './native/policyOcr';
 import { NotificationBridge } from './native/notificationBridge';
+import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
 import { loadEncryptedAppState, saveEncryptedAppState } from './native/encryptedStore';
 import './App.css';
@@ -102,6 +103,19 @@ function App() {
     void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey }).catch(() => undefined);
   }, [activePolicy.periodKey, categoryLimits, categorySpent, ledger.alertThresholds]);
 
+  useEffect(() => {
+    void WidgetBridge.sync({
+      ready: activePolicy.confirmed,
+      hideAmounts: false,
+      totalLimit,
+      totalSpent,
+      residentLimit: budgetLimits.resident,
+      residentSpent: resident.spent,
+      studyLimit: budgetLimits.studySpace,
+      studySpent: study.spent,
+      undecidedCount,
+    }).catch(() => undefined);
+  }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
   useEffect(() => {
     if (import.meta.env.MODE === 'test' || !activePolicy.confirmed) return;
