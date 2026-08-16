@@ -26,6 +26,7 @@ export function EvidenceExport() {
   const [dragging, setDragging] = useState<{ group: Group; index: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number; stage: string } | null>(null);
   const update = (group: Group, action: (items: Evidence[]) => Evidence[]) => (group === 'resident' ? setResident : setStudy)(action);
   const addFiles = (group: Group, files: FileList | null) => {
     if (!files) return;
@@ -39,27 +40,30 @@ export function EvidenceExport() {
   };
   const remove = (group: Group, item: Evidence) => { URL.revokeObjectURL(item.url); update(group, (current) => current.filter((candidate) => candidate.id !== item.id)); };
   const exportPdf = async () => {
-    const items = [...resident, ...study]; if (!items.length) return; setExporting(true); setMessage('이미지를 PDF로 정리하고 있습니다.');
+    const items = [...resident, ...study]; if (!items.length) return; setExporting(true); setProgress({ current: 0, total: items.length, stage: '???? ???? ????' }); setMessage('이미지를 PDF로 정리하고 있습니다.');
     try {
       let maxEdge = 1800; let quality = .82; let pdfBytes: Uint8Array<ArrayBufferLike> = new Uint8Array();
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const pdf = await PDFDocument.create();
-        for (const item of items) {
+        for (const [index, item] of items.entries()) {
+          setProgress({ current: index + 1, total: items.length, stage: `??? ?? ?${attempt ? ` ? ?? ?? ${attempt + 1}?` : ''}` });
           const bytes = await compressImage(item.file, maxEdge, quality);
           const image = await pdf.embedJpg(bytes); const page = pdf.addPage(A4);
           const scale = Math.min(523 / image.width, 770 / image.height);
           page.drawImage(image, { x: (A4[0] - image.width * scale) / 2, y: (A4[1] - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
         }
+        setProgress({ current: items.length, total: items.length, stage: 'PDF? ??? ????' });
         pdfBytes = await pdf.save({ useObjectStreams: true });
         if (pdfBytes.byteLength <= MAX_BYTES) break;
         maxEdge = Math.round(maxEdge * .78); quality -= .12;
       }
       if (pdfBytes.byteLength > MAX_BYTES) throw new Error('이미지가 많아 5MB 이하로 줄이지 못했습니다. 일부 이미지를 나눠 올리거나 더 작은 이미지로 다시 시도해 주세요.');
+      setProgress({ current: items.length, total: items.length, stage: 'Documents ??? ?? ????' });
       const result = await saveAndShareFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
       setMessage(result.location === 'documents' ? 'Documents folder saved.' : 'PDF saved.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
-    finally { setExporting(false); }
+    finally { setExporting(false); setProgress(null); }
   };
   const renderGroup = (title: string, group: Group, items: Evidence[]) => <section className="evidence-group"><h3>{title} <span>{items.length}장</span></h3><p>여러 장을 한 번에 고른 뒤, 목록을 길게 눌러 순서를 바꿀 수 있습니다.</p><label className="file-picker">이미지 여러 장 추가<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => addFiles(group, event.target.files)} /></label><div className="evidence-list">{items.map((item, index) => <article key={item.id} draggable onDragStart={() => setDragging({ group, index })} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(group, index)}><img src={item.url} alt={`${title} 증빙 ${index + 1}`} /><span>{index + 1}. {item.file.name}</span><button type="button" onClick={() => remove(group, item)}>삭제</button></article>)}</div></section>;
-  return <section className="evidence-export"><p>증빙 내용을 해석하거나 자동 판정하지 않습니다. 사용자가 확인한 이미지를 정주비 먼저, 학습공간비 다음 순서로 한 PDF에 합칩니다.</p>{renderGroup('정주비 증빙', 'resident', resident)}{renderGroup('학습공간비 증빙', 'study', study)}{message && <p className="evidence-message">{message}</p>}<button className="sheet-action" disabled={exporting || (!resident.length && !study.length)} onClick={() => void exportPdf()}>{exporting ? 'PDF 만드는 중…' : '5MB 이하 PDF 만들기'}</button></section>;
+  return <section className="evidence-export"><p>증빙 내용을 해석하거나 자동 판정하지 않습니다. 사용자가 확인한 이미지를 정주비 먼저, 학습공간비 다음 순서로 한 PDF에 합칩니다.</p>{renderGroup('정주비 증빙', 'resident', resident)}{renderGroup('학습공간비 증빙', 'study', study)}{progress && <p className="evidence-message" role="status">{progress.stage} ? {progress.current}/{progress.total}?</p>}{message && <p className="evidence-message">{message}</p>}<button className="sheet-action" disabled={exporting || (!resident.length && !study.length)} onClick={() => void exportPdf()}>{exporting ? 'PDF 만드는 중…' : '5MB 이하 PDF 만들기'}</button></section>;
 }
