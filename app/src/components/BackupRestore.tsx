@@ -3,6 +3,7 @@ import { decryptBackup, encryptBackup, validateBackupPassphrase, type BackupPayl
 import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
 import type { MerchantRule } from '../domain/merchantRules';
+import { saveAndShareFile } from '../native/fileExport';
 
 type Props = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; onRestore: (payload: BackupPayload) => void; notify: (message: string) => void };
 
@@ -14,11 +15,9 @@ export function BackupRestore({ ledger, policyBook, merchantRules, onRestore, no
     const reason = validateBackupPassphrase(exportPassword);
     if (reason) return notify(reason);
     const blob = await encryptBackup({ format: 'shinhanhae-backup', version: 1, exportedAt: new Date().toISOString(), ledger, policyBook, merchantRules }, exportPassword);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url; link.download = `신청해계산기_백업_${new Date().toISOString().slice(0, 10)}.shb`;
-    link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setExportPassword(''); notify('암호화된 백업 파일을 저장했습니다. 비밀번호는 복구할 수 없습니다.');
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const result = await saveAndShareFile('shinhanhae_backup_' + new Date().toISOString().slice(0, 10) + '.shb', bytes, 'application/octet-stream');
+    setExportPassword(''); notify(result.location === 'documents' ? 'Documents folder saved.' : 'Backup file saved.');
   };
   const restore = async () => {
     if (!file) return notify('복원할 백업 파일을 선택해 주세요.');

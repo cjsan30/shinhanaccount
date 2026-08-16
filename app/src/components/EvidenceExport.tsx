@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
+import { saveAndShareFile } from '../native/fileExport';
 
 type Group = 'resident' | 'study';
 type Evidence = { id: string; file: File; url: string };
@@ -54,9 +55,8 @@ export function EvidenceExport() {
         maxEdge = Math.round(maxEdge * .78); quality -= .12;
       }
       if (pdfBytes.byteLength > MAX_BYTES) throw new Error('이미지가 많아 5MB 이하로 줄이지 못했습니다. 일부 이미지를 나눠 올리거나 더 작은 이미지로 다시 시도해 주세요.');
-      const url = URL.createObjectURL(new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' }));
-      const link = document.createElement('a'); link.href = url; link.download = '신청해_사용보고서_증빙.pdf'; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage(`PDF를 저장했습니다. ${(pdfBytes.byteLength / 1024 / 1024).toFixed(2)}MB · 정주비 ${resident.length}장, 학습공간비 ${study.length}장`);
+      const result = await saveAndShareFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
+      setMessage(result.location === 'documents' ? 'Documents folder saved.' : 'PDF saved.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
     finally { setExporting(false); }
   };
