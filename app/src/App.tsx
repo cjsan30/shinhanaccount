@@ -205,7 +205,7 @@ function App() {
       }
       setImportTransactions(safety.transactions);
       const excluded = safety.skippedOtherCards ? ` · 다른 카드 ${safety.skippedOtherCards}건 제외` : '';
-      show(`${safety.transactions.length}건의 ?? ?? 내역을 확인했습니다.${excluded}`);
+      show(`${safety.transactions.length}\uac74\uc758 \uc2e0\ud55c\uce74\ub4dc Excel \ub0b4\uc5ed\uc744 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4.${excluded}`);
     } catch (error) {
       setImportTransactions(null);
       setImportSafety(null);
