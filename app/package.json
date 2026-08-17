@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "android:sync": "npm run build && npx cap sync android",
+    "android:sync": "npm run build && node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor sync android",
     "android:open": "npx cap open android"
   },
   "dependencies": {
