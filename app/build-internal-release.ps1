@@ -10,7 +10,7 @@ $env:SHINHANHAE_STORE_PASSWORD = & $toPlain $storePassword
 $env:SHINHANHAE_KEY_ALIAS = 'shinhanhae'
 $env:SHINHANHAE_KEY_PASSWORD = & $toPlain $keyPassword
 npm.cmd run build:internal
-npx.cmd cap copy android
+node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor copy android
 Push-Location android
 try { .\gradlew.bat assembleRelease } finally { Pop-Location }
 Write-Host 'Release APK: android\app\build\outputs\apk\release\app-release.apk'
