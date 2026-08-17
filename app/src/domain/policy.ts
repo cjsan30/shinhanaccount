@@ -40,24 +40,31 @@ const rowFields: Array<[PolicyItem, RegExp]> = [
   ['food', /식비/],
   ['education', /교육비/],
   ['transport', /교통비/],
-  ['studyCafe', /스터디카페/],
-  ['cafe', /카페/],
+  ['studyCafe', /스터디\s*카페|스터디카페/],
+  ['cafe', /(?:^|\s)카페(?:\s|$)/],
   ['readingRoom', /독서실/],
 ];
+
+function parseVisualRowAmount(line: string) {
+  const explicitWon = [...line.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\s+원/g)].map((match) => match[1]);
+  const commaAmounts = [...line.matchAll(/(?:^|\D)(\d{1,3}(?:,\d{3})+)(?=\D|$)/g)].map((match) => match[1]);
+  const candidates = [...new Set([...explicitWon, ...commaAmounts])]
+    .map((amount) => Number(amount.replaceAll(',', '')))
+    .filter(Number.isFinite);
+  if (candidates.length) return Math.max(...candidates);
+  return /직접입력/.test(line) ? 0 : null;
+}
 
 function parsePlansByVisualRow(text: string): Partial<Record<PolicyItem, number>> {
   const plans: Partial<Record<PolicyItem, number>> = {};
   for (const line of text.split(/\r?\n/)) {
     const matchedFields = rowFields.filter(([, pattern]) => pattern.test(line));
     if (matchedFields.length !== 1) continue;
-    const amount = [...line.matchAll(/(\d[\d,]*)\s*원/g)].at(-1)?.[1];
-    if (!amount) continue;
-    const value = Number(amount.replaceAll(',', ''));
-    if (Number.isFinite(value)) plans[matchedFields[0][0]] = value;
+    const amount = parseVisualRowAmount(line);
+    if (amount !== null) plans[matchedFields[0][0]] = amount;
   }
   return plans;
 }
-
 function hasCompleteExpectedAmountColumn(amounts: number[]) {
   if (amounts.length < 10) return false;
   const lineItems = amounts.slice(0, 7);
