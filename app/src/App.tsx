@@ -10,7 +10,7 @@ import { type BudgetKey } from './domain/budget';
 import { applyPayment, cancelPayment, createEmptyLedger, removeLedgerEntry, updateLedgerEntry, createInitialLedger, getEntryPeriodKey, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
-import { confirmPolicyForPeriod, getEffectivePolicy, getCategoryLabel, getCategoryLimit, getNextPolicyPeriodKey, getPolicyLimit, getPolicyVersion, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
+import { confirmPolicyForPeriod, getEffectivePolicy, getCategoryLabel, getCategoryLimit, getNextPolicyPeriodKey, getPolicyLimit, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
 import { type PaymentClassification } from './domain/sms';
 import { classifyWithMerchantRules, createMerchantRule, loadMerchantRules, saveMerchantRules, type MerchantRule } from './domain/merchantRules';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
@@ -280,9 +280,8 @@ function App() {
     show(`${getNextPolicyPeriodKey(now)} 기간 정책을 저장했습니다.`);
   };
   const openSettings = () => {
-    const scheduled = getPolicyVersion(policyBook, getNextPolicyPeriodKey(now)) ?? policy;
-    setPolicyText(scheduled.sourceText);
-    setPolicyDraft(structuredClone(scheduled));
+    setPolicyText('');
+    setPolicyDraft(null);
     setPanel('settings');
   };
   const openPayment = () => {
@@ -374,6 +373,6 @@ function App() {
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'cancel' ? '취소 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : '직접 지출 등록';
   if (!activePolicy.confirmed) return <OnboardingFlow onComplete={completeOnboarding} />;
 
-  return <main className="app"><header><h1>지원금 관리</h1><button aria-label="설정 열기" onClick={openSettings}><GearSix size={39} /></button></header><section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={openPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong>{won(totalLimit - totalSpent)}</strong><span>{won(totalLimit)} 중 {won(totalSpent)} 사용 · {totalUsage.toFixed(1)}%</span><i><b style={{ width: `${totalUsage}%` }} /></i></section><section className="budgets"><Budget name="정주비" remaining={resident.remaining} usage={resident.usagePercent} open={() => setPanel('resident')} /><Budget name="학습공간비" remaining={study.remaining} usage={study.usagePercent} open={() => setPanel('study')} /></section><section className="quick"><h2>빠른 확인</h2><button aria-label={`미정 지출 ${undecidedCount}건`} onClick={() => setPanel('undecided')}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{undecidedCount > 9 ? '9+' : undecidedCount}</b>}<CaretRight size={25} /></button><button onClick={() => setPanel('recent')}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button onClick={() => setPanel('evidence')}><i><ListBullets size={29} /></i>PDF 생성<CaretRight size={25} /></button></section>{panel && <BottomSheet title={title} onClose={close}>{content}</BottomSheet>}<Toast message={toast} /></main>;
+  return <main className="app"><header><h1>지원금 관리</h1><button aria-label="설정 열기" onClick={openSettings}><GearSix size={39} /></button></header><section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={openPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong>{won(totalLimit - totalSpent)}</strong><span>{won(totalLimit)} 중 {won(totalSpent)} 사용 · {totalUsage.toFixed(1)}%</span><i><b style={{ width: `${totalUsage}%` }} /></i></section><section className="budgets"><Budget name="정주비" remaining={resident.remaining} usage={resident.usagePercent} open={() => setPanel('resident')} /><Budget name="학습공간비" remaining={study.remaining} usage={study.usagePercent} open={() => setPanel('study')} /></section><section className="quick"><h2>빠른 확인</h2><button aria-label={`미정 지출 ${undecidedCount}건`} onClick={() => setPanel('undecided')}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{undecidedCount > 9 ? '9+' : undecidedCount}</b>}<CaretRight size={25} /></button><button onClick={() => setPanel('recent')}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button onClick={() => setPanel('evidence')}><i><ListBullets size={29} /></i>PDF 생성<CaretRight size={25} /></button></section>{panel && <BottomSheet title={title} onClose={close} onBack={panel === 'operations' || panel === 'data' ? () => setPanel('settings') : undefined}>{content}</BottomSheet>}<Toast message={toast} /></main>;
 }
 export default App;
