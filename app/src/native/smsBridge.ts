@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 
-export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string };
+export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; source?: 'demo' | 'sms' | 'excel' | 'manual' };
 export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; thresholds: [number, number]; periodKey: string };
 type SmsBridgePlugin = {
   configure(options: { cardLast4: string }): Promise<void>;

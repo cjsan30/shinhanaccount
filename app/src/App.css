@@ -62,3 +62,5 @@ h1{font-size:clamp(34px,9.5vw,44px)}
 .backup-card{margin-top:30px;padding-top:22px;border-top:1px solid #e6eaf022}.backup-card h3{margin:0;font-size:17px;letter-spacing:-.04em}.backup-card>p{margin-top:8px}.backup-card .file-picker{margin-top:18px}.backup-file{color:#b7c7df;font-size:13px}
 
 .merchant-rule-card{margin-top:30px;padding-top:22px;border-top:1px solid #e6eaf022}.merchant-rule-card h3{margin:0;font-size:17px;letter-spacing:-.04em}.merchant-rule-card select{display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #e6eaf044;border-radius:10px;color:#f5f6f8;background:#253548;font:inherit}.rule-list{display:grid;gap:7px;margin-top:12px}.rule-list span{padding:9px 11px;border-radius:8px;background:#ffffff0b;color:#c9d8e8;font-size:13px}
+
+.sheet select{display:block;width:100%;margin-top:10px;padding:12px;border:1px solid #e6eaf044;border-radius:10px;color:#f5f6f8;background:#253548;font:inherit}

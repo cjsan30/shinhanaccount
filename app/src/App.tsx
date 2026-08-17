@@ -10,7 +10,7 @@ import { applyPayment, cancelPayment, createEmptyLedger, createInitialLedger, ge
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
 import { confirmPolicyForPeriod, getEffectivePolicy, getCategoryLabel, getCategoryLimit, getNextPolicyPeriodKey, getPolicyLimit, getPolicyVersion, loadPolicyBook, parsePolicyText, POLICY_ITEMS, savePolicyBook, type PolicyItem, type SupportPolicy } from './domain/policy';
-import { classifyPayment, type PaymentClassification } from './domain/sms';
+import { type PaymentClassification } from './domain/sms';
 import { classifyWithMerchantRules, createMerchantRule, loadMerchantRules, saveMerchantRules, type MerchantRule } from './domain/merchantRules';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import { createTestApproval } from './native/testApproval';
@@ -22,9 +22,10 @@ import { loadEncryptedAppState, saveEncryptedAppState } from './native/encrypted
 import './App.css';
 
 type Panel = 'resident' | 'study' | 'undecided' | 'recent' | 'cancel' | 'settings' | 'evidence' | 'payment' | null;
+type ManualClassificationChoice = 'auto' | 'undecided' | PolicyItem;
 const ONBOARDING_PERMISSION_KEY = 'shinhanhae-permissions-ready-v1';
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
-const defaultPayment: NativeApproval = { cardLast4: '', occurredAt: '2026-07-24T17:58:00+09:00', amount: 8000, merchant: '삼성웰스토리(주)크래프톤정' };
+const manualDateTimeValue = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const categoryNames: Record<string, string> = { lodging: '주거비', food: '식비', education: '교육비', transport: '교통비', studyCafe: '스터디카페', generalCafe: '카페', readingRoom: '독서실' };
 
 function classificationText(result: PaymentClassification) {
@@ -46,7 +47,8 @@ function App() {
   const [card, setCard] = useState('');
   const [showCard, setShowCard] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [payment, setPayment] = useState<NativeApproval>(defaultPayment);
+  const [manualPayment, setManualPayment] = useState({ occurredAt: manualDateTimeValue(), merchant: '', amount: '' });
+  const [manualClassification, setManualClassification] = useState<ManualClassificationChoice>('auto');
   const [ledger, setLedger] = useState<Ledger>(() => loadLedger(window.localStorage, import.meta.env.PROD ? createEmptyLedger : createInitialLedger));
   const ledgerRef = useRef(ledger);
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
@@ -268,15 +270,13 @@ function App() {
     setPolicyDraft(structuredClone(scheduled));
     setPanel('settings');
   };
-  const openPayment = async () => {
-    try { const result = await SmsBridge.consumePendingApprovals(); if (result.items[0]) setPayment(result.items[0]); }
-    catch { /* Browser preview uses the sample payment. */ }
+  const openPayment = () => {
+    setManualPayment({ occurredAt: manualDateTimeValue(), merchant: '', amount: '' });
+    setManualClassification('auto');
     setPanel('payment');
   };
   const injectTestApproval = async () => {
     const approval = createTestApproval(card);
-    setPayment(approval);
-    setPanel('payment');
     try {
       await SmsBridge.injectTestApproval(approval);
       show('네이티브 테스트 승인과 알림을 보냈습니다.');
@@ -291,16 +291,34 @@ function App() {
     } catch {
       show('예약 테스트는 Android 내부 테스트 앱에서만 사용할 수 있습니다.');
     }
-  };  const applyAutomatic = () => {
-    const result = applyPayment(ledger, payment, budgetLimits, categoryLimits, (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRules));
+  };
+  const submitManualPayment = () => {
+    const merchant = manualPayment.merchant.trim();
+    const amount = Number(manualPayment.amount.replaceAll(',', ''));
+    const occurredAt = new Date(manualPayment.occurredAt);
+    if (!merchant || !Number.isFinite(amount) || amount <= 0 || Number.isNaN(occurredAt.getTime())) { show('결제일시, 상호명, 금액을 확인해 주세요.'); return; }
+    const payment: NativeApproval = { id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, cardLast4: card, occurredAt: occurredAt.toISOString(), merchant, amount: Math.floor(amount), source: 'manual' };
+    let result: ReturnType<typeof applyPayment>;
+    let message: string;
+    if (manualClassification === 'undecided') {
+      result = saveAsUndecided(ledger, payment);
+      message = '미정 지출로 저장했습니다.';
+    } else if (manualClassification === 'auto') {
+      result = applyPayment(ledger, payment, budgetLimits, categoryLimits, (value, paymentAmount) => classifyWithMerchantRules(value, paymentAmount, merchantRules));
+      message = `${classificationText(classifyWithMerchantRules(merchant, amount, merchantRules))}로 저장했습니다.`;
+    } else {
+      const item = POLICY_ITEMS.find((candidate) => candidate.key === manualClassification);
+      if (!item) return;
+      const undecided = saveAsUndecided(ledger, payment);
+      result = reclassifyUndecided(undecided.ledger, undecided.entry.id, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits, categoryLimits);
+      message = `${item.label}로 저장했습니다.`;
+    }
     setLedger(result.ledger);
     saveLedger(window.localStorage, result.ledger);
-    void acknowledgeApprovals([payment]);
-    void sendBudgetAlerts(result.alerts, result.entry.bucket ?? 'resident', result.entry.category);
+    if (result.alerts.length) void sendBudgetAlerts(result.alerts, result.entry.bucket ?? 'resident', result.entry.category);
     const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
-    close(); show(`${classificationText(classifyPayment(payment.merchant, payment.amount))}로 저장했습니다.${alert}`);
-  };
-  const beginCancellation = (entry: LedgerEntry) => { setCancellationTarget(entry); setPanel('cancel'); };
+    close(); show(`${message}${alert}`);
+  };  const beginCancellation = (entry: LedgerEntry) => { setCancellationTarget(entry); setPanel('cancel'); };
   const confirmCancellation = () => {
     if (!cancellationTarget) return;
     setLedger(cancelPayment(ledger, cancellationTarget.id, new Date().toISOString()));
@@ -314,7 +332,6 @@ function App() {
     const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
     show(`${item.label}로 분류했습니다.${alert}`);
   };
-  const saveUndecided = () => { const result = saveAsUndecided(ledger, payment); setLedger(result.ledger); saveLedger(window.localStorage, result.ledger); void acknowledgeApprovals([payment]); close(); show('미정 지출로 저장했습니다.'); };
 
   let content: ReactNode;
   if (panel === 'resident') content = <Table rows={rowsFor('resident')} />;
@@ -322,11 +339,10 @@ function App() {
   else if (panel === 'undecided') content = undecidedCount ? <>{ledger.entries.filter((entry) => entry.status === 'undecided').map((entry) => <section className="reclassify-card" key={entry.id}><div className="item"><strong>{entry.merchant}</strong><span>{entry.occurredAt.slice(0, 10)} · {won(entry.amount)}</span></div><p>지원 항목을 선택하면 즉시 예산에 반영됩니다.</p><div className="reclassify-options">{POLICY_ITEMS.map((item) => <button key={item.key} onClick={() => applyManualClassification(entry.id, item)}>{item.label}</button>)}</div></section>)}</> : <p>미정으로 보관된 지출이 없습니다.</p>;  else if (panel === 'recent') content = recent.length ? <>{recent.map((entry) => <section className="recent-card" key={entry.id}><div className="item"><strong>{entry.merchant} · {entry.status === 'cancelled' ? '취소됨' : categoryNames[entry.category ?? '']}</strong><span>{won(entry.amount)}</span></div>{entry.status === 'classified' && <button className="cancel-action" onClick={() => beginCancellation(entry)}>이 결제 취소 확인</button>}</section>)}</> : <p>저장된 결제가 없습니다.</p>;
   else if (panel === 'cancel') content = cancellationTarget ? <><p>실제 취소가 확인된 경우에만 확정하세요. 취소 확정 후에는 이 결제의 예산 사용액이 제외됩니다.</p><div className="item"><strong>{cancellationTarget.merchant}</strong><span>{cancellationTarget.occurredAt.slice(0, 10)} · {won(cancellationTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmCancellation}>취소 확정</button></> : <p>확인할 결제가 없습니다.</p>;  else if (panel === 'evidence') content = <EvidenceExport />;
   else if (panel === 'settings') content = <><p>카드 끝 4자리가 일치하는 신한 체크 승인 문자만 처리합니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => setCard(event.target.value.replace(/\D/g, ''))} /></label><button className="mask-toggle" type="button" onClick={() => setShowCard((current) => !current)}>{showCard ? '숨기기' : '보기'}</button><button className="sheet-action" onClick={enableSms}>SMS 수신 사용</button>{import.meta.env.VITE_ENABLE_TEST_TOOLS === 'true' && <section className="test-tools"><h3>개발 테스트</h3><p>문자가 없어도 승인 처리와 자동 분류를 확인합니다. 경고는 정주비·학습공간비 각각의 사용률을 기준으로 판정합니다.</p><button className="sheet-action secondary-action" onClick={() => void injectTestApproval()}>테스트 승인 SMS 주입</button><button className="sheet-action secondary-action" onClick={() => void scheduleTestApproval()}>10초 뒤 테스트 승인</button><button className="sheet-action secondary-action" onClick={() => void sendTestNotification()}>테스트 알림 보내기</button></section>}<button className="sheet-action secondary-action" onClick={() => void enableNotifications()}>예산 경고 알림 사용</button><label>첫 번째 경고 <b>{first}%</b><input aria-label="첫 번째 경고 기준" type="range" min="1" max={second - 1} value={first} onChange={(event) => updateAlertThreshold(0, +event.target.value)} /></label><label>두 번째 경고 <b>{second}%</b><input aria-label="두 번째 경고 기준" type="range" min={first + 1} max="99" value={second} onChange={(event) => updateAlertThreshold(1, +event.target.value)} /></label><section className="merchant-rule-card"><h3>자주 쓰는 상호명 규칙</h3><p>새 결제에만 자동 적용합니다. 이전 결제 내역은 그대로 유지됩니다.</p><label>상호명<input aria-label="규칙 상호명" value={ruleMerchant} onChange={(event) => setRuleMerchant(event.target.value)} placeholder="예: 스타벅스" /></label><label>분류<select aria-label="규칙 분류" value={ruleItemKey} onChange={(event) => setRuleItemKey(event.target.value as PolicyItem)}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label><button className="sheet-action" onClick={saveMerchantRule}>규칙 저장</button>{merchantRules.length > 0 && <div className="rule-list">{merchantRules.slice().reverse().map((rule) => <span key={rule.id}>{rule.merchant} · {categoryNames[rule.category]}</span>)}</div>}</section><section className="policy-card"><h3>계획표 붙여넣기</h3><p>모바일 웹에서 계획표를 복사해 붙여넣으세요. 자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p><textarea aria-label="계획표 내용" value={policyText} onChange={(event) => setPolicyText(event.target.value)} placeholder="예: 숙박비 50,000원 · 식비 200,000원 · 교통비 250,000원 · 카페 200,000원" /><button className="sheet-action" onClick={reviewPolicyText}>계획표 읽기</button><button className="sheet-action secondary-action" onClick={() => void readPolicyScreenshot()}>스크린샷에서 읽기</button>{policyDraft && <div className="policy-preview"><strong>검토 결과</strong><div className="policy-lines"><section className="policy-group"><h4>정주비 <span>{won(getPolicyLimit(policyDraft, 'resident'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'resident').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={policyDraft.plans[item.key]} onChange={(event) => updatePolicyDraft(item.key, event.target.value)} /></label>)}</section><section className="policy-group"><h4>학습공간비 <span>{won(getPolicyLimit(policyDraft, 'studySpace'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'studySpace').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={policyDraft.plans[item.key]} onChange={(event) => updatePolicyDraft(item.key, event.target.value)} /></label>)}</section><strong>총 한도 {won(getPolicyLimit(policyDraft, 'resident') + getPolicyLimit(policyDraft, 'studySpace'))}</strong></div><button className="sheet-action" onClick={confirmPolicy}>검토 후 정책 확정</button></div>}</section><BackupRestore ledger={ledger} policyBook={policyBook} merchantRules={merchantRules} onRestore={restoreBackup} notify={show} /><section className="import-card"><h3>데이터 가져오기</h3><p>신한카드 엑셀(.xls/.xlsx) 또는 신한은행 거래내역 PDF를 읽습니다. PDF 비밀번호는 저장하거나 외부로 전송하지 않습니다.</p><label className="file-picker">엑셀 또는 PDF 파일 선택<input aria-label="거래내역 파일" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { setImportFile(event.target.files?.[0] ?? null); setImportTransactions(null); setImportResult(null); setImportSafety(null); event.currentTarget.value = ''; }} /></label>{importFile && <div className="import-preview"><strong className="import-file-name">{importFile.name}</strong><button className="sheet-action" onClick={() => void previewImportFile()}>파일 읽기</button></div>}{importTransactions && <div className="import-preview">{importSafety?.hasMaskedCardWarning && <p className="import-warning">카드 번호가 일부 가려져 있습니다. 설정 카드 기준으로 일치하는 내역만 가져옵니다.</p>}<strong>{importTransactions.length}건 확인</strong><span>가져오기 전 분류 결과를 적용합니다. 은행 PDF는 체크카드 출금만 가져옵니다.</span><button className="sheet-action" onClick={applyCardExport}>내역 가져오기</button></div>}{importResult && <p className="success">신규 {importResult.imported}건 · 중복 {importResult.duplicates}건 · 제외 {importResult.excluded}건 · 미정 {importResult.undecided}건</p>}</section></>;
-  else content = <><p>수신된 승인 문자를 확인하고 분류합니다.</p><div className="item"><strong>{payment.merchant}</strong><span>{payment.occurredAt.slice(0, 10)} · {won(payment.amount)}</span></div><p className="prediction">자동 분류: <strong>{classificationText(classifyPayment(payment.merchant, payment.amount))}</strong></p><div className="choices"><button onClick={saveUndecided}>미정으로 저장</button><button aria-label="자동 분류 적용" onClick={applyAutomatic}>자동 분류 적용</button></div></>;
-
-  const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '최근 결제' : panel === 'cancel' ? '취소 확인' : panel === 'settings' ? '설정' : panel === 'evidence' ? '증빙 PDF 만들기' : '새 결제 확인';
+  else content = <><p>직접 입력한 지출은 SMS 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 && <p className="prediction">자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></p>}<button className="sheet-action" onClick={submitManualPayment}>지출 등록</button></>;
+  const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '최근 결제' : panel === 'cancel' ? '취소 확인' : panel === 'settings' ? '설정' : panel === 'evidence' ? '증빙 PDF 만들기' : '직접 지출 등록';
   if (!activePolicy.confirmed) return <OnboardingFlow onComplete={completeOnboarding} />;
 
-  return <main className="app"><header><h1>지원금 관리</h1><button aria-label="설정 열기" onClick={openSettings}><GearSix size={39} /></button></header><section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 결제 확인" onClick={openPayment}><Plus size={16} weight="bold" />새 결제</button></div><strong>{won(totalLimit - totalSpent)}</strong><span>{won(totalLimit)} 중 {won(totalSpent)} 사용 · {totalUsage.toFixed(1)}%</span><i><b style={{ width: `${totalUsage}%` }} /></i></section><section className="budgets"><Budget name="정주비" remaining={resident.remaining} usage={resident.usagePercent} open={() => setPanel('resident')} /><Budget name="학습공간비" remaining={study.remaining} usage={study.usagePercent} open={() => setPanel('study')} /></section><section className="quick"><h2>빠른 확인</h2><button aria-label={`미정 지출 ${undecidedCount}건`} onClick={() => setPanel('undecided')}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{undecidedCount > 9 ? '9+' : undecidedCount}</b>}<CaretRight size={25} /></button><button onClick={() => setPanel('recent')}><i><ListBullets size={29} /></i>최근 결제 보기<CaretRight size={25} /></button><button onClick={() => setPanel('evidence')}><i><ListBullets size={29} /></i>증빙 PDF 만들기<CaretRight size={25} /></button></section>{panel && <BottomSheet title={title} onClose={close}>{content}</BottomSheet>}<Toast message={toast} /></main>;
+  return <main className="app"><header><h1>지원금 관리</h1><button aria-label="설정 열기" onClick={openSettings}><GearSix size={39} /></button></header><section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={openPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong>{won(totalLimit - totalSpent)}</strong><span>{won(totalLimit)} 중 {won(totalSpent)} 사용 · {totalUsage.toFixed(1)}%</span><i><b style={{ width: `${totalUsage}%` }} /></i></section><section className="budgets"><Budget name="정주비" remaining={resident.remaining} usage={resident.usagePercent} open={() => setPanel('resident')} /><Budget name="학습공간비" remaining={study.remaining} usage={study.usagePercent} open={() => setPanel('study')} /></section><section className="quick"><h2>빠른 확인</h2><button aria-label={`미정 지출 ${undecidedCount}건`} onClick={() => setPanel('undecided')}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{undecidedCount > 9 ? '9+' : undecidedCount}</b>}<CaretRight size={25} /></button><button onClick={() => setPanel('recent')}><i><ListBullets size={29} /></i>최근 결제 보기<CaretRight size={25} /></button><button onClick={() => setPanel('evidence')}><i><ListBullets size={29} /></i>증빙 PDF 만들기<CaretRight size={25} /></button></section>{panel && <BottomSheet title={title} onClose={close}>{content}</BottomSheet>}<Toast message={toast} /></main>;
 }
 export default App;

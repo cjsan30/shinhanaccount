@@ -12,6 +12,10 @@ describe('expense ledger', () => {
     expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
   });
+  it('preserves the manual source on a directly entered expense', () => {
+    const result = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'manual-test', source: 'manual' });
+    expect(result.entry.source).toBe('manual');
+  });
   it('stores a 5,000 won Samsung Wellstory approval in study-space general cafe', () => {
     const result = applyPayment(createInitialLedger(), wellstory5000);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'studySpace', category: 'generalCafe' });
