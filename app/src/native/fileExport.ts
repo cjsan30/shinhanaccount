@@ -1,5 +1,6 @@
-import { Capacitor } from '@capacitor/core';
+﻿import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export function bytesToBase64(bytes: Uint8Array) {
   let value = '';
@@ -15,6 +16,9 @@ export async function saveAndShareFile(fileName: string, bytes: Uint8Array, mime
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     return { location: 'download' as const };
   }
-  const file = await Filesystem.writeFile({ path: `신청해 계산기/${fileName}`, data: bytesToBase64(bytes), directory: Directory.Documents, recursive: true });
-  return { location: 'documents' as const, uri: file.uri };
+  // Android 11+ blocks direct writes to public Documents. Write to app cache and
+  // let the Android share sheet hand the file to Files, Drive, or another app.
+  const file = await Filesystem.writeFile({ path: fileName, data: bytesToBase64(bytes), directory: Directory.Cache, recursive: true });
+  await Share.share({ title: fileName, url: file.uri, dialogTitle: '파일 저장 또는 공유' });
+  return { location: 'share' as const, uri: file.uri };
 }

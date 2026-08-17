@@ -50,7 +50,7 @@ describe('app entry flows', () => {
     fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '삼성웰스토리' } });
     fireEvent.change(screen.getByLabelText('금액'), { target: { value: '5000' } });
     fireEvent.click(screen.getByRole('button', { name: '지출 등록' }));
-    fireEvent.click(screen.getByRole('button', { name: /최근 결제 보기/ }));
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
     expect(smsBridge.acknowledgePendingApprovals).not.toHaveBeenCalled();
   });
