@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, findCancellationCandidates, getAutoCancellationMatch, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, getAutoCancellationMatch, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
@@ -66,7 +66,12 @@ describe('expense ledger', () => {
     saveLedger(storage, ledger);
     expect(loadLedger(storage)).toEqual(ledger);
   });
-  it('moves an undecided expense into a user-selected support item', () => {
+  it('updates and removes a ledger entry without affecting other entries', () => {
+    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000);
+    const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: '수정 카페', amount: 7000, occurredAt: '2026-07-25T12:00:00+09:00', bucket: 'studySpace', category: 'generalCafe' });
+    expect(updated.entries[0]).toMatchObject({ merchant: '수정 카페', amount: 7000, source: 'manual' });
+    expect(removeLedgerEntry(updated, applied.entry.id).entries).toHaveLength(0);
+  });  it('moves an undecided expense into a user-selected support item', () => {
     const saved = saveAsUndecided(createInitialLedger(), wellstory5000);
     const result = reclassifyUndecided(saved.ledger, saved.entry.id, { bucket: 'resident', category: 'transport' });
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });

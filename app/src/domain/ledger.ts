@@ -75,6 +75,27 @@ export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyP
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }
 
+export type EditableLedgerEntry = Pick<LedgerEntry, 'merchant' | 'amount' | 'occurredAt' | 'bucket' | 'category'>;
+export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: EditableLedgerEntry): Ledger {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  if (!entry || entry.status === 'cancelled') return ledger;
+  const occurredAt = new Date(patch.occurredAt);
+  if (!patch.merchant.trim() || !Number.isFinite(patch.amount) || patch.amount <= 0 || Number.isNaN(occurredAt.getTime())) throw new Error('Invalid ledger entry');
+  return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? {
+    ...candidate,
+    merchant: patch.merchant.trim(),
+    amount: Math.floor(patch.amount),
+    occurredAt: occurredAt.toISOString(),
+    periodKey: getPolicyPeriodKey(occurredAt),
+    bucket: patch.bucket,
+    category: patch.category,
+    status: 'classified',
+    source: 'manual',
+  } : candidate) };
+}
+export function removeLedgerEntry(ledger: Ledger, entryId: string): Ledger {
+  return { ...ledger, entries: ledger.entries.filter((entry) => entry.id !== entryId) };
+}
 export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: string): Ledger {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status === 'cancelled') return ledger;
