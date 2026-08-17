@@ -23,6 +23,7 @@ public class SupportWidgetProvider extends AppWidgetProvider {
     private static final String RESIDENT = "\uC815\uC8FC\uBE44";
     private static final String STUDY = "\uD559\uC2B5\uACF5\uAC04\uBE44";
     private static final String COUNT = "\uAC74";
+    private static final String REMAINING = " \\uC794\\uC561 ";
 
     @Override public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
         for (int id : ids) manager.updateAppWidget(id, render(context, id, widgetLayout()));
@@ -100,8 +101,8 @@ public class SupportWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_amount, totalAmount);
             views.setTextViewText(R.id.widget_percent, percent(totalProgress));
             views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
-            views.setTextViewText(R.id.widget_resident_amount, hide ? HIDDEN : won(residentRemaining));
-            views.setTextViewText(R.id.widget_study_amount, hide ? HIDDEN : won(studyRemaining));
+            views.setTextViewText(R.id.widget_resident_amount, RESIDENT + REMAINING + (hide ? HIDDEN : won(residentRemaining)));
+            views.setTextViewText(R.id.widget_study_amount, STUDY + REMAINING + (hide ? HIDDEN : won(studyRemaining)));
             views.setTextViewText(R.id.widget_undecided, UNDECIDED + undecided + COUNT);
         }
         views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context));
