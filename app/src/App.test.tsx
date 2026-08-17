@@ -64,4 +64,33 @@ describe('app entry flows', () => {
     expect(screen.getByRole('heading', { name: '지원금 관리' })).toBeInTheDocument();
     expect(screen.getByText('700,000원')).toBeInTheDocument();
   });
+
+  it('adds, edits, and deletes a contains-based merchant rule', () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
+    fireEvent.click(screen.getByRole('button', { name: '규칙 관리' }));
+    fireEvent.change(screen.getByLabelText('규칙 상호명'), { target: { value: 'MegaCoffee' } });
+    fireEvent.click(screen.getByRole('button', { name: '규칙 추가' }));
+
+    expect(screen.getByText('MegaCoffee')).toBeInTheDocument();
+    expect(screen.getByText('포함 · 식비')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '수정' }));
+    fireEvent.change(screen.getByLabelText('규칙 인식 방법'), { target: { value: 'exact' } });
+    fireEvent.click(screen.getByRole('button', { name: '규칙 수정 저장' }));
+    expect(screen.getByText('정확히 일치 · 식비')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(screen.getByText('저장된 자동 분류 규칙이 없습니다.')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
 });
