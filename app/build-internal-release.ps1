@@ -12,5 +12,10 @@ $env:SHINHANHAE_KEY_PASSWORD = & $toPlain $keyPassword
 npm.cmd run build:internal
 node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor copy android
 Push-Location android
-try { .\gradlew.bat assembleRelease } finally { Pop-Location }
-Write-Host 'Release APK: android\app\build\outputs\apk\release\app-release.apk'
+try {
+    .\gradlew.bat assembleRelease
+    if ($LASTEXITCODE -ne 0) { throw "Release build failed with exit code $LASTEXITCODE" }
+} finally { Pop-Location }
+$releaseApk = Join-Path $PSScriptRoot 'android\app\build\outputs\apk\release\app-release.apk'
+if (-not (Test-Path -LiteralPath $releaseApk)) { throw "Signed release APK was not created: $releaseApk" }
+Write-Host "Release APK: $releaseApk"
