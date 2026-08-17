@@ -1,5 +1,9 @@
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
+$androidStudioJbr = 'C:\Program Files\Android\Android Studio\jbr'
+if (-not (Test-Path -LiteralPath $androidStudioJbr)) { throw "Android Studio JBR not found: $androidStudioJbr" }
+$env:JAVA_HOME = $androidStudioJbr
+$env:Path = "$androidStudioJbr\bin;$env:Path"
 $storeFile = 'C:\Users\lAte\Keys\shinhanhae-release.jks'
 if (-not (Test-Path -LiteralPath $storeFile)) { throw "Keystore not found: $storeFile" }
 $storePassword = Read-Host 'Keystore password' -AsSecureString
