@@ -61,7 +61,12 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         int undecided = prefs.getInt("undecidedCount", 0);
         RemoteViews views = new RemoteViews(context.getPackageName(), layout);
         if (!ready) {
-            views.setTextViewText(R.id.widget_title, POLICY_REQUIRED);
+            if (layout == R.layout.widget_2x1) {
+                views.setTextViewText(R.id.widget_resident_title, POLICY_REQUIRED);
+                views.setTextViewText(R.id.widget_study_title, "");
+            } else {
+                views.setTextViewText(R.id.widget_title, POLICY_REQUIRED);
+            }
             views.setOnClickPendingIntent(R.id.widget_root, launchIntent(context));
             return views;
         }
