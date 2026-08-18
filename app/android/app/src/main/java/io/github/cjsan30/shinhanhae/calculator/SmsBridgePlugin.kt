@@ -23,7 +23,6 @@ import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
 
-private const val PREFS = "sms_approval_queue"
 private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val BUDGET_STATE_KEY = "budget_state"
@@ -84,7 +83,7 @@ class SmsApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
         Log.i(SMS_LOG_TAG, "SMS broadcast received")
-        val card = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(CARD_KEY, null)
+        val card = secureSmsPreferences(context).getString(CARD_KEY, null)
         if (card == null) {
             Log.w(SMS_LOG_TAG, "SMS ignored: card is not configured")
             return
@@ -95,7 +94,7 @@ class SmsApprovalReceiver : BroadcastReceiver() {
             Log.w(SMS_LOG_TAG, "SMS ignored: approval format or card did not match")
             return
         }
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = secureSmsPreferences(context)
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
         queue.put(approval.toJson())
         while (queue.length() > 20) queue.remove(0)
@@ -132,7 +131,7 @@ class SmsBridgePlugin : Plugin() {
         }
     }
 
-    private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    private val prefs by lazy { secureSmsPreferences(context) }
 
     override fun load() {
         super.load()

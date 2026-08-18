@@ -1,6 +1,10 @@
-﻿import { Capacitor } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+type FileExportPlugin = {
+  save(options: { fileName: string; base64Data: string; mimeType: string }): Promise<{ uri: string; fileName: string; relativePath: string }>;
+};
+
+const FileExport = registerPlugin<FileExportPlugin>('FileExport');
 
 export function bytesToBase64(bytes: Uint8Array) {
   let value = '';
@@ -8,17 +12,25 @@ export function bytesToBase64(bytes: Uint8Array) {
   return btoa(value);
 }
 
-export async function saveAndShareFile(fileName: string, bytes: Uint8Array, mimeType: string) {
+export function timestampedFileName(baseName: string, date = new Date()) {
+  const dot = baseName.lastIndexOf('.');
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const extension = dot > 0 ? baseName.slice(dot) : '';
+  const timestamp = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(date).replaceAll('-', '').replaceAll(':', '').replace(' ', '_');
+  return `${stem}_${timestamp}${extension}`;
+}
+
+export async function saveFile(fileName: string, bytes: Uint8Array, mimeType: string) {
+  const uniqueName = timestampedFileName(fileName);
   if (!Capacitor.isNativePlatform()) {
     const url = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mimeType }));
     const link = document.createElement('a');
-    link.href = url; link.download = fileName; link.click();
+    link.href = url; link.download = uniqueName; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return { location: 'download' as const };
+    return { location: 'download' as const, fileName: uniqueName, relativePath: 'Downloads' };
   }
-  // Android 11+ blocks direct writes to public Documents. Write to app cache and
-  // let the Android share sheet hand the file to Files, Drive, or another app.
-  const file = await Filesystem.writeFile({ path: fileName, data: bytesToBase64(bytes), directory: Directory.Cache, recursive: true });
-  await Share.share({ title: fileName, url: file.uri, dialogTitle: '파일 저장 또는 공유' });
-  return { location: 'share' as const, uri: file.uri };
+  const result = await FileExport.save({ fileName: uniqueName, base64Data: bytesToBase64(bytes), mimeType });
+  return { location: 'downloads' as const, ...result };
 }

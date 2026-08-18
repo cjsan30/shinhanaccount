@@ -8,6 +8,7 @@ export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; mercha
 const DATABASE = 'shinhanhae';
 const STATE_KEY = 'app-state-v1';
 let connection: Awaited<ReturnType<SQLiteConnection['createConnection']>> | null = null;
+let writeQueue: Promise<unknown> = Promise.resolve();
 
 async function database() {
   if (!Capacitor.isNativePlatform()) return null;
@@ -22,6 +23,7 @@ async function database() {
 }
 
 export async function loadEncryptedAppState(): Promise<PersistedAppState | null> {
+  await writeQueue.catch(() => undefined);
   const db = await database(); if (!db) return null;
   const result = await db.query('SELECT value FROM app_state WHERE key = ?;', [STATE_KEY]);
   const value = result.values?.[0]?.value;
@@ -29,7 +31,12 @@ export async function loadEncryptedAppState(): Promise<PersistedAppState | null>
 }
 
 export async function saveEncryptedAppState(state: PersistedAppState) {
-  const db = await database(); if (!db) return false;
-  await db.run('INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?);', [STATE_KEY, JSON.stringify(state)]);
-  return true;
+  const snapshot = JSON.stringify(state);
+  const write = writeQueue.catch(() => undefined).then(async () => {
+    const db = await database(); if (!db) return false;
+    await db.run('INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?);', [STATE_KEY, snapshot]);
+    return true;
+  });
+  writeQueue = write;
+  return write;
 }

@@ -1,6 +1,6 @@
 ﻿import { useMemo, useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
-import { saveAndShareFile } from '../native/fileExport';
+import { saveFile } from '../native/fileExport';
 
 type Group = 'resident' | 'study';
 type Evidence = { id: string; file: File; url: string };
@@ -72,9 +72,9 @@ export function EvidenceExport() {
         maxEdge = Math.round(maxEdge * .78); quality -= .12;
       }
       if (pdfBytes.byteLength > MAX_BYTES) throw new Error('이미지가 많아 5MB 이하로 줄이지 못했습니다. 이미지를 나누어 다시 시도해 주세요.');
-      setProgress({ current: items.length, total: items.length, stage: '저장 위치를 선택할 수 있도록 준비 중입니다' });
-      await saveAndShareFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
-      setMessage('저장 또는 공유 위치를 선택해 PDF를 보관해 주세요.');
+      setProgress({ current: items.length, total: items.length, stage: 'Downloads에 저장하고 있습니다' });
+      const result = await saveFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
+      setMessage(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
     finally { setExporting(false); setProgress(null); }
   };

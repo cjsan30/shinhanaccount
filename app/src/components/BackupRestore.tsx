@@ -3,7 +3,7 @@ import { decryptBackup, encryptBackup, validateBackupPassphrase, type BackupPayl
 import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
 import type { MerchantRule } from '../domain/merchantRules';
-import { saveAndShareFile } from '../native/fileExport';
+import { saveFile } from '../native/fileExport';
 
 type Props = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; onRestore: (payload: BackupPayload) => void; notify: (message: string) => void };
 
@@ -14,11 +14,13 @@ export function BackupRestore({ ledger, policyBook, merchantRules, onRestore, no
   const download = async () => {
     const reason = validateBackupPassphrase(exportPassword);
     if (reason) return notify(reason);
-    const blob = await encryptBackup({ format: 'shinhanhae-backup', version: 1, exportedAt: new Date().toISOString(), ledger, policyBook, merchantRules }, exportPassword);
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const result = await saveAndShareFile(`shinhanhae_backup_${new Date().toISOString().slice(0, 10)}.shb`, bytes, 'application/octet-stream');
-    setExportPassword('');
-    notify(result.location === 'share' ? '저장 위치를 선택해 백업 파일을 보관해 주세요.' : '백업 파일을 저장했습니다.');
+    try {
+      const blob = await encryptBackup({ format: 'shinhanhae-backup', version: 1, exportedAt: new Date().toISOString(), ledger, policyBook, merchantRules }, exportPassword);
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const result = await saveFile('shinhanhae_backup.shb', bytes, 'application/octet-stream');
+      setExportPassword('');
+      notify(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
+    } catch { notify('백업 파일을 저장하지 못했습니다. 저장 공간을 확인해 주세요.'); }
   };
   const restore = async () => {
     if (!file) return notify('복원할 백업 파일을 선택해 주세요.');

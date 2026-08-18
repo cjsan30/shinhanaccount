@@ -10,5 +10,10 @@ coverage/
 *.keystore
 android/.gradle/
 android/app/build/
+app/.android/
+app/.gradle-build-cache*/
+app/android/.gradle-cache*/
+.gradle-cache*/
+.idea/
 
 keystore.properties
