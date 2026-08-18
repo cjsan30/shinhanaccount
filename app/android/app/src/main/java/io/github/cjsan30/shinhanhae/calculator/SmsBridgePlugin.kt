@@ -65,16 +65,15 @@ private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approva
 }
 private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
-data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
+internal data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
     fun queueId() = "$cardLast4|$occurredAt|$amount|$merchant"
     fun toJson() = JSONObject().put("id", queueId()).put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
 }
 
-private fun parseApproval(body: String, cardLast4: String): Approval? {
+internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): Approval? {
     val normalized = body.replace(Regex("""\s+"""), " ").trim()
     val match = approvalRegex.find(normalized) ?: return null
     if (match.groupValues[1] != cardLast4) return null
-    val year = Calendar.getInstance().get(Calendar.YEAR)
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
 }
 

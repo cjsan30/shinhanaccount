@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
@@ -63,6 +63,27 @@ describe('app entry flows', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: '지원금 관리' })).toBeInTheDocument();
     expect(screen.getByText('700,000원')).toBeInTheDocument();
+  });
+
+  it('polls and applies an approval received while the dashboard remains open', async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
+      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date().toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'sms',
+    }] });
+
+    render(<App />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+
+    expect(smsBridge.consumePendingApprovals).toHaveBeenCalledOnce();
+    expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] });
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
+    expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it('adds, edits, and deletes a contains-based merchant rule', () => {

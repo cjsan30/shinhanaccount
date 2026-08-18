@@ -44,6 +44,7 @@ function App() {
   const [panel, setPanel] = useState<Panel>(null);
   const [merchantRules, setMerchantRules] = useState<MerchantRule[]>(() => loadMerchantRules(window.localStorage));
   const merchantRulesRef = useRef(merchantRules);
+  const processingApprovalsRef = useRef(false);
   const [ruleMerchant, setRuleMerchant] = useState('');
   const [ruleItemKey, setRuleItemKey] = useState<PolicyItem>('food');
   const [ruleMatchMode, setRuleMatchMode] = useState<MerchantMatchMode>('contains');
@@ -131,30 +132,42 @@ function App() {
     }).catch(() => undefined);
   }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
+  // Poll while the WebView is active because an SMS broadcast does not wake React state.
   useEffect(() => {
-    if (import.meta.env.MODE === 'test' || !activePolicy.confirmed) return;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await SmsBridge.consumePendingApprovals();
-          if (!result.items.length) return;
-          let nextLedger = ledgerRef.current;
-          const crossed = [] as Array<{ alerts: number[]; bucket: BudgetKey; category?: string }>;
-          for (const approval of result.items) {
-            const applied = applyPayment(nextLedger, approval, { resident: budgetLimits.resident, studySpace: budgetLimits.studySpace }, categoryLimits, (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRulesRef.current));
-            nextLedger = applied.ledger;
-            if (applied.alerts.length) crossed.push({ alerts: applied.alerts, bucket: applied.entry.bucket ?? 'resident', category: applied.entry.category });
-          }
-          ledgerRef.current = nextLedger;
-          saveLedger(window.localStorage, nextLedger);
-          setLedger(nextLedger);
-          await acknowledgeApprovals(result.items);
-          crossed.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
-          show(`${result.items.length}건의 승인 결제를 자동 반영했습니다.`);
-        } catch { /* Android SMS bridge is optional in browser preview. */ }
-      })();
-    }, 500);
-    return () => window.clearTimeout(timer);
+    if (!activePolicy.confirmed) return;
+    let disposed = false;
+    const processPendingApprovals = async () => {
+      if (processingApprovalsRef.current) return;
+      processingApprovalsRef.current = true;
+      try {
+        const result = await SmsBridge.consumePendingApprovals();
+        if (disposed || !result.items.length) return;
+        let nextLedger = ledgerRef.current;
+        const crossed = [] as Array<{ alerts: number[]; bucket: BudgetKey; category?: string }>;
+        for (const approval of result.items) {
+          const applied = applyPayment(nextLedger, approval, { resident: budgetLimits.resident, studySpace: budgetLimits.studySpace }, categoryLimits, (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRulesRef.current));
+          nextLedger = applied.ledger;
+          if (applied.alerts.length) crossed.push({ alerts: applied.alerts, bucket: applied.entry.bucket ?? 'resident', category: applied.entry.category });
+        }
+        ledgerRef.current = nextLedger;
+        saveLedger(window.localStorage, nextLedger);
+        setLedger(nextLedger);
+        await acknowledgeApprovals(result.items);
+        crossed.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
+        show(`${result.items.length}건의 승인 결제를 자동 반영했습니다.`);
+      } catch { /* Android SMS bridge is optional in browser preview. */ }
+      finally { processingApprovalsRef.current = false; }
+    };
+    const initialTimer = window.setTimeout(() => { void processPendingApprovals(); }, 500);
+    const pollingTimer = window.setInterval(() => { void processPendingApprovals(); }, 2_000);
+    const processWhenVisible = () => { if (document.visibilityState === 'visible') void processPendingApprovals(); };
+    document.addEventListener('visibilitychange', processWhenVisible);
+    return () => {
+      disposed = true;
+      window.clearTimeout(initialTimer);
+      window.clearInterval(pollingTimer);
+      document.removeEventListener('visibilitychange', processWhenVisible);
+    };
   }, [activePolicy.confirmed, activePolicy.periodKey, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
   const completeOnboarding = (payload: { cardLast4: string; policy: SupportPolicy; pendingApprovals: NativeApproval[]; historyAction: 'keep-undecided' | 'discard'; nextAction: 'dashboard' | 'import' }) => {
     const confirmed = confirmPolicyForPeriod(policyBook, payload.policy, activePolicy.periodKey);
