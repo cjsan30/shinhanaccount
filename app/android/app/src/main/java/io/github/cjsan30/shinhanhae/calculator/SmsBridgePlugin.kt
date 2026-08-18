@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
@@ -20,11 +21,13 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
 import java.util.Calendar
+import java.lang.ref.WeakReference
 
 private const val PREFS = "sms_approval_queue"
 private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val BUDGET_STATE_KEY = "budget_state"
+private const val SMS_LOG_TAG = "ShinhanhaeSms"
 
 private data class NativeClassification(val category: String, val label: String)
 
@@ -80,14 +83,25 @@ internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar
 class SmsApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        val card = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(CARD_KEY, null) ?: return
+        Log.i(SMS_LOG_TAG, "SMS broadcast received")
+        val card = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(CARD_KEY, null)
+        if (card == null) {
+            Log.w(SMS_LOG_TAG, "SMS ignored: card is not configured")
+            return
+        }
         val body = Telephony.Sms.Intents.getMessagesFromIntent(intent).joinToString("") { it.messageBody ?: "" }
-        val approval = parseApproval(body, card) ?: return
+        val approval = parseApproval(body, card)
+        if (approval == null) {
+            Log.w(SMS_LOG_TAG, "SMS ignored: approval format or card did not match")
+            return
+        }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
         queue.put(approval.toJson())
         while (queue.length() > 20) queue.remove(0)
         prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+        Log.i(SMS_LOG_TAG, "Approval queued")
+        SmsBridgePlugin.notifyApprovalQueued()
         notifyApproval(context, consumeBudgetAlert(prefs, approval))
     }
 
@@ -110,7 +124,29 @@ class SmsApprovalReceiver : BroadcastReceiver() {
 
 @CapacitorPlugin(name = "SmsBridge", permissions = [Permission(alias = "receiveSms", strings = ["android.permission.RECEIVE_SMS"])])
 class SmsBridgePlugin : Plugin() {
+    companion object {
+        @Volatile private var activeInstance: WeakReference<SmsBridgePlugin>? = null
+
+        internal fun notifyApprovalQueued() {
+            activeInstance?.get()?.emitApprovalQueued()
+        }
+    }
+
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+
+    override fun load() {
+        super.load()
+        activeInstance = WeakReference(this)
+    }
+
+    override fun handleOnDestroy() {
+        if (activeInstance?.get() === this) activeInstance = null
+        super.handleOnDestroy()
+    }
+
+    private fun emitApprovalQueued() {
+        notifyListeners("approvalReceived", JSObject())
+    }
 
     @com.getcapacitor.PluginMethod
     fun configure(call: PluginCall) {

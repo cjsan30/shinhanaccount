@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
-  smsBridge: { configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), scheduleTestApproval: vi.fn(), requestPermission: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
+  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), scheduleTestApproval: vi.fn(), requestPermission: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
@@ -11,10 +11,17 @@ import App from './App';
 import { getPolicyPeriodKey } from './domain/budget';
 import { createEmptyLedger } from './domain/ledger';
 
+let approvalListener: (() => void) | null = null;
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
   smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '' });
+  approvalListener = null;
+  smsBridge.addListener.mockImplementation(async (_eventName, listener: () => void) => {
+    approvalListener = listener;
+    return { remove: vi.fn().mockResolvedValue(undefined) };
+  });
   smsBridge.syncBudgetState.mockResolvedValue(undefined);
   smsBridge.consumePendingApprovals.mockResolvedValue({ items: [] });
   smsBridge.acknowledgePendingApprovals.mockResolvedValue(undefined);
@@ -65,8 +72,7 @@ describe('app entry flows', () => {
     expect(screen.getByText('700,000원')).toBeInTheDocument();
   });
 
-  it('polls and applies an approval received while the dashboard remains open', async () => {
-    vi.useFakeTimers();
+  it('applies a native approval event while the dashboard remains open', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -77,13 +83,11 @@ describe('app entry flows', () => {
     }] });
 
     render(<App />);
-    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    await act(async () => { approvalListener?.(); });
 
-    expect(smsBridge.consumePendingApprovals).toHaveBeenCalledOnce();
-    expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] });
+    await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('adds, edits, and deletes a contains-based merchant rule', () => {

@@ -132,7 +132,8 @@ function App() {
     }).catch(() => undefined);
   }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
-  // Poll while the WebView is active because an SMS broadcast does not wake React state.
+  // A foreground native event handles new approvals immediately. The initial and
+  // visibility checks recover approvals queued while the app was not active.
   useEffect(() => {
     if (!activePolicy.confirmed) return;
     let disposed = false;
@@ -159,13 +160,19 @@ function App() {
       finally { processingApprovalsRef.current = false; }
     };
     const initialTimer = window.setTimeout(() => { void processPendingApprovals(); }, 500);
-    const pollingTimer = window.setInterval(() => { void processPendingApprovals(); }, 2_000);
+    let listenerHandle: { remove: () => Promise<void> } | null = null;
+    void SmsBridge.addListener('approvalReceived', () => { void processPendingApprovals(); })
+      .then((handle) => {
+        if (disposed) void handle.remove();
+        else listenerHandle = handle;
+      })
+      .catch(() => undefined);
     const processWhenVisible = () => { if (document.visibilityState === 'visible') void processPendingApprovals(); };
     document.addEventListener('visibilitychange', processWhenVisible);
     return () => {
       disposed = true;
       window.clearTimeout(initialTimer);
-      window.clearInterval(pollingTimer);
+      if (listenerHandle) void listenerHandle.remove();
       document.removeEventListener('visibilitychange', processWhenVisible);
     };
   }, [activePolicy.confirmed, activePolicy.periodKey, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
