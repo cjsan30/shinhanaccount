@@ -42,19 +42,26 @@ export async function initializeAppState(
   const legacy = loadLegacyAppState(storage, now);
   if (!dependencies.native) return { state: legacy, migrated: false };
 
-  const encrypted = await dependencies.loadEncrypted();
-  if (encrypted) {
-    clearSensitiveLegacyState(storage);
-    return { state: encrypted, migrated: false };
-  }
-
   const hadLegacyState = sensitiveLegacyKeys.some((key) => storage.getItem(key) !== null);
+  const encrypted = await dependencies.loadEncrypted();
+  if (hadLegacyState) {
+    // The previous release wrote localStorage synchronously and encrypted storage asynchronously.
+    // On a crash the local snapshot can therefore be newer, so migrate it before removing plaintext.
+    const saved = await dependencies.saveEncrypted(legacy);
+    if (!saved) throw new Error('암호화 저장소를 준비하지 못했습니다.');
+    const verified = await dependencies.loadEncrypted();
+    if (!verified) throw new Error('암호화 저장소 이전 결과를 확인하지 못했습니다.');
+    clearSensitiveLegacyState(storage);
+    return { state: verified, migrated: true };
+  }
+  if (encrypted) return { state: encrypted, migrated: false };
+
   const saved = await dependencies.saveEncrypted(legacy);
   if (!saved) throw new Error('암호화 저장소를 준비하지 못했습니다.');
   const verified = await dependencies.loadEncrypted();
   if (!verified) throw new Error('암호화 저장소 이전 결과를 확인하지 못했습니다.');
   clearSensitiveLegacyState(storage);
-  return { state: verified, migrated: hadLegacyState };
+  return { state: verified, migrated: false };
 }
 
 export async function persistAppState(

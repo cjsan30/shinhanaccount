@@ -33,14 +33,25 @@ describe('app state persistence', () => {
     expect(localStorage.getItem('shinhanhae-ledger-v1')).not.toBeNull();
   });
 
-  it('prefers encrypted data and removes stale plaintext copies', async () => {
-    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+  it('uses encrypted data when no legacy plaintext remains', async () => {
     const result = await initializeAppState(localStorage, new Date(), {
       native: true,
       loadEncrypted: vi.fn(async () => state),
       saveEncrypted: vi.fn(),
     });
     expect(result.state).toBe(state);
+  });
+
+  it('migrates the synchronous legacy snapshot over a stale encrypted copy', async () => {
+    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(state.ledger));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify(state.policyBook));
+    let encrypted: PersistedAppState | null = { ...state, ledger: createEmptyLedger() };
+    const result = await initializeAppState(localStorage, new Date(), {
+      native: true,
+      loadEncrypted: vi.fn(async () => encrypted),
+      saveEncrypted: vi.fn(async (next) => { encrypted = next; return true; }),
+    });
+    expect(result).toEqual({ state, migrated: true });
     expect(localStorage.getItem('shinhanhae-ledger-v1')).toBeNull();
   });
 
