@@ -7,8 +7,8 @@
 | 화면 | React + TypeScript + Vite | 빠른 화면 개발과 검증, 웹 기술 재사용 |
 | 네이티브 컨테이너 | Capacitor | React 화면과 Android SMS·알림·위젯 API를 연결 |
 | Android 네이티브 | Kotlin | SMS 수신, 로컬 알림, AppWidget/Glance 구현 |
-| 상태 | Zustand | 작고 예측 가능한 화면 상태 |
-| 검증 | Zod | SMS 파싱 결과와 사용자 입력의 런타임 검증 |
+| 상태 | React 상태 + 순수 TypeScript 도메인 모듈 | 화면 상태와 계산 규칙을 분리해 테스트 |
+| 검증 | Kotlin/TypeScript 명시적 검증 함수 | SMS 파싱 결과와 사용자 입력을 경계에서 검증 |
 | 저장소 | 암호화 SQLite + Android Keystore | 오프라인 우선, 개인 지출 데이터 보호 |
 | 배포 | 서명 APK | 초기 4명 직접 설치에 적합 |
 
@@ -18,8 +18,8 @@ Capacitor는 단순 웹 래퍼가 아니다. React 화면은 Capacitor 플러그
 
 ```mermaid
 flowchart LR
-  SMS["승인·취소 SMS"] --> Native["Kotlin SMS 수신 플러그인"]
-  Native --> Parse["파서·중복 제거·취소 매칭"]
+  SMS["승인 SMS"] --> Native["Kotlin SMS 수신 플러그인"]
+  Native --> Parse["파서·중복 제거"]
   Parse --> DB[("암호화 SQLite")]
   DB --> Domain["예산·분류 도메인 서비스"]
   Domain --> UI["React / Vite 화면"]
@@ -72,7 +72,7 @@ Kotlin 파서는 카드사·은행의 고정 형식을 읽어 아래 구조만 W
 
 ```ts
 type ParsedSmsEvent = {
-  kind: 'approval' | 'cancellation'
+  kind: 'approval'
   occurredAt: string
   amount: number
   merchantRaw: string
@@ -89,9 +89,8 @@ type ParsedSmsEvent = {
 2. 파싱 결과를 Zod로 검증한다. 실패하면 원문 없이 실패 횟수만 기록한다.
 3. 중복 여부를 검사한다.
 4. 승인에는 분류 규칙을 적용하고, 없으면 미정으로 기록한다.
-5. 취소에는 최근 60일 승인 건을 매칭한다. 실패 시 취소 확인 필요로 기록한다.
-6. 해당 정책 버전의 집계를 재계산한다.
-7. 새 임계치·초과 여부를 판정하고 로컬 알림·위젯을 갱신한다.
+5. 해당 정책 버전의 집계를 재계산한다.
+6. 새 임계치·초과 여부를 판정하고 로컬 알림·위젯을 갱신한다.
 
 ## 5. 핵심 알고리즘
 
@@ -107,6 +106,8 @@ type ParsedSmsEvent = {
 4. 미정
 
 ### 취소 매칭
+
+아래 기준은 실제 취소 SMS 샘플 확보 후 구현할 후속 설계다. 현재 버전은 사용자의 수동 취소 확정만 지원한다.
 
 1. 승인번호가 있으면 카드 끝 4자리 + 승인번호 우선
 2. 없으면 카드 끝 4자리 + 동일 금액 + 정규화 상호명 + 최근 60일
@@ -129,10 +130,14 @@ type ParsedSmsEvent = {
 
 ## 7. 보안·백업
 
-- DB 키는 Android Keystore에 보호한다.
+- 거래·정책·분류 규칙의 기준 저장소는 SQLCipher 암호화 SQLite 하나로 둔다. DB 비밀값은 Android Keystore로 보호한다.
+- 기존 `localStorage` 데이터는 암호화 저장과 재조회가 성공한 후에만 지우며, 이후 Android에서는 평문 저장소로 폴백하지 않는다.
+- 카드 끝 4자리와 미처리 SMS 대기열은 Keystore 기반 암호화 설정 저장소에 둔다. 위젯 설정에는 표시용 합계만 저장한다.
 - 민감값은 앱 로그·크래시 리포트에 포함하지 않는다.
 - 내보내기 파일은 암호화하고, 비밀번호 복구 기능은 v1에 제공하지 않는다.
+- 백업과 증빙 PDF는 MediaStore를 통해 `Downloads/신청해 계산기`에 직접 저장한다. 공유 화면은 열지 않는다.
 - 앱 삭제 전 내보내기를 권장하되 자동 클라우드 업로드는 하지 않는다.
+- 직전 실행이 사용자 강제 종료였으면 다음 실행에서 자동 수신 누락 가능성과 엑셀 가져오기 복구 경로를 안내한다.
 
 ## 8. 배포·운영
 

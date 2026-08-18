@@ -14,6 +14,7 @@ app/.android/
 app/.gradle-build-cache*/
 app/android/.gradle-cache*/
 .gradle-cache*/
+.gradle-build-cache*/
 .idea/
 
 keystore.properties

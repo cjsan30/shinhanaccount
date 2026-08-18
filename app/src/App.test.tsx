@@ -8,6 +8,7 @@ const { smsBridge, notificationBridge } = vi.hoisted(() => ({
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
 vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
 import App from './App';
+import { previousPanel } from './domain/navigation';
 import { getPolicyPeriodKey } from './domain/budget';
 import { createEmptyLedger } from './domain/ledger';
 
@@ -28,6 +29,12 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it('routes Android back through nested sheets before leaving the dashboard', () => {
+    expect(previousPanel('rules')).toBe('data');
+    expect(previousPanel('data')).toBe('settings');
+    expect(previousPanel('edit')).toBe('recent');
+    expect(previousPanel('resident')).toBeNull();
+  });
   it('shows policy onboarding when a new user has no confirmed policy', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: /자동 관리를/ })).toBeInTheDocument();

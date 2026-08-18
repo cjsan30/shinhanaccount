@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BUDGET_LIMITS,
+  POLICY_MAX_LIMITS,
   calculateBudgetSummary,
   getCrossedAlertThresholds,
   getPolicyPeriodKey,
+  roundUsagePercent,
 } from './budget';
 
 describe('policy period', () => {
@@ -17,12 +18,20 @@ describe('policy period', () => {
   });
 });
 
+describe('usage percentage rounding', () => {
+  it('rounds half up to one decimal like the Android widget', () => {
+    expect(roundUsagePercent(23_700, 200_000)).toBe(11.9);
+    expect(roundUsagePercent(23_680, 200_000)).toBe(11.8);
+    expect(roundUsagePercent(10, 0)).toBe(0);
+  });
+});
+
 describe('budget summary', () => {
   it('calculates the two fixed support limits independently', () => {
-    expect(BUDGET_LIMITS).toEqual({ resident: 500_000, studySpace: 200_000 });
-    expect(calculateBudgetSummary(BUDGET_LIMITS.resident, 215_700)).toMatchObject({
+    expect(POLICY_MAX_LIMITS).toEqual({ resident: 500_000, studySpace: 200_000 });
+    expect(calculateBudgetSummary(POLICY_MAX_LIMITS.resident, 215_700)).toMatchObject({
       remaining: 284_300,
-      usagePercent: 43.14,
+      usagePercent: 43.1,
     });
   });
 
@@ -44,16 +53,16 @@ describe('budget summary', () => {
 
 describe('alert thresholds', () => {
   it('reports only thresholds crossed by the new spending', () => {
-    expect(getCrossedAlertThresholds(240_000, 260_000, BUDGET_LIMITS.resident)).toEqual([50]);
-    expect(getCrossedAlertThresholds(260_000, 410_000, BUDGET_LIMITS.resident)).toEqual([80]);
+    expect(getCrossedAlertThresholds(240_000, 260_000, POLICY_MAX_LIMITS.resident)).toEqual([50]);
+    expect(getCrossedAlertThresholds(260_000, 410_000, POLICY_MAX_LIMITS.resident)).toEqual([80]);
   });
 
   it('does not repeat an alert after its threshold was already crossed', () => {
-    expect(getCrossedAlertThresholds(260_000, 270_000, BUDGET_LIMITS.resident)).toEqual([]);
+    expect(getCrossedAlertThresholds(260_000, 270_000, POLICY_MAX_LIMITS.resident)).toEqual([]);
   });
 
   it('does not produce alerts when spending did not increase or the limit is invalid', () => {
-    expect(getCrossedAlertThresholds(10_000, 10_000, BUDGET_LIMITS.resident)).toEqual([]);
+    expect(getCrossedAlertThresholds(10_000, 10_000, POLICY_MAX_LIMITS.resident)).toEqual([]);
     expect(getCrossedAlertThresholds(0, 10_000, 0)).toEqual([]);
   });
 });
