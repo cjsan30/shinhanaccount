@@ -1,0 +1,8 @@
+export type Panel = 'resident' | 'study' | 'undecided' | 'recent' | 'cancel' | 'edit' | 'delete' | 'settings' | 'evidence' | 'payment' | 'import' | 'operations' | 'data' | 'rules' | null;
+
+export function previousPanel(panel: Panel): Panel {
+  if (panel === 'operations' || panel === 'data') return 'settings';
+  if (panel === 'rules') return 'data';
+  if (panel === 'edit' || panel === 'delete' || panel === 'cancel') return 'recent';
+  return null;
+}

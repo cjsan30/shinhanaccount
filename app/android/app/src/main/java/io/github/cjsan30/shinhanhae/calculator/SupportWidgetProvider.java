@@ -112,10 +112,10 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         return PendingIntent.getActivity(context, 77, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    private static int progress(int spent, int limit) {
+    static int progress(int spent, int limit) {
         if (limit <= 0) return 0;
         return Math.max(0, Math.min(MAX, Math.round((spent * 1f / limit) * MAX)));
     }
-    private static String percent(int progress) { return String.format(Locale.KOREA, "%.1f%%", progress / 10f); }
+    static String percent(int progress) { return String.format(Locale.KOREA, "%.1f%%", progress / 10f); }
     private static String won(int amount) { return NumberFormat.getNumberInstance(Locale.KOREA).format(amount) + "\uC6D0"; }
 }

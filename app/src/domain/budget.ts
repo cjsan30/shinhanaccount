@@ -1,11 +1,11 @@
-export const BUDGET_LIMITS = {
+export const POLICY_MAX_LIMITS = {
   resident: 500_000,
   studySpace: 200_000,
 } as const;
 
 export const DEFAULT_ALERT_THRESHOLDS = [50, 80] as const;
 
-export type BudgetKey = keyof typeof BUDGET_LIMITS;
+export type BudgetKey = keyof typeof POLICY_MAX_LIMITS;
 
 export type BudgetSummary = {
   limit: number;
@@ -13,6 +13,11 @@ export type BudgetSummary = {
   remaining: number;
   usagePercent: number;
 };
+
+export function roundUsagePercent(spent: number, limit: number) {
+  if (limit <= 0) return 0;
+  return Math.round((Math.max(0, spent) * 1000) / limit) / 10;
+}
 
 function getKoreaDateParts(date: Date) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -46,7 +51,7 @@ export function calculateBudgetSummary(limit: number, spent: number): BudgetSumm
     limit,
     spent: safeSpent,
     remaining: limit - safeSpent,
-    usagePercent: limit === 0 ? 0 : (safeSpent / limit) * 100,
+    usagePercent: roundUsagePercent(safeSpent, limit),
   };
 }
 

@@ -1,4 +1,4 @@
-import { BUDGET_LIMITS, calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, type BudgetKey, type BudgetSummary } from './budget';
+import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, type BudgetKey, type BudgetSummary } from './budget';
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
@@ -23,7 +23,7 @@ export function createInitialLedger(): Ledger { return { entries: initialEntries
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return entry.periodKey ?? getPolicyPeriodKey(new Date(entry.occurredAt)); }
 export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
-export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number = BUDGET_LIMITS[bucket], periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
+export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
 export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
@@ -58,7 +58,7 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   }
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
   const classification = classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
@@ -101,7 +101,7 @@ export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: stri
   if (!entry || entry.status === 'cancelled') return ledger;
   return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, status: 'cancelled', cancelledAt } : candidate) };
 }
-export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number> = BUDGET_LIMITS, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
+export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
   const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry));
@@ -132,4 +132,12 @@ export function findCancellationCandidates(ledger: Ledger, notice: CancellationN
 export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNotice) {
   const candidates = findCancellationCandidates(ledger, notice);
   return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
+}
+
+export function getRecentEntries(ledger: Ledger, periodKey: string, limit = 8) {
+  return ledger.entries
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && getEntryPeriodKey(entry) === periodKey)
+    .slice()
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id))
+    .slice(0, limit);
 }
