@@ -39,9 +39,18 @@ function getKoreaDateParts(date: Date) {
 
 export function getPolicyPeriodKey(date: Date): string {
   const { year, month, day } = getKoreaDateParts(date);
-  const periodStart = day >= 10 ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+  const periodStart = day >= 14 ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 
   return `${periodStart.year}-${String(periodStart.month).padStart(2, '0')}`;
+}
+
+export function isDateInPolicyPeriod(date: Date, periodKey: string = getPolicyPeriodKey(date)): boolean {
+  const { year, month, day } = getKoreaDateParts(date);
+  if (day >= 11 && day <= 13) return false;
+  const datePeriodKey = day >= 14
+    ? `${year}-${String(month).padStart(2, '0')}`
+    : `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`;
+  return datePeriodKey === periodKey;
 }
 
 export function calculateBudgetSummary(limit: number, spent: number): BudgetSummary {

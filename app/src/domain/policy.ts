@@ -135,9 +135,9 @@ export type PolicyBook = { versions: PolicyVersion[] };
 export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
 
 export function getNextPolicyPeriodKey(date: Date) {
-  const next = new Date(date.getTime());
-  next.setUTCDate(next.getUTCDate() + 10);
-  return getPolicyPeriodKey(next);
+  const [year, month] = getPolicyPeriodKey(date).split('-').map(Number);
+  const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  return `${next.year}-${String(next.month).padStart(2, '0')}`;
 }
 
 export function createPolicyBook(policy: SupportPolicy, date: Date = new Date()): PolicyBook {

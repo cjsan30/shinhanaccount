@@ -1,10 +1,19 @@
 package io.github.cjsan30.shinhanhae.calculator
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SmsApprovalParserTest {
+    @Test
+    fun `policy period runs from the 14th through the next month 10th`() {
+        assertTrue(isApprovalInPolicyPeriod("2026-08-14T00:00:00+09:00", "2026-08"))
+        assertTrue(isApprovalInPolicyPeriod("2026-09-10T23:59:59+09:00", "2026-08"))
+        assertFalse(isApprovalInPolicyPeriod("2026-09-11T00:00:00+09:00", "2026-08"))
+        assertFalse(isApprovalInPolicyPeriod("2026-09-13T23:59:59+09:00", "2026-09"))
+    }
     @Test
     fun parsesWebOriginatedApprovalWithLineBreaks() {
         val approval = parseApproval(

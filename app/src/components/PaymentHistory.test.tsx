@@ -19,6 +19,7 @@ describe('payment history', () => {
   it('shows ten entries per page and opens an entry from the row', () => {
     const open = vi.fn();
     render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} onOpen={open} />);
+    expect(screen.getByText('전체 기간 동안 총 12건의 결제가 있었습니다.')).toBeInTheDocument();
     expect(screen.getByText('상호 0')).toBeInTheDocument();
     expect(screen.queryByText('상호 10')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '다음 페이지' }));

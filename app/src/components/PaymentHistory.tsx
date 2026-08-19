@@ -27,7 +27,7 @@ export function PaymentHistory({ entries, categoryNames, onOpen }: Props) {
   if (!entries.length) return <p>현재 정책 기간에 저장된 결제가 없습니다.</p>;
   let previousDate = '';
   return <section className="payment-history" onTouchStart={(event) => { touchStartX.current = event.changedTouches[0]?.clientX ?? null; }} onTouchEnd={(event) => finishSwipe(event.changedTouches[0]?.clientX ?? 0)}>
-    <p className="payment-history__summary">현재 정책 기간 결제 {entries.length}건 · 한 페이지에 10건씩 표시합니다.</p>
+    <p className="payment-history__summary">전체 기간 동안 총 {entries.length}건의 결제가 있었습니다.</p>
     <div className="payment-history__page" key={page}>
       {pageEntries.map((entry) => {
         const date = localDateKey(entry.occurredAt);

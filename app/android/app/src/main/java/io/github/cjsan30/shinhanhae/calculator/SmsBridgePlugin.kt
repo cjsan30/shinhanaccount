@@ -27,6 +27,8 @@ import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
+import java.time.OffsetDateTime
+import java.time.YearMonth
 
 private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
@@ -41,6 +43,14 @@ private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
 private val SMS_QUEUE_LOCK = Any()
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
+
+internal fun isApprovalInPolicyPeriod(occurredAt: String, periodKey: String): Boolean = try {
+    val date = OffsetDateTime.parse(occurredAt).toLocalDate()
+    if (date.dayOfMonth in 11..13) false else {
+        val startMonth = if (date.dayOfMonth >= 14) YearMonth.from(date) else YearMonth.from(date).minusMonths(1)
+        startMonth.toString() == periodKey
+    }
+} catch (_: Exception) { false }
 
 private data class NativeClassification(val category: String, val label: String)
 
@@ -59,8 +69,9 @@ private fun classifyForBudget(merchant: String, amount: Int): NativeClassificati
 }
 
 internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
-    val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
     val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+    if (!isApprovalInPolicyPeriod(approval.occurredAt, state.optString("periodKey"))) return null
+    val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
     val limits = state.optJSONObject("categoryLimits") ?: return null
     val spent = state.optJSONObject("categorySpent") ?: JSONObject()
     val thresholds = state.optJSONArray("thresholds") ?: return null

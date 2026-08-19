@@ -9,7 +9,7 @@ import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
 import { previousPanel, type Panel } from './domain/navigation';
 import { roundUsagePercent, type BudgetKey } from './domain/budget';
-import { applyPayment, cancelPayment, removeLedgerEntry, updateLedgerEntry, getEntryPeriodKey, getRecentEntries, getSummary, importCardTransactions, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
+import { applyPayment, cancelPayment, removeLedgerEntry, updateLedgerEntry, getRecentEntries, getSummary, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
 import { confirmPolicyForPeriod, getEffectivePolicy, getCategoryLabel, getCategoryLimit, getNextPolicyPeriodKey, getPolicyLimit, parsePolicyText, POLICY_ITEMS, type PolicyItem, type SupportPolicy } from './domain/policy';
@@ -173,15 +173,15 @@ function App() {
   const totalSpent = resident.spent + study.spent;
   const totalLimit = budgetLimits.resident + budgetLimits.studySpace;
   const totalUsage = roundUsagePercent(totalSpent, totalLimit);
-  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => [item.label, policy.plans[item.key], ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && getEntryPeriodKey(entry) === activePolicy.periodKey && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
+  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => [item.label, policy.plans[item.key], ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && isEntryInPolicyPeriod(entry, activePolicy.periodKey) && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
   const undecidedEntries = useMemo(() => ledger.entries.filter((entry) => entry.status === 'undecided').slice().sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)), [ledger.entries]);
-  const currentUndecided = undecidedEntries.filter((entry) => getEntryPeriodKey(entry) === activePolicy.periodKey);
-  const previousUndecided = undecidedEntries.filter((entry) => getEntryPeriodKey(entry) !== activePolicy.periodKey);
+  const currentUndecided = undecidedEntries.filter((entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey));
+  const previousUndecided = undecidedEntries.filter((entry) => !isEntryInPolicyPeriod(entry, activePolicy.periodKey));
   const undecidedCount = currentUndecided.length;
   const todayEnd = useMemo(() => { const value = new Date(now); value.setHours(23, 59, 59, 999); return value; }, [now]);
   const recent = useMemo(() => getRecentEntries(ledger, activePolicy.periodKey, Number.POSITIVE_INFINITY, todayEnd), [ledger, activePolicy.periodKey, todayEnd]);
   const detailTarget = detailTargetId ? ledger.entries.find((entry) => entry.id === detailTargetId) ?? null : null;
-  const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && getEntryPeriodKey(entry) === activePolicy.periodKey).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
+  const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
   useEffect(() => {
     void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey }).catch(() => undefined);
   }, [activePolicy.periodKey, categoryLimits, categorySpent, ledger.alertThresholds]);

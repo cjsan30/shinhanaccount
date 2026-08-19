@@ -8,7 +8,7 @@ describe('policy text import', () => {
     const scheduled = { ...getEffectivePolicy(book, now).policy, plans: { ...getEffectivePolicy(book, now).policy.plans, housing: 100000 } };
     const nextBook = confirmPolicyForPeriod(book, scheduled, getNextPolicyPeriodKey(now));
     expect(getEffectivePolicy(nextBook, now).policy.plans.housing).toBe(50000);
-    expect(getEffectivePolicy(nextBook, new Date('2026-08-10T00:00:00+09:00')).policy.plans.housing).toBe(100000);
+    expect(getEffectivePolicy(nextBook, new Date('2026-08-14T00:00:00+09:00')).policy.plans.housing).toBe(100000);
   });
 
   it('maps pasted rows by support item and ignores the user-defined usage name', () => {

@@ -1,4 +1,4 @@
-import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, type BudgetKey, type BudgetSummary } from './budget';
+import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, isDateInPolicyPeriod, type BudgetKey, type BudgetSummary } from './budget';
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
@@ -21,10 +21,11 @@ const initialEntries: LedgerEntry[] = [
 export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
-export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return entry.periodKey ?? getPolicyPeriodKey(new Date(entry.occurredAt)); }
-export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
+export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return getPolicyPeriodKey(new Date(entry.occurredAt)); }
+export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string) { return getEntryPeriodKey(entry) === periodKey && isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey); }
+export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + entry.amount, 0); }
 export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
-export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
+export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + entry.amount, 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -146,7 +147,7 @@ export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNot
 
 export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date) {
   return ledger.entries
-    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && getEntryPeriodKey(entry) === periodKey && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && isEntryInPolicyPeriod(entry, periodKey) && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
     .slice()
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id))
     .slice(0, limit);

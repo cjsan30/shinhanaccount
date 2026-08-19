@@ -6,12 +6,14 @@ import { POLICY_MAX_LIMITS } from './budget';
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
 
 describe('expense ledger', () => {
-  it('separates spending by the policy period beginning on the 10th', () => {
+  it('separates spending by the policy period beginning on the 14th', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
-    const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-09T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
-    const second = applyPayment(first.ledger, { ...wellstory5000, occurredAt: '2026-08-10T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const gap = applyPayment(first.ledger, { ...wellstory5000, occurredAt: '2026-08-11T12:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const second = applyPayment(gap.ledger, { ...wellstory5000, occurredAt: '2026-08-14T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
+    expect(getRecentEntries(second.ledger, '2026-07').map((entry) => entry.occurredAt)).toEqual(['2026-08-10T23:59:00+09:00']);
   });
   it('preserves the manual source on a directly entered expense', () => {
     const result = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'manual-test', source: 'manual' }, POLICY_MAX_LIMITS);
