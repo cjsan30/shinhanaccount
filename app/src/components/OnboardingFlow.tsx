@@ -37,7 +37,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     <div className="first-run__mark">지원금 관리 · 3/3</div>
     <h1>결제 내역이<br />이미 있나요?</h1>
     <p>정책을 확정했습니다. 신한카드 이용내역을 가져오거나, 바로 지원금 관리를 시작할 수 있습니다.</p>
-    {pendingApprovals.length > 0 && <section className="first-run__notice"><strong>정책 확정 전 승인 문자 {pendingApprovals.length}건</strong><span>불러오면 모두 미정 지출로 보관되며, 직접 분류하기 전까지 예산과 경고에는 반영되지 않습니다.</span></section>}
+    {pendingApprovals.length > 0 && <section className="first-run__notice"><strong>정책 확정 전 승인 알림 {pendingApprovals.length}건</strong><span>불러오면 모두 미정 지출로 보관되며, 직접 분류하기 전까지 예산과 경고에는 반영되지 않습니다.</span></section>}
     <section className="first-run__card onboarding-choice">
       <strong>아직 사용 전이에요</strong><p>빈 상태의 대시보드에서 새 지출을 직접 등록할 수 있습니다.</p>
       <button className="first-run__start" type="button" onClick={() => complete('dashboard')}>지원금 관리 시작</button>

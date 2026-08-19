@@ -64,7 +64,7 @@ export function SmsDiagnostics({ notify }: { notify: (message: string) => void }
 
   return <section className="sms-diagnostics">
     <h3>결제 수신 진단 이력</h3>
-    <p>채팅+ 알림과 일반 SMS의 원문·금액·상호명·카드번호 없이 최근 처리 단계만 암호화 저장합니다.</p>
+    <p>삼성 메시지 승인 알림의 원문·금액·상호명·카드번호 없이 최근 처리 단계만 암호화 저장합니다.</p>
     <div className="sms-diagnostic-actions">
       <button className="sheet-action secondary-action" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? '불러오는 중…' : '진단 이력 새로고침'}</button>
       <button className="sheet-action secondary-action" type="button" onClick={() => void clear()}>진단 이력 지우기</button>

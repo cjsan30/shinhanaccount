@@ -27,7 +27,6 @@ type SmsBridgePlugin = {
   injectTestApproval(approval: NativeApproval): Promise<void>;
   injectTestNotificationApproval(approval: NativeApproval): Promise<void>;
   scheduleTestApproval(options: { approval: NativeApproval; delayMs: number }): Promise<void>;
-  requestPermission(): Promise<{ granted: boolean }>;
   getNotificationAccessStatus(): Promise<{ granted: boolean }>;
   openNotificationAccessSettings(): Promise<void>;
   consumePendingApprovals(): Promise<{ items: NativeApproval[] }>;

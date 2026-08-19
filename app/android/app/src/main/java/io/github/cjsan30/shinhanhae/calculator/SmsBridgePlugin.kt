@@ -1,9 +1,7 @@
 package io.github.cjsan30.shinhanhae.calculator
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -12,21 +10,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import android.provider.Telephony
 import android.provider.Settings
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
-import com.getcapacitor.PermissionState
 import com.getcapacitor.annotation.CapacitorPlugin
-import com.getcapacitor.annotation.Permission
-import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
-import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.time.YearMonth
 
@@ -34,12 +26,9 @@ private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val BUDGET_STATE_KEY = "budget_state"
 private const val PROCESSED_SMS_KEY = "processed_sms_ids"
-private const val LAST_SMS_SCAN_KEY = "last_sms_scan_at"
 private const val SMS_LOG_TAG = "ShinhanhaeSms"
 private const val MAX_QUEUE_SIZE = 500
 private const val MAX_PROCESSED_SMS_IDS = 1000
-private const val FIRST_RECOVERY_LOOKBACK_MS = 24L * 60 * 60 * 1000
-private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
 private val SMS_QUEUE_LOCK = Any()
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
@@ -98,7 +87,7 @@ internal data class Approval(
     val amount: Int,
     val merchant: String,
     val notificationPostedAt: Long? = null,
-    val source: String = "sms",
+    val source: String = "notification",
 ) {
     fun queueId() = "$cardLast4|$occurredAt|$amount|$merchant"
     fun toJson(id: String = queueId()) = JSONObject()
@@ -116,12 +105,6 @@ internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar
     val match = approvalRegex.find(normalized) ?: return null
     if (match.groupValues[1] != cardLast4) return null
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
-}
-
-internal fun smsFingerprint(body: String, sentAt: Long): String {
-    val normalized = body.replace(Regex("""\s+"""), " ").trim()
-    val digest = MessageDigest.getInstance("SHA-256").digest("$sentAt|$normalized".toByteArray())
-    return "sms-" + digest.joinToString("") { "%02x".format(it) }
 }
 
 internal fun enqueueApproval(
@@ -183,125 +166,7 @@ internal fun postApprovalQueuedNotification(
     }
 }
 
-private fun recoverMissedApprovals(context: Context, prefs: android.content.SharedPreferences): Int {
-    val eventId = newSmsDiagnosticEventId()
-    if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECOVERY_PERMISSION_MISSING, status = "blocked")
-        return 0
-    }
-    val card = prefs.getString(CARD_KEY, null) ?: return 0
-    recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECOVERY_SCAN_STARTED)
-    val now = System.currentTimeMillis()
-    val previousScan = prefs.getLong(LAST_SMS_SCAN_KEY, 0L)
-    val since = if (previousScan == 0L) now - FIRST_RECOVERY_LOOKBACK_MS else (previousScan - RECOVERY_OVERLAP_MS).coerceAtLeast(0L)
-    var recovered = 0
-    var scanned = 0
-    var matched = 0
-    var earliestUnparsedApproval: Long? = null
-    val projection = arrayOf(Telephony.Sms._ID, Telephony.Sms.DATE, Telephony.Sms.DATE_SENT, Telephony.Sms.BODY)
-    context.contentResolver.query(
-        Telephony.Sms.Inbox.CONTENT_URI,
-        projection,
-        "${Telephony.Sms.DATE} >= ?",
-        arrayOf(since.toString()),
-        "${Telephony.Sms.DATE} ASC",
-    )?.use { cursor ->
-        val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
-        val sentIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE_SENT)
-        val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
-        while (cursor.moveToNext()) {
-            scanned += 1
-            val receivedAt = cursor.getLong(dateIndex)
-            val sentAt = cursor.getLong(sentIndex).takeIf { it > 0L } ?: receivedAt
-            val body = cursor.getString(bodyIndex) ?: continue
-            val approval = parseApproval(body, card)
-            if (approval != null) {
-                matched += 1
-                if (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt)) == EnqueueResult.ADDED) recovered += 1
-            } else if (body.contains("[신한체크승인]")) {
-                earliestUnparsedApproval = minOf(earliestUnparsedApproval ?: receivedAt, receivedAt)
-            }
-        }
-    }
-    val nextScan = earliestUnparsedApproval?.minus(1L) ?: now
-    prefs.edit().putLong(LAST_SMS_SCAN_KEY, nextScan).commit()
-    recordSmsDiagnostic(
-        prefs,
-        eventId,
-        SmsDiagnosticStage.RECOVERY_SCAN_COMPLETED,
-        status = "success",
-        scannedCount = scanned,
-        matchedCount = matched,
-        recoveredCount = recovered,
-    )
-    if (recovered > 0) Log.i(SMS_LOG_TAG, "Recovered $recovered missed approval(s) from inbox")
-    return recovered
-}
-
-class SmsApprovalReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        val prefs = secureSmsPreferences(context)
-        val eventId = newSmsDiagnosticEventId()
-        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECEIVER_ENTERED)
-        Log.i(SMS_LOG_TAG, "SMS broadcast received")
-        val card = prefs.getString(CARD_KEY, null)
-        if (card == null) {
-            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.CARD_NOT_CONFIGURED, status = "blocked", cardConfigured = false)
-            Log.w(SMS_LOG_TAG, "SMS ignored: card is not configured")
-            return
-        }
-        val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-        val body = messages.joinToString("") { it.messageBody ?: "" }
-        val normalizedBody = body.replace(Regex("""\s+"""), " ").trim()
-        val formatMatch = approvalRegex.find(normalizedBody)
-        val markerFound = normalizedBody.contains("[신한체크승인]")
-        val cardMatched = formatMatch?.groupValues?.getOrNull(1) == card
-        recordSmsDiagnostic(
-            prefs,
-            eventId,
-            SmsDiagnosticStage.BODY_ASSEMBLED,
-            segmentCount = messages.size,
-            bodyLength = body.length,
-            markerFound = markerFound,
-            cardConfigured = true,
-            cardMatched = cardMatched,
-        )
-        val approval = parseApproval(body, card)
-        if (approval == null) {
-            val stage = when {
-                !markerFound -> SmsDiagnosticStage.MARKER_MISSING
-                formatMatch == null -> SmsDiagnosticStage.PARSE_FAILED
-                !cardMatched -> SmsDiagnosticStage.CARD_MISMATCH
-                else -> SmsDiagnosticStage.PARSE_FAILED
-            }
-            recordSmsDiagnostic(prefs, eventId, stage, status = "ignored", markerFound = markerFound, cardConfigured = true, cardMatched = cardMatched)
-            Log.w(SMS_LOG_TAG, "SMS ignored: approval format or card did not match")
-            return
-        }
-        val sentAt = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
-        when (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) {
-            EnqueueResult.DUPLICATE -> {
-                recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.DUPLICATE_SKIPPED, status = "ignored")
-                Log.i(SMS_LOG_TAG, "SMS ignored: approval was already processed")
-                return
-            }
-            EnqueueResult.WRITE_FAILED -> {
-                recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMIT_FAILED, status = "error")
-                Log.e(SMS_LOG_TAG, "SMS queue commit failed")
-                return
-            }
-            EnqueueResult.ADDED -> Unit
-        }
-        val queueSize = JSArray(prefs.getString(QUEUE_KEY, "[]")).length()
-        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = queueSize)
-        Log.i(SMS_LOG_TAG, "Approval queued")
-        SmsBridgePlugin.notifyApprovalQueued()
-        postApprovalQueuedNotification(context, prefs, eventId, consumeBudgetAlert(prefs, approval))
-    }
-}
-
-@CapacitorPlugin(name = "SmsBridge", permissions = [Permission(alias = "receiveSms", strings = ["android.permission.RECEIVE_SMS", "android.permission.READ_SMS"])])
+@CapacitorPlugin(name = "SmsBridge")
 class SmsBridgePlugin : Plugin() {
     companion object {
         @Volatile private var activeInstance: WeakReference<SmsBridgePlugin>? = null
@@ -333,14 +198,6 @@ class SmsBridgePlugin : Plugin() {
         if (card?.length != 4) { call.reject("cardLast4 must be four digits"); return }
         prefs.edit().putString(CARD_KEY, card).apply()
         call.resolve()
-    }
-
-    @com.getcapacitor.PluginMethod
-    fun requestPermission(call: PluginCall) = requestPermissionForAlias("receiveSms", call, "permissionResult")
-
-    @PermissionCallback
-    private fun permissionResult(call: PluginCall) {
-        call.resolve(JSObject().put("granted", getPermissionState("receiveSms") == PermissionState.GRANTED))
     }
 
     @com.getcapacitor.PluginMethod
@@ -465,18 +322,8 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {
         // Reading is deliberately non-destructive. JavaScript acknowledges only after its local ledger is saved.
-        Thread {
-            try {
-                recoverMissedApprovals(context, prefs)
-                val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
-                Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
-            } catch (error: Exception) {
-                Log.e(SMS_LOG_TAG, "Failed to recover missed approvals", error)
-                recordSmsDiagnostic(prefs, newSmsDiagnosticEventId(), SmsDiagnosticStage.RECOVERY_SCAN_FAILED, status = "error", errorType = error.javaClass.simpleName)
-                val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
-                Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
-            }
-        }.start()
+        val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+        call.resolve(JSObject().put("items", queue))
     }
 
     @com.getcapacitor.PluginMethod

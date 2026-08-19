@@ -64,23 +64,6 @@ class SmsApprovalParserTest {
     }
 
     @Test
-    fun fingerprintIsStableAcrossEquivalentWhitespace() {
-        val first = smsFingerprint("[Web발신]\n[신한체크승인] 박*석(3741)", 1234L)
-        val second = smsFingerprint("[Web발신] [신한체크승인] 박*석(3741)", 1234L)
-
-        assertEquals(first, second)
-        assertEquals(68, first.length)
-    }
-
-    @Test
-    fun fingerprintDistinguishesSeparateMessages() {
-        val first = smsFingerprint("[신한체크승인] 박*석(3741)", 1234L)
-        val second = smsFingerprint("[신한체크승인] 박*석(3741)", 1235L)
-
-        org.junit.Assert.assertNotEquals(first, second)
-    }
-
-    @Test
     fun notificationIdentityKeepsIdenticalSameMinutePaymentsWhenPostedMillisecondsDiffer() {
         val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val first = notificationSourceId(approval, 1000L, "conversation-1")
