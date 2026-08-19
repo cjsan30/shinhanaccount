@@ -70,4 +70,15 @@ class SmsApprovalParserTest {
 
         org.junit.Assert.assertNotEquals(first, second)
     }
+
+    @Test
+    fun notificationIdentityKeepsIdenticalSameMinutePaymentsWhenPostedMillisecondsDiffer() {
+        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val first = notificationSourceId(approval, 1000L, "conversation-1")
+        val repeated = notificationSourceId(approval, 1000L, "conversation-1")
+        val second = notificationSourceId(approval, 2000L, "conversation-1")
+
+        assertEquals(first, repeated)
+        org.junit.Assert.assertNotEquals(first, second)
+    }
 }

@@ -17,6 +17,15 @@ describe('expense ledger', () => {
     const result = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'manual-test', source: 'manual' }, POLICY_MAX_LIMITS);
     expect(result.entry.source).toBe('manual');
   });
+  it('keeps two identical same-minute notification payments when their posted milliseconds differ', () => {
+    const first = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'notification-1000', notificationPostedAt: 1000, source: 'notification' }, POLICY_MAX_LIMITS);
+    const second = applyPayment(first.ledger, { ...wellstory5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
+    const repeated = applyPayment(second.ledger, { ...wellstory5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
+
+    expect(second.ledger.entries).toHaveLength(2);
+    expect(second.ledger.entries.map((entry) => entry.notificationPostedAt)).toEqual([1000, 2000]);
+    expect(repeated.ledger.entries).toHaveLength(2);
+  });
   it('stores a 5,000 won Samsung Wellstory approval in study-space general cafe', () => {
     const result = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'studySpace', category: 'generalCafe' });

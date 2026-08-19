@@ -30,6 +30,6 @@ describe('SMS diagnostics', () => {
     fireEvent.click(screen.getByRole('button', { name: '진단 이력 지우기' }));
 
     await waitFor(() => expect(smsBridge.clearSmsDiagnostics).toHaveBeenCalledOnce());
-    expect(notify).toHaveBeenCalledWith('SMS 진단 이력을 지웠습니다.');
+    expect(notify).toHaveBeenCalledWith('결제 수신 진단 이력을 지웠습니다.');
   });
 });

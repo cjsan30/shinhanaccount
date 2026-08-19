@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import android.provider.Telephony
+import android.provider.Settings
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -38,7 +39,7 @@ private const val FIRST_RECOVERY_LOOKBACK_MS = 24L * 60 * 60 * 1000
 private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
 private val SMS_QUEUE_LOCK = Any()
 
-private enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
+internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
 
 private data class NativeClassification(val category: String, val label: String)
 
@@ -56,7 +57,7 @@ private fun classifyForBudget(merchant: String, amount: Int): NativeClassificati
     return null
 }
 
-private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
+internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
     val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
     val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
     val limits = state.optJSONObject("categoryLimits") ?: return null
@@ -79,9 +80,23 @@ private fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approva
 }
 private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
-internal data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
+internal data class Approval(
+    val cardLast4: String,
+    val occurredAt: String,
+    val amount: Int,
+    val merchant: String,
+    val notificationPostedAt: Long? = null,
+    val source: String = "sms",
+) {
     fun queueId() = "$cardLast4|$occurredAt|$amount|$merchant"
-    fun toJson(id: String = queueId()) = JSONObject().put("id", id).put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
+    fun toJson(id: String = queueId()) = JSONObject()
+        .put("id", id)
+        .put("cardLast4", cardLast4)
+        .put("occurredAt", occurredAt)
+        .put("amount", amount)
+        .put("merchant", merchant)
+        .put("source", source)
+        .also { notificationPostedAt?.let { postedAt -> it.put("notificationPostedAt", postedAt) } }
 }
 
 internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): Approval? {
@@ -97,7 +112,7 @@ internal fun smsFingerprint(body: String, sentAt: Long): String {
     return "sms-" + digest.joinToString("") { "%02x".format(it) }
 }
 
-private fun enqueueApproval(
+internal fun enqueueApproval(
     prefs: android.content.SharedPreferences,
     approval: Approval,
     sourceId: String,
@@ -120,6 +135,33 @@ private fun enqueueApproval(
         .putString(PROCESSED_SMS_KEY, processedJson.toString())
         .commit()
     if (committed) EnqueueResult.ADDED else EnqueueResult.WRITE_FAILED
+}
+
+internal fun postApprovalQueuedNotification(
+    context: Context,
+    prefs: android.content.SharedPreferences,
+    eventId: String,
+    budgetAlert: String?,
+) {
+    try {
+        val channelId = "sms_approvals"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
+            NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
+            .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(2001, notification)
+        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
+    } catch (error: Exception) {
+        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
+        Log.e(SMS_LOG_TAG, "Failed to post approval notification", error)
+    }
 }
 
 private fun recoverMissedApprovals(context: Context, prefs: android.content.SharedPreferences): Int {
@@ -236,29 +278,7 @@ class SmsApprovalReceiver : BroadcastReceiver() {
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = queueSize)
         Log.i(SMS_LOG_TAG, "Approval queued")
         SmsBridgePlugin.notifyApprovalQueued()
-        notifyApproval(context, prefs, eventId, consumeBudgetAlert(prefs, approval))
-    }
-
-    private fun notifyApproval(context: Context, prefs: android.content.SharedPreferences, eventId: String, budgetAlert: String?) {
-        try {
-            val channelId = "sms_approvals"
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
-                NotificationManagerCompat.from(context).createNotificationChannel(channel)
-            }
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
-                .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .build()
-            NotificationManagerCompat.from(context).notify(2001, notification)
-            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
-        } catch (error: Exception) {
-            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
-            Log.e(SMS_LOG_TAG, "Failed to post approval notification", error)
-        }
+        postApprovalQueuedNotification(context, prefs, eventId, consumeBudgetAlert(prefs, approval))
     }
 }
 
@@ -304,6 +324,22 @@ class SmsBridgePlugin : Plugin() {
         call.resolve(JSObject().put("granted", getPermissionState("receiveSms") == PermissionState.GRANTED))
     }
 
+    @com.getcapacitor.PluginMethod
+    fun getNotificationAccessStatus(call: PluginCall) {
+        call.resolve(JSObject().put("granted", NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)))
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun openNotificationAccessSettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("Notification access settings could not be opened", error)
+        }
+    }
+
 
     @com.getcapacitor.PluginMethod
     fun getConfiguration(call: PluginCall) {
@@ -337,6 +373,32 @@ class SmsBridgePlugin : Plugin() {
         prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
         showInjectedNotification(consumeBudgetAlert(prefs, approval))
         call.resolve()
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun injectTestNotificationApproval(call: PluginCall) {
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val postedAt = System.currentTimeMillis()
+        val approval = Approval(
+            card,
+            call.getString("occurredAt") ?: java.time.OffsetDateTime.now().withSecond(0).withNano(0).toString(),
+            call.getInt("amount") ?: 5000,
+            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정",
+            notificationPostedAt = postedAt,
+            source = "notification",
+        )
+        val eventId = newSmsDiagnosticEventId()
+        val sourceId = notificationSourceId(approval, postedAt, "developer-replay")
+        when (enqueueApproval(prefs, approval, sourceId)) {
+            EnqueueResult.ADDED -> {
+                recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = JSArray(prefs.getString(QUEUE_KEY, "[]")).length())
+                showInjectedNotification(consumeBudgetAlert(prefs, approval))
+                notifyApprovalQueued()
+                call.resolve(JSObject().put("id", sourceId))
+            }
+            EnqueueResult.DUPLICATE -> call.resolve(JSObject().put("id", sourceId))
+            EnqueueResult.WRITE_FAILED -> call.reject("Test notification approval could not be queued")
+        }
     }
 
     private fun showInjectedNotification(budgetAlert: String?) {

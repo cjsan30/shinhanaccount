@@ -10,6 +10,14 @@
         <receiver android:name=".SupportWidget2x1Provider" android:exported="false" android:label="@string/widget_name_2x1"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_2x1_info" /></receiver>
         <receiver android:name=".SupportWidget1x1Provider" android:exported="false" android:label="@string/widget_name_1x1"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_1x1_info" /></receiver>
         <receiver android:name=".SmsApprovalReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS"><intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter></receiver>
+        <service
+            android:name=".ShinhanMessageNotificationListener"
+            android:exported="false"
+            android:label="신청해 결제 알림 인식"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+            <meta-data android:name="android.service.notification.default_filter_types" android:value="conversations|alerting" />
+        </service>
     </application>
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />

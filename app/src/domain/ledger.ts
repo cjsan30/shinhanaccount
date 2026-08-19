@@ -4,7 +4,7 @@ import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
-export type LedgerSource = 'demo' | 'sms' | 'excel' | 'manual';
+export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'manual';
 export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
@@ -27,7 +27,7 @@ export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, per
 export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || getEntryPeriodKey(entry) === periodKey)).reduce((sum, entry) => sum + entry.amount, 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
-  const id = `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
+  const id = payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
   const periodKey = getPolicyPeriodKey(new Date(payment.occurredAt));
   if (classification.status === 'classified') return { ...payment, id, periodKey, status: 'classified', bucket: classification.bucket, category: classification.category };
   return { ...payment, id, periodKey, status: classification.status };
@@ -65,7 +65,13 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
   const classification = classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
-  if (ledger.entries.some((existing) => existing.id === entry.id || isSameTransaction(existing, entry))) return { ledger, entry, alerts: [] };
+  // Live notification/SMS approvals carry a source event ID. Two genuine payments
+  // can otherwise have the same minute, merchant, and amount, so only that stable
+  // source ID is authoritative for live duplicate prevention.
+  const isDuplicate = payment.id
+    ? ledger.entries.some((existing) => existing.id === entry.id)
+    : ledger.entries.some((existing) => existing.id === entry.id || isSameTransaction(existing, entry));
+  if (isDuplicate) return { ledger, entry, alerts: [] };
   const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey) : 0;
   const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
   const currentSpent = classification.status === 'classified' ? getCategorySpent(nextLedger, classification.bucket, classification.category, entry.periodKey) : previousSpent;
@@ -74,7 +80,7 @@ export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Re
 }
 
 export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyPaymentResult {
-  const entry: LedgerEntry = { ...payment, id: `${payment.occurredAt}-${payment.merchant}-${payment.amount}`, periodKey: getPolicyPeriodKey(new Date(payment.occurredAt)), status: 'undecided' };
+  const entry: LedgerEntry = { ...payment, id: payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`, periodKey: getPolicyPeriodKey(new Date(payment.occurredAt)), status: 'undecided' };
   if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }

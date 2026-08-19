@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
-  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), scheduleTestApproval: vi.fn(), requestPermission: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
+  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), requestPermission: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
@@ -26,6 +26,8 @@ beforeEach(() => {
   smsBridge.syncBudgetState.mockResolvedValue(undefined);
   smsBridge.consumePendingApprovals.mockResolvedValue({ items: [] });
   smsBridge.acknowledgePendingApprovals.mockResolvedValue(undefined);
+  smsBridge.getNotificationAccessStatus.mockResolvedValue({ granted: true });
+  smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
 });
 
 describe('app entry flows', () => {

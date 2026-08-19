@@ -26,6 +26,9 @@ internal object SmsDiagnosticStage {
     const val RECOVERY_SCAN_STARTED = "RECOVERY_SCAN_STARTED"
     const val RECOVERY_SCAN_COMPLETED = "RECOVERY_SCAN_COMPLETED"
     const val RECOVERY_SCAN_FAILED = "RECOVERY_SCAN_FAILED"
+    const val NOTIFICATION_LISTENER_ENTERED = "NOTIFICATION_LISTENER_ENTERED"
+    const val NOTIFICATION_BODY_EXTRACTED = "NOTIFICATION_BODY_EXTRACTED"
+    const val NOTIFICATION_NO_NEW_APPROVAL = "NOTIFICATION_NO_NEW_APPROVAL"
 }
 
 internal fun newSmsDiagnosticEventId(): String = UUID.randomUUID().toString()
@@ -77,4 +80,3 @@ internal fun recordSmsDiagnostic(
         Log.e("ShinhanhaeSms", "Failed to persist SMS diagnostic metadata", error)
     }
 }
-
