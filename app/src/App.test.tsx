@@ -107,6 +107,17 @@ describe('app entry flows', () => {
     expect(screen.getByRole('button', { name: '예산 경고 알림 설정' })).toBeInTheDocument();
     expect(screen.queryByText('개발 테스트')).not.toBeInTheDocument();
   });
+  it('provides the privacy disclosure inside settings', () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByText('개인정보 처리 안내'));
+    expect(screen.getByText(/원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다/)).toBeInTheDocument();
+  });
   it('preserves a confirmed policy and opens the dashboard for an existing user', () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
