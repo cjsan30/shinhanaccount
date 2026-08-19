@@ -34,7 +34,7 @@ private const val LAST_SMS_SCAN_KEY = "last_sms_scan_at"
 private const val SMS_LOG_TAG = "ShinhanhaeSms"
 private const val MAX_QUEUE_SIZE = 500
 private const val MAX_PROCESSED_SMS_IDS = 1000
-private const val FIRST_RECOVERY_LOOKBACK_MS = 60L * 24 * 60 * 60 * 1000
+private const val FIRST_RECOVERY_LOOKBACK_MS = 24L * 60 * 60 * 1000
 private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
 private val SMS_QUEUE_LOCK = Any()
 

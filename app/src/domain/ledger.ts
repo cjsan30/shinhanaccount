@@ -33,6 +33,10 @@ function toEntry(payment: NativeApproval, classification: PaymentClassification)
   return { ...payment, id, periodKey, status: classification.status };
 }
 
+function isSameTransaction(left: Pick<LedgerEntry, 'occurredAt' | 'merchant' | 'amount'>, right: Pick<LedgerEntry, 'occurredAt' | 'merchant' | 'amount'>) {
+  return left.occurredAt === right.occurredAt && left.amount === right.amount && normalizedMerchant(left.merchant) === normalizedMerchant(right.merchant);
+}
+
 function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string): LedgerEntry {
   const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
   const entry = toEntry(payment, transaction.classification);
@@ -50,7 +54,7 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   const entries = [...baseline];
   for (const transaction of importable) {
     const entry = transactionToEntry(transaction, cardLast4);
-    if (entries.some((existing) => existing.approvalNumber === entry.approvalNumber || existing.id === entry.id)) { duplicates += 1; continue; }
+    if (entries.some((existing) => existing.approvalNumber === entry.approvalNumber || existing.id === entry.id || isSameTransaction(existing, entry))) { duplicates += 1; continue; }
     entries.push(entry);
     imported += 1;
     if (entry.status === 'excluded') excluded += 1;
@@ -61,7 +65,7 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
   const classification = classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
-  if (ledger.entries.some((existing) => existing.id === entry.id)) return { ledger, entry, alerts: [] };
+  if (ledger.entries.some((existing) => existing.id === entry.id || isSameTransaction(existing, entry))) return { ledger, entry, alerts: [] };
   const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey) : 0;
   const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
   const currentSpent = classification.status === 'classified' ? getCategorySpent(nextLedger, classification.bucket, classification.category, entry.periodKey) : previousSpent;

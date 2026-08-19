@@ -60,6 +60,14 @@ describe('expense ledger', () => {
     const second = importCardTransactions(first.ledger, [transaction], '3741');
     expect(second).toMatchObject({ imported: 0, duplicates: 1, replacedDemo: false });
   });
+  it('does not duplicate the same transaction when SMS and Excel use different identifiers', () => {
+    const smsLedger = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
+    const transaction = { occurredAt: wellstory5000.occurredAt, cardMasked: '374*', merchant: wellstory5000.merchant, approvalNumber: '00459878', amount: wellstory5000.amount, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment(wellstory5000.merchant, wellstory5000.amount) };
+
+    expect(importCardTransactions(smsLedger, [transaction], '3741')).toMatchObject({ imported: 0, duplicates: 1 });
+    const excelLedger = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741').ledger;
+    expect(applyPayment(excelLedger, wellstory5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
+  });
   it('round-trips the ledger through local storage', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };
