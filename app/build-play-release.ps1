@@ -4,6 +4,7 @@ Set-Location -LiteralPath $PSScriptRoot
 $androidStudioJbr = 'C:\Program Files\Android\Android Studio\jbr'
 $storeFile = 'C:\Users\lAte\Keys\shinhanhae-release.jks'
 $bundlePath = Join-Path $PSScriptRoot 'android\app\build\outputs\bundle\release\app-release.aab'
+$apkPath = Join-Path $PSScriptRoot 'android\app\build\outputs\apk\release\app-release.apk'
 
 if (-not (Test-Path -LiteralPath $androidStudioJbr)) { throw "Android Studio JBR not found: $androidStudioJbr" }
 if (-not (Test-Path -LiteralPath $storeFile)) { throw "Keystore not found: $storeFile" }
@@ -34,20 +35,24 @@ try {
 
     Push-Location android
     try {
-        .\gradlew.bat testDebugUnitTest bundleRelease --offline
-        if ($LASTEXITCODE -ne 0) { throw "Android release bundle failed with exit code $LASTEXITCODE" }
+        .\gradlew.bat testDebugUnitTest bundleRelease assembleRelease --offline
+        if ($LASTEXITCODE -ne 0) { throw "Android release build failed with exit code $LASTEXITCODE" }
     } finally {
         Pop-Location
     }
 
     if (-not (Test-Path -LiteralPath $bundlePath)) { throw "Signed release AAB was not created: $bundlePath" }
+    if (-not (Test-Path -LiteralPath $apkPath)) { throw "Signed release APK was not created: $apkPath" }
     $manifest = Join-Path $PSScriptRoot 'android\app\build\intermediates\merged_manifests\release\processReleaseManifest\AndroidManifest.xml'
     if (Select-String -LiteralPath $manifest -Pattern 'android.permission.READ_SMS|android.permission.RECEIVE_SMS|SmsApprovalReceiver' -Quiet) {
         throw 'Restricted SMS permission or receiver remains in the release manifest.'
     }
-    $hash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
+    $bundleHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
+    $apkHash = (Get-FileHash -LiteralPath $apkPath -Algorithm SHA256).Hash
     Write-Host "Play AAB: $bundlePath"
-    Write-Host "SHA-256: $hash"
+    Write-Host "AAB SHA-256: $bundleHash"
+    Write-Host "Installable APK: $apkPath"
+    Write-Host "APK SHA-256: $apkHash"
 } finally {
     Remove-Item Env:SHINHANHAE_STORE_PASSWORD -ErrorAction SilentlyContinue
     Remove-Item Env:SHINHANHAE_KEY_PASSWORD -ErrorAction SilentlyContinue
