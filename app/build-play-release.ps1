@@ -6,6 +6,20 @@ $storeFile = 'C:\Users\lAte\Keys\shinhanhae-release.jks'
 $bundlePath = Join-Path $PSScriptRoot 'android\app\build\outputs\bundle\release\app-release.aab'
 $apkPath = Join-Path $PSScriptRoot 'android\app\build\outputs\apk\release\app-release.apk'
 
+function Get-Sha256Hash([string] $Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 if (-not (Test-Path -LiteralPath $androidStudioJbr)) { throw "Android Studio JBR not found: $androidStudioJbr" }
 if (-not (Test-Path -LiteralPath $storeFile)) { throw "Keystore not found: $storeFile" }
 
@@ -47,8 +61,8 @@ try {
     if (Select-String -LiteralPath $manifest -Pattern 'android.permission.READ_SMS|android.permission.RECEIVE_SMS|SmsApprovalReceiver' -Quiet) {
         throw 'Restricted SMS permission or receiver remains in the release manifest.'
     }
-    $bundleHash = (Get-FileHash -LiteralPath $bundlePath -Algorithm SHA256).Hash
-    $apkHash = (Get-FileHash -LiteralPath $apkPath -Algorithm SHA256).Hash
+    $bundleHash = Get-Sha256Hash $bundlePath
+    $apkHash = Get-Sha256Hash $apkPath
     Write-Host "Play AAB: $bundlePath"
     Write-Host "AAB SHA-256: $bundleHash"
     Write-Host "Installable APK: $apkPath"
