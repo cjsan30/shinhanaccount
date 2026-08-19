@@ -7,6 +7,8 @@ import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.content.Context;
+import android.content.Intent;
+import android.provider.Settings;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -34,7 +36,21 @@ public class NotificationBridgePlugin extends Plugin {
 
     @PermissionCallback
     private void permissionResult(PluginCall call) {
-        call.resolve(new JSObject().put("granted", getPermissionState("notifications") == PermissionState.GRANTED));
+        call.resolve(new JSObject().put("granted", notificationsEnabled()));
+    }
+
+    @com.getcapacitor.PluginMethod
+    public void getPermissionStatus(PluginCall call) {
+        call.resolve(new JSObject().put("granted", notificationsEnabled()));
+    }
+
+    @com.getcapacitor.PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
     }
 
     @com.getcapacitor.PluginMethod
@@ -69,5 +85,10 @@ public class NotificationBridgePlugin extends Plugin {
         channel.setSound(sound, attributes);
         channel.enableVibration(true);
         ((NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(channel);
+    }
+
+    private boolean notificationsEnabled() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) return false;
+        return NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
     }
 }

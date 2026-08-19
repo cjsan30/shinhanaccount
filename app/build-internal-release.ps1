@@ -16,7 +16,8 @@ $env:SHINHANHAE_STORE_FILE = $storeFile
 $env:SHINHANHAE_STORE_PASSWORD = $storePasswordPlain
 $env:SHINHANHAE_KEY_ALIAS = 'shinhanhae'
 $env:SHINHANHAE_KEY_PASSWORD = $keyPasswordPlain
-npm.cmd run build:internal
+# Friend-facing release builds must never include internal test controls.
+npm.cmd run build
 node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor copy android
 Push-Location android
 try {

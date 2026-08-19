@@ -144,9 +144,9 @@ export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNot
   return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
 }
 
-export function getRecentEntries(ledger: Ledger, periodKey: string, limit = 8) {
+export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date) {
   return ledger.entries
-    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && getEntryPeriodKey(entry) === periodKey)
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && getEntryPeriodKey(entry) === periodKey && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
     .slice()
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id))
     .slice(0, limit);

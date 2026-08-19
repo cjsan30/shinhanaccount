@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
   smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), requestPermission: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
-  notificationBridge: { requestPermission: vi.fn(), show: vi.fn() },
+  notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
 vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
@@ -28,13 +28,16 @@ beforeEach(() => {
   smsBridge.acknowledgePendingApprovals.mockResolvedValue(undefined);
   smsBridge.getNotificationAccessStatus.mockResolvedValue({ granted: true });
   smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
+  notificationBridge.getPermissionStatus.mockResolvedValue({ granted: true });
+  notificationBridge.openNotificationSettings.mockResolvedValue(undefined);
 });
 
 describe('app entry flows', () => {
   it('routes Android back through nested sheets before leaving the dashboard', () => {
     expect(previousPanel('rules')).toBe('data');
     expect(previousPanel('data')).toBe('settings');
-    expect(previousPanel('edit')).toBe('recent');
+    expect(previousPanel('detail')).toBe('recent');
+    expect(previousPanel('edit')).toBe('detail');
     expect(previousPanel('resident')).toBeNull();
   });
   it('shows policy onboarding when a new user has no confirmed policy', async () => {
@@ -68,7 +71,41 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: '지출 등록' }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /삼성웰스토리/ }));
+    expect(screen.getByRole('heading', { name: '결제 상세' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '수정 · 분류 변경' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '취소 확인' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '삭제' })).toBeInTheDocument();
     expect(smsBridge.acknowledgePendingApprovals).not.toHaveBeenCalled();
+  });
+
+  it('keeps data-management sections collapsed and in the agreed order', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
+
+    const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원)$/);
+    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '계획표', '백업 · 복원']);
+    expect(document.querySelectorAll('details[open]')).toHaveLength(0);
+  });
+
+  it('shows the two notification controls with status-aware copy', () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
+    expect(screen.getByRole('button', { name: '결제 알림 수신 설정' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '예산 경고 알림 설정' })).toBeInTheDocument();
+    expect(screen.queryByText('개발 테스트')).not.toBeInTheDocument();
   });
   it('preserves a confirmed policy and opens the dashboard for an existing user', () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
@@ -110,6 +147,7 @@ describe('app entry flows', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
+    fireEvent.click(await screen.findByText('자동 분류 규칙'));
     fireEvent.click(await screen.findByRole('button', { name: '규칙 관리' }));
     fireEvent.change(screen.getByLabelText('규칙 상호명'), { target: { value: 'MegaCoffee' } });
     fireEvent.click(screen.getByRole('button', { name: '규칙 추가' }));

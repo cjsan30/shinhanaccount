@@ -119,3 +119,12 @@ it('shows recent payments by occurrence time instead of insertion order', () => 
   ];
   expect(getRecentEntries(ledger, '2026-08').map((entry) => entry.id)).toEqual(['newer', 'middle', 'older']);
 });
+
+it('shows the full policy period through the selected local day', () => {
+  const ledger = createInitialLedger();
+  ledger.entries = [
+    { id: 'today', cardLast4: '3741', occurredAt: '2026-08-19T12:00:00+09:00', amount: 1, merchant: 'today', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'future', cardLast4: '3741', occurredAt: '2026-08-20T12:00:00+09:00', amount: 1, merchant: 'future', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+  ];
+  expect(getRecentEntries(ledger, '2026-08', Number.POSITIVE_INFINITY, new Date('2026-08-19T23:59:59+09:00')).map((entry) => entry.id)).toEqual(['today']);
+});
