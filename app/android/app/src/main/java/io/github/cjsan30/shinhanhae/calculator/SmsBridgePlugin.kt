@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -149,12 +150,19 @@ internal fun postApprovalQueuedNotification(
             val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
             NotificationManagerCompat.from(context).createNotificationChannel(channel)
         }
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val contentIntent = launchIntent?.let {
+            PendingIntent.getActivity(context, 2001, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
             .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .also { builder -> contentIntent?.let(builder::setContentIntent) }
             .build()
         NotificationManagerCompat.from(context).notify(2001, notification)
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
@@ -407,12 +415,19 @@ class SmsBridgePlugin : Plugin() {
             val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
             NotificationManagerCompat.from(context).createNotificationChannel(channel)
         }
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val contentIntent = launchIntent?.let {
+            PendingIntent.getActivity(context, 2002, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(if (budgetAlert == null) "테스트 승인 결제" else "지원금 사용 경고")
             .setContentText(budgetAlert ?: "테스트 승인 결제가 수신되었습니다.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .also { builder -> contentIntent?.let(builder::setContentIntent) }
             .build()
         NotificationManagerCompat.from(context).notify(2002, notification)
     }

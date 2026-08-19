@@ -44,8 +44,21 @@ internal fun extractNotificationMessages(notification: Notification, fallbackPos
 }
 
 class ShinhanMessageNotificationListener : NotificationListenerService() {
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        try {
+            activeNotifications?.forEach(::processNotification)
+        } catch (error: Exception) {
+            Log.e(NOTIFICATION_LOG_TAG, "Failed to inspect active message notifications", error)
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null || sbn.packageName != SAMSUNG_MESSAGES_PACKAGE) return
+        if (sbn != null) processNotification(sbn)
+    }
+
+    private fun processNotification(sbn: StatusBarNotification) {
+        if (sbn.packageName != SAMSUNG_MESSAGES_PACKAGE) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val prefs = secureSmsPreferences(this)
