@@ -29,6 +29,32 @@ class SmsApprovalParserTest {
     }
 
     @Test
+    fun parsesObservedGs25Approval() {
+        val approval = parseApproval(
+            "[Web발신] [신한체크승인] 박*석(3741) 08/19 00:30 (금액)1,700원 지에스(GS)25 울산대점",
+            "3741",
+            2026,
+        )
+
+        requireNotNull(approval)
+        assertEquals(1700, approval.amount)
+        assertEquals("지에스(GS)25 울산대점", approval.merchant)
+    }
+
+    @Test
+    fun parsesObservedCafeApproval() {
+        val approval = parseApproval(
+            "[Web발신] [신한체크승인] 박*석(3741) 08/18 19:18 (금액)4,700원 갈바트카페 울산무거점",
+            "3741",
+            2026,
+        )
+
+        requireNotNull(approval)
+        assertEquals(4700, approval.amount)
+        assertEquals("갈바트카페 울산무거점", approval.merchant)
+    }
+
+    @Test
     fun fingerprintIsStableAcrossEquivalentWhitespace() {
         val first = smsFingerprint("[Web발신]\n[신한체크승인] 박*석(3741)", 1234L)
         val second = smsFingerprint("[Web발신] [신한체크승인] 박*석(3741)", 1234L)
