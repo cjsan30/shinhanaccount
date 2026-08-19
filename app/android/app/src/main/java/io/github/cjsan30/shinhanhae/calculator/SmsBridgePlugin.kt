@@ -38,6 +38,8 @@ private const val FIRST_RECOVERY_LOOKBACK_MS = 24L * 60 * 60 * 1000
 private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
 private val SMS_QUEUE_LOCK = Any()
 
+private enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
+
 private data class NativeClassification(val category: String, val label: String)
 
 private fun classifyForBudget(merchant: String, amount: Int): NativeClassification? {
@@ -99,33 +101,41 @@ private fun enqueueApproval(
     prefs: android.content.SharedPreferences,
     approval: Approval,
     sourceId: String,
-): Boolean = synchronized(SMS_QUEUE_LOCK) {
+): EnqueueResult = synchronized(SMS_QUEUE_LOCK) {
     val processed = JSArray(prefs.getString(PROCESSED_SMS_KEY, "[]"))
     val processedIds = (0 until processed.length()).mapNotNull { processed.optString(it, null) }.toMutableList()
-    if (sourceId in processedIds) return@synchronized false
+    if (sourceId in processedIds) return@synchronized EnqueueResult.DUPLICATE
 
     val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
     for (index in 0 until queue.length()) {
-        if (queue.optJSONObject(index)?.optString("id") == sourceId) return@synchronized false
+        if (queue.optJSONObject(index)?.optString("id") == sourceId) return@synchronized EnqueueResult.DUPLICATE
     }
     queue.put(approval.toJson(sourceId))
     while (queue.length() > MAX_QUEUE_SIZE) queue.remove(0)
     processedIds.add(sourceId)
     while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
     val processedJson = JSArray().also { array -> processedIds.forEach(array::put) }
-    prefs.edit()
+    val committed = prefs.edit()
         .putString(QUEUE_KEY, queue.toString())
         .putString(PROCESSED_SMS_KEY, processedJson.toString())
         .commit()
+    if (committed) EnqueueResult.ADDED else EnqueueResult.WRITE_FAILED
 }
 
 private fun recoverMissedApprovals(context: Context, prefs: android.content.SharedPreferences): Int {
-    if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) return 0
+    val eventId = newSmsDiagnosticEventId()
+    if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECOVERY_PERMISSION_MISSING, status = "blocked")
+        return 0
+    }
     val card = prefs.getString(CARD_KEY, null) ?: return 0
+    recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECOVERY_SCAN_STARTED)
     val now = System.currentTimeMillis()
     val previousScan = prefs.getLong(LAST_SMS_SCAN_KEY, 0L)
     val since = if (previousScan == 0L) now - FIRST_RECOVERY_LOOKBACK_MS else (previousScan - RECOVERY_OVERLAP_MS).coerceAtLeast(0L)
     var recovered = 0
+    var scanned = 0
+    var matched = 0
     var earliestUnparsedApproval: Long? = null
     val projection = arrayOf(Telephony.Sms._ID, Telephony.Sms.DATE, Telephony.Sms.DATE_SENT, Telephony.Sms.BODY)
     context.contentResolver.query(
@@ -139,12 +149,14 @@ private fun recoverMissedApprovals(context: Context, prefs: android.content.Shar
         val sentIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE_SENT)
         val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
         while (cursor.moveToNext()) {
+            scanned += 1
             val receivedAt = cursor.getLong(dateIndex)
             val sentAt = cursor.getLong(sentIndex).takeIf { it > 0L } ?: receivedAt
             val body = cursor.getString(bodyIndex) ?: continue
             val approval = parseApproval(body, card)
             if (approval != null) {
-                if (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) recovered += 1
+                matched += 1
+                if (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt)) == EnqueueResult.ADDED) recovered += 1
             } else if (body.contains("[신한체크승인]")) {
                 earliestUnparsedApproval = minOf(earliestUnparsedApproval ?: receivedAt, receivedAt)
             }
@@ -152,6 +164,15 @@ private fun recoverMissedApprovals(context: Context, prefs: android.content.Shar
     }
     val nextScan = earliestUnparsedApproval?.minus(1L) ?: now
     prefs.edit().putLong(LAST_SMS_SCAN_KEY, nextScan).commit()
+    recordSmsDiagnostic(
+        prefs,
+        eventId,
+        SmsDiagnosticStage.RECOVERY_SCAN_COMPLETED,
+        status = "success",
+        scannedCount = scanned,
+        matchedCount = matched,
+        recoveredCount = recovered,
+    )
     if (recovered > 0) Log.i(SMS_LOG_TAG, "Recovered $recovered missed approval(s) from inbox")
     return recovered
 }
@@ -159,44 +180,85 @@ private fun recoverMissedApprovals(context: Context, prefs: android.content.Shar
 class SmsApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        val prefs = secureSmsPreferences(context)
+        val eventId = newSmsDiagnosticEventId()
+        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.RECEIVER_ENTERED)
         Log.i(SMS_LOG_TAG, "SMS broadcast received")
-        val card = secureSmsPreferences(context).getString(CARD_KEY, null)
+        val card = prefs.getString(CARD_KEY, null)
         if (card == null) {
+            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.CARD_NOT_CONFIGURED, status = "blocked", cardConfigured = false)
             Log.w(SMS_LOG_TAG, "SMS ignored: card is not configured")
             return
         }
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         val body = messages.joinToString("") { it.messageBody ?: "" }
+        val normalizedBody = body.replace(Regex("""\s+"""), " ").trim()
+        val formatMatch = approvalRegex.find(normalizedBody)
+        val markerFound = normalizedBody.contains("[신한체크승인]")
+        val cardMatched = formatMatch?.groupValues?.getOrNull(1) == card
+        recordSmsDiagnostic(
+            prefs,
+            eventId,
+            SmsDiagnosticStage.BODY_ASSEMBLED,
+            segmentCount = messages.size,
+            bodyLength = body.length,
+            markerFound = markerFound,
+            cardConfigured = true,
+            cardMatched = cardMatched,
+        )
         val approval = parseApproval(body, card)
         if (approval == null) {
+            val stage = when {
+                !markerFound -> SmsDiagnosticStage.MARKER_MISSING
+                formatMatch == null -> SmsDiagnosticStage.PARSE_FAILED
+                !cardMatched -> SmsDiagnosticStage.CARD_MISMATCH
+                else -> SmsDiagnosticStage.PARSE_FAILED
+            }
+            recordSmsDiagnostic(prefs, eventId, stage, status = "ignored", markerFound = markerFound, cardConfigured = true, cardMatched = cardMatched)
             Log.w(SMS_LOG_TAG, "SMS ignored: approval format or card did not match")
             return
         }
-        val prefs = secureSmsPreferences(context)
         val sentAt = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
-        if (!enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) {
-            Log.i(SMS_LOG_TAG, "SMS ignored: approval was already processed")
-            return
+        when (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) {
+            EnqueueResult.DUPLICATE -> {
+                recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.DUPLICATE_SKIPPED, status = "ignored")
+                Log.i(SMS_LOG_TAG, "SMS ignored: approval was already processed")
+                return
+            }
+            EnqueueResult.WRITE_FAILED -> {
+                recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMIT_FAILED, status = "error")
+                Log.e(SMS_LOG_TAG, "SMS queue commit failed")
+                return
+            }
+            EnqueueResult.ADDED -> Unit
         }
+        val queueSize = JSArray(prefs.getString(QUEUE_KEY, "[]")).length()
+        recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = queueSize)
         Log.i(SMS_LOG_TAG, "Approval queued")
         SmsBridgePlugin.notifyApprovalQueued()
-        notifyApproval(context, consumeBudgetAlert(prefs, approval))
+        notifyApproval(context, prefs, eventId, consumeBudgetAlert(prefs, approval))
     }
 
-    private fun notifyApproval(context: Context, budgetAlert: String?) {
-        val channelId = "sms_approvals"
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
-            NotificationManagerCompat.from(context).createNotificationChannel(channel)
+    private fun notifyApproval(context: Context, prefs: android.content.SharedPreferences, eventId: String, budgetAlert: String?) {
+        try {
+            val channelId = "sms_approvals"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
+                NotificationManagerCompat.from(context).createNotificationChannel(channel)
+            }
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
+                .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            NotificationManagerCompat.from(context).notify(2001, notification)
+            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
+        } catch (error: Exception) {
+            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
+            Log.e(SMS_LOG_TAG, "Failed to post approval notification", error)
         }
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(if (budgetAlert == null) "새 승인 결제" else "지원금 사용 경고")
-            .setContentText(budgetAlert ?: "승인 결제가 수신되었습니다. 앱을 열면 자동 반영됩니다.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(context).notify(2001, notification)
     }
 }
 
@@ -322,6 +384,7 @@ class SmsBridgePlugin : Plugin() {
                 Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
             } catch (error: Exception) {
                 Log.e(SMS_LOG_TAG, "Failed to recover missed approvals", error)
+                recordSmsDiagnostic(prefs, newSmsDiagnosticEventId(), SmsDiagnosticStage.RECOVERY_SCAN_FAILED, status = "error", errorType = error.javaClass.simpleName)
                 val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
                 Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
             }
@@ -341,5 +404,21 @@ class SmsBridgePlugin : Plugin() {
         }
         prefs.edit().putString(QUEUE_KEY, remaining.toString()).apply()
         call.resolve()
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun getSmsDiagnostics(call: PluginCall) {
+        val history = try {
+            JSArray(prefs.getString(SMS_DIAGNOSTICS_KEY, "[]"))
+        } catch (_: Exception) {
+            JSArray()
+        }
+        call.resolve(JSObject().put("items", history))
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun clearSmsDiagnostics(call: PluginCall) {
+        if (prefs.edit().remove(SMS_DIAGNOSTICS_KEY).commit()) call.resolve()
+        else call.reject("SMS diagnostics could not be cleared")
     }
 }

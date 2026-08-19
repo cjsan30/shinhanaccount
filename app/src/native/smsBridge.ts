@@ -2,6 +2,23 @@ import { registerPlugin } from '@capacitor/core';
 
 export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; source?: 'demo' | 'sms' | 'excel' | 'manual' };
 export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; thresholds: [number, number]; periodKey: string };
+export type SmsDiagnosticEvent = {
+  id: string;
+  eventId: string;
+  recordedAt: number;
+  stage: string;
+  status: 'info' | 'success' | 'ignored' | 'blocked' | 'error';
+  segmentCount?: number;
+  bodyLength?: number;
+  markerFound?: boolean;
+  cardConfigured?: boolean;
+  cardMatched?: boolean;
+  queueSize?: number;
+  scannedCount?: number;
+  matchedCount?: number;
+  recoveredCount?: number;
+  errorType?: string;
+};
 type SmsBridgePlugin = {
   addListener(eventName: 'approvalReceived', listener: () => void): Promise<{ remove: () => Promise<void> }>;
   configure(options: { cardLast4: string }): Promise<void>;
@@ -12,5 +29,7 @@ type SmsBridgePlugin = {
   requestPermission(): Promise<{ granted: boolean }>;
   consumePendingApprovals(): Promise<{ items: NativeApproval[] }>;
   acknowledgePendingApprovals(options: { ids: string[] }): Promise<void>;
+  getSmsDiagnostics(): Promise<{ items: SmsDiagnosticEvent[] }>;
+  clearSmsDiagnostics(): Promise<void>;
 };
 export const SmsBridge = registerPlugin<SmsBridgePlugin>('SmsBridge');
