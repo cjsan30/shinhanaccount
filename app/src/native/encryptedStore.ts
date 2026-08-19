@@ -53,20 +53,22 @@ async function readNormalizedRows(db: DatabaseConnection): Promise<NormalizedSta
 }
 
 async function replaceRows(db: DatabaseConnection, table: string, rows: StoredRow[]) {
-  await db.run(`DELETE FROM ${table};`);
-  for (const row of rows) await db.run(`INSERT INTO ${table} (id, value, position) VALUES (?, ?, ?);`, [row.id, row.value, row.position]);
+  await db.run(`DELETE FROM ${table};`, [], false);
+  for (const row of rows) await db.run(`INSERT INTO ${table} (id, value, position) VALUES (?, ?, ?);`, [row.id, row.value, row.position], false);
 }
 
 async function updateRows(db: DatabaseConnection, table: string, previous: StoredRow[], next: StoredRow[]) {
   const changes = changedRows(previous, next);
-  for (const id of changes.remove) await db.run(`DELETE FROM ${table} WHERE id = ?;`, [id]);
-  for (const row of changes.upsert) await db.run(`INSERT OR REPLACE INTO ${table} (id, value, position) VALUES (?, ?, ?);`, [row.id, row.value, row.position]);
+  for (const id of changes.remove) await db.run(`DELETE FROM ${table} WHERE id = ?;`, [id], false);
+  for (const row of changes.upsert) await db.run(`INSERT OR REPLACE INTO ${table} (id, value, position) VALUES (?, ?, ?);`, [row.id, row.value, row.position], false);
 }
 
 async function writeRows(db: DatabaseConnection, next: NormalizedStateRows, previous: NormalizedStateRows | null) {
   await db.beginTransaction();
   try {
-    for (const [key, value] of next.settings) await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?);', [key, value]);
+    // `run` starts its own transaction by default. All statements here must
+    // opt out because writeRows already owns the atomic transaction.
+    for (const [key, value] of next.settings) await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?);', [key, value], false);
     if (previous) {
       await updateRows(db, 'ledger_entries', previous.ledgerEntries, next.ledgerEntries);
       await updateRows(db, 'policy_versions', previous.policyVersions, next.policyVersions);
