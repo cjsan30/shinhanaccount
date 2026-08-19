@@ -1,6 +1,7 @@
 ﻿import { useMemo, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
+import { useEffect, useRef } from 'react';
 import { saveFile } from '../native/fileExport';
+import { fitImageInsidePage } from '../features/evidence/imageLayout';
 
 type Group = 'resident' | 'study';
 type Evidence = { id: string; file: File; url: string };
@@ -30,13 +31,19 @@ export function EvidenceExport() {
   const [message, setMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number; stage: string } | null>(null);
+  const previewUrls = useRef(new Set<string>());
+  useEffect(() => () => previewUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
   const totalBytes = useMemo(() => [...resident, ...study].reduce((sum, item) => sum + item.file.size, 0), [resident, study]);
   const update = (group: Group, action: (items: Evidence[]) => Evidence[]) => (group === 'resident' ? setResident : setStudy)(action);
   const addFiles = (group: Group, files: FileList | null) => {
     if (!files) return;
     const valid = [...files].filter((file) => ['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
     if (valid.length !== files.length) setMessage('JPG, PNG, WEBP 이미지만 추가할 수 있습니다.');
-    update(group, (current) => [...current, ...valid.map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file) }))]);
+    update(group, (current) => [...current, ...valid.map((file) => {
+      const url = URL.createObjectURL(file);
+      previewUrls.current.add(url);
+      return { id: crypto.randomUUID(), file, url };
+    })]);
   };
   const move = (group: Group, index: number, direction: -1 | 1) => update(group, (current) => {
     const next = [...current]; const target = index + direction;
@@ -49,12 +56,19 @@ export function EvidenceExport() {
     update(group, (current) => { const next = [...current]; const [item] = next.splice(dragging.index, 1); next.splice(target, 0, item); return next; });
     setDragging(null);
   };
-  const remove = (group: Group, item: Evidence) => { URL.revokeObjectURL(item.url); update(group, (current) => current.filter((candidate) => candidate.id !== item.id)); };
+  const remove = (group: Group, item: Evidence) => { URL.revokeObjectURL(item.url); previewUrls.current.delete(item.url); update(group, (current) => current.filter((candidate) => candidate.id !== item.id)); };
+  const clearPreviews = () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+    setResident([]);
+    setStudy([]);
+  };
   const exportPdf = async () => {
     const items = [...resident, ...study];
     if (!items.length) return;
     setExporting(true); setProgress({ current: 0, total: items.length, stage: '이미지를 준비하고 있습니다' }); setMessage(null);
     try {
+      const { PDFDocument } = await import('pdf-lib');
       let maxEdge = 1800; let quality = .82; let pdfBytes: Uint8Array<ArrayBufferLike> = new Uint8Array();
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const pdf = await PDFDocument.create();
@@ -63,8 +77,7 @@ export function EvidenceExport() {
           const bytes = await compressImage(item.file, maxEdge, quality);
           const image = await pdf.embedJpg(bytes);
           const page = pdf.addPage(A4);
-          const scale = Math.min(523 / image.width, 770 / image.height);
-          page.drawImage(image, { x: (A4[0] - image.width * scale) / 2, y: (A4[1] - image.height * scale) / 2, width: image.width * scale, height: image.height * scale });
+          page.drawImage(image, fitImageInsidePage(image.width, image.height, A4[0], A4[1], 36));
         }
         setProgress({ current: items.length, total: items.length, stage: 'PDF를 합치고 있습니다' });
         pdfBytes = await pdf.save({ useObjectStreams: true });
@@ -75,6 +88,7 @@ export function EvidenceExport() {
       setProgress({ current: items.length, total: items.length, stage: 'Downloads에 저장하고 있습니다' });
       const result = await saveFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
       setMessage(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
+      clearPreviews();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
     finally { setExporting(false); setProgress(null); }
   };

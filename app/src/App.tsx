@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { lazy, Suspense } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
-import { CaretRight, ChatCircleDots, GearSix, ListBullets, Plus } from '@phosphor-icons/react';
+import { CaretRight } from '@phosphor-icons/react';
 import { BottomSheet } from './components/BottomSheet';
-import { EvidenceExport } from './components/EvidenceExport';
-import { BackupRestore } from './components/BackupRestore';
-import { TransactionImport } from './components/TransactionImport';
-import { OnboardingFlow } from './components/OnboardingFlow';
 import { Toast } from './components/Toast';
 import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
@@ -26,7 +23,14 @@ import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
 import { createEmptyAppState, initializeAppState, loadLegacyAppState, persistAppState } from './native/appStateStore';
 import { AppHealth } from './native/appHealth';
+import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import './App.css';
+
+const EvidenceExport = lazy(() => import('./components/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
+const BackupRestore = lazy(() => import('./components/BackupRestore').then((module) => ({ default: module.BackupRestore })));
+const TransactionImport = lazy(() => import('./components/TransactionImport').then((module) => ({ default: module.TransactionImport })));
+const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then((module) => ({ default: module.OnboardingFlow })));
+const LoadingPanel = () => <p className="panel-loading" role="status">화면을 준비하고 있습니다…</p>;
 
 type ManualClassificationChoice = 'auto' | 'undecided' | PolicyItem;
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
@@ -37,9 +41,6 @@ function classificationText(result: PaymentClassification) {
   if (result.status === 'excluded') return '제외 대상으로 분류';
   if (result.status === 'undecided') return '미정 — 직접 분류가 필요';
   return `${result.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[result.category]}`;
-}
-function Budget({ name, remaining, usage, open }: { name: string; remaining: number; usage: number; open: () => void }) {
-  return <button className="budget" onClick={open} aria-label={`${name} 상세 보기`}><span><strong>{name}</strong><em>잔액 {won(remaining)}</em><CaretRight size={27} weight="bold" /></span><i><b style={{ width: `${Math.min(100, usage)}%` }} /></i><small>{usage.toFixed(1)}% 사용</small></button>;
 }
 function Table({ rows }: { rows: Array<[string, number, number]> }) {
   return <div className="table"><div><span>항목</span><span>계획</span><span>사용</span><span>잔액</span></div>{rows.map(([name, plan, used]) => <div key={name}><strong>{name}</strong><span>{won(plan)}</span><span>{won(used)}</span><span>{won(plan - used)}</span></div>)}</div>;
@@ -296,7 +297,7 @@ function App() {
   const previewImportFile = async () => {
     if (!importFile) return;
     try {
-      const transactions = parseShinhanCardExport(await importFile.arrayBuffer());
+      const transactions = await parseShinhanCardExport(await importFile.arrayBuffer());
       const safety = filterTransactionsForConfiguredCard(transactions, card);
       setImportSafety(safety);
       setImportResult(null);
@@ -449,8 +450,29 @@ function App() {
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'cancel' ? '취소 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;
   if (!storageReady) return <main className="storage-status"><h1>데이터를 안전하게 불러오는 중</h1><p>암호화 저장소를 확인하고 있습니다.</p></main>;
-  if (!activePolicy.confirmed) return <OnboardingFlow onComplete={completeOnboarding} />;
+  if (!activePolicy.confirmed) return <Suspense fallback={<main className="storage-status"><LoadingPanel /></main>}><OnboardingFlow onComplete={completeOnboarding} /></Suspense>;
 
-  return <main className="app"><header><h1>지원금 관리</h1><button aria-label="설정 열기" onClick={openSettings}><GearSix size={39} /></button></header>{forceStopRecovery && <section className="recovery-notice" role="alert"><strong>자동 수신이 중단된 시간이 있습니다</strong><p>강제 종료 중 결제 문자는 자동 반영되지 않습니다. 빠진 내역이 있다면 신한카드 엑셀로 확인해 주세요.</p><div><button onClick={() => { setForceStopRecovery(false); setInitialImportRoute(false); setPanel('import'); }}>거래내역 가져오기</button><button onClick={() => setForceStopRecovery(false)}>나중에</button></div></section>}<section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={openPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong>{won(totalLimit - totalSpent)}</strong><span>{won(totalLimit)} 중 {won(totalSpent)} 사용 · {totalUsage.toFixed(1)}%</span><i><b style={{ width: `${Math.min(100, totalUsage)}%` }} /></i></section><section className="budgets"><Budget name="정주비" remaining={resident.remaining} usage={resident.usagePercent} open={() => setPanel('resident')} /><Budget name="학습공간비" remaining={study.remaining} usage={study.usagePercent} open={() => setPanel('study')} /></section><section className="quick"><h2>빠른 확인</h2><button aria-label={`미정 지출 ${undecidedCount}건`} onClick={() => setPanel('undecided')}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{undecidedCount > 9 ? '9+' : undecidedCount}</b>}<CaretRight size={25} /></button><button onClick={() => setPanel('recent')}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button onClick={() => setPanel('evidence')}><i><ListBullets size={29} /></i>PDF 생성<CaretRight size={25} /></button></section>{panel && <BottomSheet title={title} onClose={close} onBack={previousPanel(panel) ? () => setPanel(previousPanel(panel)) : undefined}>{content}</BottomSheet>}<Toast message={toast} /></main>;
+  return <main className="app">
+    <DashboardScreen
+      totalLimit={totalLimit}
+      totalSpent={totalSpent}
+      totalUsage={totalUsage}
+      resident={{ remaining: resident.remaining, usage: resident.usagePercent }}
+      study={{ remaining: study.remaining, usage: study.usagePercent }}
+      undecidedCount={undecidedCount}
+      forceStopRecovery={forceStopRecovery}
+      onOpenSettings={openSettings}
+      onDismissRecovery={() => setForceStopRecovery(false)}
+      onRecoverTransactions={() => { setForceStopRecovery(false); setInitialImportRoute(false); setPanel('import'); }}
+      onNewPayment={openPayment}
+      onOpenResident={() => setPanel('resident')}
+      onOpenStudy={() => setPanel('study')}
+      onOpenUndecided={() => setPanel('undecided')}
+      onOpenRecent={() => setPanel('recent')}
+      onOpenEvidence={() => setPanel('evidence')}
+    />
+    {panel && <BottomSheet title={title} onClose={close} onBack={previousPanel(panel) ? () => setPanel(previousPanel(panel)) : undefined}><Suspense fallback={<LoadingPanel />}>{content}</Suspense></BottomSheet>}
+    <Toast message={toast} />
+  </main>;
 }
 export default App;

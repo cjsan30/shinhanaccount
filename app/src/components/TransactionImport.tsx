@@ -16,7 +16,7 @@ export function TransactionImport({ cardLast4, onImport, onDirectStart, notify }
   const readFile = async () => {
     if (!file) return;
     try {
-      const parsed = parseShinhanCardExport(await file.arrayBuffer());
+      const parsed = await parseShinhanCardExport(await file.arrayBuffer());
       const safety = filterTransactionsForConfiguredCard(parsed, cardLast4);
       if (safety.status === 'rejected') {
         setTransactions(null);

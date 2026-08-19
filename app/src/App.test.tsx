@@ -35,9 +35,9 @@ describe('app entry flows', () => {
     expect(previousPanel('edit')).toBe('recent');
     expect(previousPanel('resident')).toBeNull();
   });
-  it('shows policy onboarding when a new user has no confirmed policy', () => {
+  it('shows policy onboarding when a new user has no confirmed policy', async () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: /자동 관리를/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /자동 관리를/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '지원금 관리' })).not.toBeInTheDocument();
   });
 
@@ -97,7 +97,7 @@ describe('app entry flows', () => {
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
   });
 
-  it('adds, edits, and deletes a contains-based merchant rule', () => {
+  it('adds, edits, and deletes a contains-based merchant rule', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -108,7 +108,7 @@ describe('app entry flows', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
-    fireEvent.click(screen.getByRole('button', { name: '규칙 관리' }));
+    fireEvent.click(await screen.findByRole('button', { name: '규칙 관리' }));
     fireEvent.change(screen.getByLabelText('규칙 상호명'), { target: { value: 'MegaCoffee' } });
     fireEvent.click(screen.getByRole('button', { name: '규칙 추가' }));
 

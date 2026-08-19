@@ -1,9 +1,9 @@
-import * as XLSX from 'xlsx';
 import { classifyPayment, type PaymentClassification } from './sms';
 
 export type ImportedCardTransaction = { occurredAt: string; cardMasked: string; cardIdentity?: string; merchant: string; approvalNumber: string; amount: number; paymentStatus: string; cancellationStatus: string; classification: PaymentClassification };
 const requiredHeaders = ['거래일', '이용카드', '가맹점명', '승인번호', '금액', '매입구분', '취소상태'];
-export function parseShinhanCardExport(data: ArrayBuffer): ImportedCardTransaction[] {
+export async function parseShinhanCardExport(data: ArrayBuffer): Promise<ImportedCardTransaction[]> {
+  const XLSX = await import('xlsx');
   const book = XLSX.read(data, { type: 'array' }); const sheet = book.Sheets[book.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
   if (!sheet || !requiredHeaders.every((header) => Object.hasOwn(rows[0] ?? {}, header))) throw new Error('신한카드 이용내역 양식이 아닙니다.');
