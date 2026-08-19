@@ -125,12 +125,16 @@ function App() {
   }, [initialImportRoute, nativePlatform]);
 
   useEffect(() => {
-    void SmsBridge.getConfiguration().then((configuration) => {
+    void SmsBridge.getConfiguration().then(async (configuration) => {
       if (/^\d{4}$/.test(configuration.cardLast4)) {
         setCard(configuration.cardLast4);
+        if (nativePlatform) {
+          const permission = await SmsBridge.requestPermission();
+          if (!permission?.granted) show('누락 결제를 복구하려면 SMS 읽기 권한을 허용해 주세요.');
+        }
       }
     }).catch(() => undefined);
-  }, []);
+  }, [nativePlatform]);
   const approvalQueueId = (approval: NativeApproval) => approval.id ?? `${approval.cardLast4}|${approval.occurredAt}|${approval.amount}|${approval.merchant}`;
   const acknowledgeApprovals = (approvals: NativeApproval[]) => SmsBridge.acknowledgePendingApprovals({ ids: approvals.map(approvalQueueId) }).catch(() => undefined);
 

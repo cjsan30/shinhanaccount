@@ -3,6 +3,7 @@ package io.github.cjsan30.shinhanhae.calculator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -10,6 +11,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import android.provider.Telephony
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -22,11 +24,19 @@ import com.getcapacitor.annotation.PermissionCallback
 import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
+import java.security.MessageDigest
 
 private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val BUDGET_STATE_KEY = "budget_state"
+private const val PROCESSED_SMS_KEY = "processed_sms_ids"
+private const val LAST_SMS_SCAN_KEY = "last_sms_scan_at"
 private const val SMS_LOG_TAG = "ShinhanhaeSms"
+private const val MAX_QUEUE_SIZE = 500
+private const val MAX_PROCESSED_SMS_IDS = 1000
+private const val FIRST_RECOVERY_LOOKBACK_MS = 60L * 24 * 60 * 60 * 1000
+private const val RECOVERY_OVERLAP_MS = 5L * 60 * 1000
+private val SMS_QUEUE_LOCK = Any()
 
 private data class NativeClassification(val category: String, val label: String)
 
@@ -69,7 +79,7 @@ private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(
 
 internal data class Approval(val cardLast4: String, val occurredAt: String, val amount: Int, val merchant: String) {
     fun queueId() = "$cardLast4|$occurredAt|$amount|$merchant"
-    fun toJson() = JSONObject().put("id", queueId()).put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
+    fun toJson(id: String = queueId()) = JSONObject().put("id", id).put("cardLast4", cardLast4).put("occurredAt", occurredAt).put("amount", amount).put("merchant", merchant)
 }
 
 internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): Approval? {
@@ -77,6 +87,73 @@ internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar
     val match = approvalRegex.find(normalized) ?: return null
     if (match.groupValues[1] != cardLast4) return null
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
+}
+
+internal fun smsFingerprint(body: String, sentAt: Long): String {
+    val normalized = body.replace(Regex("""\s+"""), " ").trim()
+    val digest = MessageDigest.getInstance("SHA-256").digest("$sentAt|$normalized".toByteArray())
+    return "sms-" + digest.joinToString("") { "%02x".format(it) }
+}
+
+private fun enqueueApproval(
+    prefs: android.content.SharedPreferences,
+    approval: Approval,
+    sourceId: String,
+): Boolean = synchronized(SMS_QUEUE_LOCK) {
+    val processed = JSArray(prefs.getString(PROCESSED_SMS_KEY, "[]"))
+    val processedIds = (0 until processed.length()).mapNotNull { processed.optString(it, null) }.toMutableList()
+    if (sourceId in processedIds) return@synchronized false
+
+    val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+    for (index in 0 until queue.length()) {
+        if (queue.optJSONObject(index)?.optString("id") == sourceId) return@synchronized false
+    }
+    queue.put(approval.toJson(sourceId))
+    while (queue.length() > MAX_QUEUE_SIZE) queue.remove(0)
+    processedIds.add(sourceId)
+    while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
+    val processedJson = JSArray().also { array -> processedIds.forEach(array::put) }
+    prefs.edit()
+        .putString(QUEUE_KEY, queue.toString())
+        .putString(PROCESSED_SMS_KEY, processedJson.toString())
+        .commit()
+}
+
+private fun recoverMissedApprovals(context: Context, prefs: android.content.SharedPreferences): Int {
+    if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) return 0
+    val card = prefs.getString(CARD_KEY, null) ?: return 0
+    val now = System.currentTimeMillis()
+    val previousScan = prefs.getLong(LAST_SMS_SCAN_KEY, 0L)
+    val since = if (previousScan == 0L) now - FIRST_RECOVERY_LOOKBACK_MS else (previousScan - RECOVERY_OVERLAP_MS).coerceAtLeast(0L)
+    var recovered = 0
+    var earliestUnparsedApproval: Long? = null
+    val projection = arrayOf(Telephony.Sms._ID, Telephony.Sms.DATE, Telephony.Sms.DATE_SENT, Telephony.Sms.BODY)
+    context.contentResolver.query(
+        Telephony.Sms.Inbox.CONTENT_URI,
+        projection,
+        "${Telephony.Sms.DATE} >= ?",
+        arrayOf(since.toString()),
+        "${Telephony.Sms.DATE} ASC",
+    )?.use { cursor ->
+        val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+        val sentIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE_SENT)
+        val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+        while (cursor.moveToNext()) {
+            val receivedAt = cursor.getLong(dateIndex)
+            val sentAt = cursor.getLong(sentIndex).takeIf { it > 0L } ?: receivedAt
+            val body = cursor.getString(bodyIndex) ?: continue
+            val approval = parseApproval(body, card)
+            if (approval != null) {
+                if (enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) recovered += 1
+            } else if (body.contains("[신한체크승인]")) {
+                earliestUnparsedApproval = minOf(earliestUnparsedApproval ?: receivedAt, receivedAt)
+            }
+        }
+    }
+    val nextScan = earliestUnparsedApproval?.minus(1L) ?: now
+    prefs.edit().putLong(LAST_SMS_SCAN_KEY, nextScan).commit()
+    if (recovered > 0) Log.i(SMS_LOG_TAG, "Recovered $recovered missed approval(s) from inbox")
+    return recovered
 }
 
 class SmsApprovalReceiver : BroadcastReceiver() {
@@ -88,17 +165,19 @@ class SmsApprovalReceiver : BroadcastReceiver() {
             Log.w(SMS_LOG_TAG, "SMS ignored: card is not configured")
             return
         }
-        val body = Telephony.Sms.Intents.getMessagesFromIntent(intent).joinToString("") { it.messageBody ?: "" }
+        val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
+        val body = messages.joinToString("") { it.messageBody ?: "" }
         val approval = parseApproval(body, card)
         if (approval == null) {
             Log.w(SMS_LOG_TAG, "SMS ignored: approval format or card did not match")
             return
         }
         val prefs = secureSmsPreferences(context)
-        val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
-        queue.put(approval.toJson())
-        while (queue.length() > 20) queue.remove(0)
-        prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+        val sentAt = messages.firstOrNull()?.timestampMillis ?: System.currentTimeMillis()
+        if (!enqueueApproval(prefs, approval, smsFingerprint(body, sentAt))) {
+            Log.i(SMS_LOG_TAG, "SMS ignored: approval was already processed")
+            return
+        }
         Log.i(SMS_LOG_TAG, "Approval queued")
         SmsBridgePlugin.notifyApprovalQueued()
         notifyApproval(context, consumeBudgetAlert(prefs, approval))
@@ -121,7 +200,7 @@ class SmsApprovalReceiver : BroadcastReceiver() {
     }
 }
 
-@CapacitorPlugin(name = "SmsBridge", permissions = [Permission(alias = "receiveSms", strings = ["android.permission.RECEIVE_SMS"])])
+@CapacitorPlugin(name = "SmsBridge", permissions = [Permission(alias = "receiveSms", strings = ["android.permission.RECEIVE_SMS", "android.permission.READ_SMS"])])
 class SmsBridgePlugin : Plugin() {
     companion object {
         @Volatile private var activeInstance: WeakReference<SmsBridgePlugin>? = null
@@ -236,8 +315,17 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun consumePendingApprovals(call: PluginCall) {
         // Reading is deliberately non-destructive. JavaScript acknowledges only after its local ledger is saved.
-        val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
-        call.resolve(JSObject().put("items", queue))
+        Thread {
+            try {
+                recoverMissedApprovals(context, prefs)
+                val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+                Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
+            } catch (error: Exception) {
+                Log.e(SMS_LOG_TAG, "Failed to recover missed approvals", error)
+                val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
+                Handler(Looper.getMainLooper()).post { call.resolve(JSObject().put("items", queue)) }
+            }
+        }.start()
     }
 
     @com.getcapacitor.PluginMethod
