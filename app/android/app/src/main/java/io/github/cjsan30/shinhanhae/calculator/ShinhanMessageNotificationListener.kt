@@ -8,7 +8,15 @@ import androidx.core.app.NotificationCompat
 import java.security.MessageDigest
 
 private const val SAMSUNG_MESSAGES_PACKAGE = "com.samsung.android.messaging"
+private const val SHINHAN_SOL_BANK_PACKAGE = "com.shinhan.sbanking"
+private const val SHINHAN_CARD_PACKAGE = "com.shinhancard.smartshinhan"
 private const val NOTIFICATION_LOG_TAG = "ShinhanhaeMessageNotice"
+
+internal val supportedApprovalNotificationPackages = setOf(
+    SAMSUNG_MESSAGES_PACKAGE,
+    SHINHAN_SOL_BANK_PACKAGE,
+    SHINHAN_CARD_PACKAGE,
+)
 
 internal data class NotificationMessageCandidate(val body: String, val postedAt: Long)
 
@@ -58,7 +66,7 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
-        if (sbn.packageName != SAMSUNG_MESSAGES_PACKAGE) return
+        if (sbn.packageName !in supportedApprovalNotificationPackages) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
         val prefs = secureSmsPreferences(this)
@@ -79,6 +87,7 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
             bodyLength = candidates.sumOf { it.body.length },
             markerFound = candidates.any { it.body.contains("[신한체크승인]") },
             cardConfigured = true,
+            sourceApp = sbn.packageName,
         )
         var queued = 0
         var budgetAlert: String? = null
@@ -86,7 +95,7 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
             val parsed = parseApproval(candidate.body, card) ?: continue
             val approval = parsed.copy(notificationPostedAt = candidate.postedAt, source = "notification")
             val sourceId = notificationSourceId(approval, candidate.postedAt, sbn.key)
-            when (enqueueApproval(prefs, approval, sourceId)) {
+            when (enqueueApproval(prefs, approval, sourceId, sbn.packageName, candidate.postedAt)) {
                 EnqueueResult.ADDED -> {
                     queued += 1
                     budgetAlert = consumeBudgetAlert(prefs, approval) ?: budgetAlert

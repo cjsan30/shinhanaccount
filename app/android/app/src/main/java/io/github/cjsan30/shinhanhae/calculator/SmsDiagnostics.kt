@@ -48,6 +48,7 @@ internal fun recordSmsDiagnostic(
     matchedCount: Int? = null,
     recoveredCount: Int? = null,
     errorType: String? = null,
+    sourceApp: String? = null,
 ) {
     try {
         synchronized(SMS_DIAGNOSTICS_LOCK) {
@@ -72,6 +73,7 @@ internal fun recordSmsDiagnostic(
             matchedCount?.let { entry.put("matchedCount", it) }
             recoveredCount?.let { entry.put("recoveredCount", it) }
             errorType?.takeIf { it.isNotBlank() }?.let { entry.put("errorType", it.take(80)) }
+            sourceApp?.takeIf { it.isNotBlank() }?.let { entry.put("sourceApp", it.take(100)) }
             history.put(entry)
             while (history.length() > MAX_SMS_DIAGNOSTICS) history.remove(0)
             prefs.edit().putString(SMS_DIAGNOSTICS_KEY, history.toString()).commit()

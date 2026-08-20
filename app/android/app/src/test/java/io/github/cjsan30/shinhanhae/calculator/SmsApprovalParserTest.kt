@@ -8,6 +8,14 @@ import org.junit.Test
 
 class SmsApprovalParserTest {
     @Test
+    fun `allows only the configured approval notification apps`() {
+        assertTrue("com.samsung.android.messaging" in supportedApprovalNotificationPackages)
+        assertTrue("com.shinhan.sbanking" in supportedApprovalNotificationPackages)
+        assertTrue("com.shinhancard.smartshinhan" in supportedApprovalNotificationPackages)
+        assertFalse("com.example.untrusted" in supportedApprovalNotificationPackages)
+    }
+
+    @Test
     fun `policy period runs from the 14th through the next month 10th`() {
         assertTrue(isApprovalInPolicyPeriod("2026-08-14T00:00:00+09:00", "2026-08"))
         assertTrue(isApprovalInPolicyPeriod("2026-09-10T23:59:59+09:00", "2026-08"))
@@ -72,5 +80,35 @@ class SmsApprovalParserTest {
 
         assertEquals(first, repeated)
         org.junit.Assert.assertNotEquals(first, second)
+    }
+
+    @Test
+    fun `collapses matching Samsung Messages and Shinhan SOL approvals`() {
+        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val matchId = approvalMatchId(approval)
+
+        assertTrue(isCrossSourceApprovalDuplicate(
+            matchId,
+            "com.samsung.android.messaging",
+            1_000L,
+            matchId,
+            "com.shinhan.sbanking",
+            30_000L,
+        ))
+    }
+
+    @Test
+    fun `keeps identical repeat approvals from the same app`() {
+        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val matchId = approvalMatchId(approval)
+
+        assertFalse(isCrossSourceApprovalDuplicate(
+            matchId,
+            "com.samsung.android.messaging",
+            1_000L,
+            matchId,
+            "com.samsung.android.messaging",
+            30_000L,
+        ))
     }
 }

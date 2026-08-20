@@ -26,9 +26,12 @@ private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val BUDGET_STATE_KEY = "budget_state"
 private const val PROCESSED_SMS_KEY = "processed_sms_ids"
+private const val RECENT_APPROVAL_MATCHES_KEY = "recent_approval_matches_v1"
 private const val SMS_LOG_TAG = "ShinhanhaeSms"
 private const val MAX_QUEUE_SIZE = 500
 private const val MAX_PROCESSED_SMS_IDS = 1000
+private const val MAX_RECENT_APPROVAL_MATCHES = 1000
+private const val CROSS_SOURCE_DEDUPLICATION_WINDOW_MS = 5 * 60 * 1000L
 private val SMS_QUEUE_LOCK = Any()
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
@@ -79,7 +82,7 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
     }
     return if (crossed.isEmpty()) null else classification.label + " 사용액이 " + crossed.joinToString(", ") { it.toString() + "%" } + " 기준을 넘었습니다."
 }
-private val approvalRegex = Regex("""\[신한체크승인\]\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
+private val approvalRegex = Regex("""\[?신한(?:체크)?승인\]?\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
 internal data class Approval(
     val cardLast4: String,
@@ -107,10 +110,29 @@ internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
 }
 
+internal fun approvalMatchId(approval: Approval): String {
+    val merchant = approval.merchant.lowercase()
+        .replace(Regex("""[\s().,_-]"""), "")
+    return listOf(approval.cardLast4, approval.occurredAt, approval.amount.toString(), merchant).joinToString("|")
+}
+
+internal fun isCrossSourceApprovalDuplicate(
+    previousMatchId: String,
+    previousSourcePackage: String,
+    previousPostedAt: Long,
+    matchId: String,
+    sourcePackage: String,
+    postedAt: Long,
+): Boolean = previousMatchId == matchId &&
+    previousSourcePackage != sourcePackage &&
+    kotlin.math.abs(previousPostedAt - postedAt) <= CROSS_SOURCE_DEDUPLICATION_WINDOW_MS
+
 internal fun enqueueApproval(
     prefs: android.content.SharedPreferences,
     approval: Approval,
     sourceId: String,
+    sourcePackage: String = approval.source,
+    postedAt: Long = approval.notificationPostedAt ?: System.currentTimeMillis(),
 ): EnqueueResult = synchronized(SMS_QUEUE_LOCK) {
     val processed = JSArray(prefs.getString(PROCESSED_SMS_KEY, "[]"))
     val processedIds = (0 until processed.length()).mapNotNull { processed.optString(it, null) }.toMutableList()
@@ -120,14 +142,39 @@ internal fun enqueueApproval(
     for (index in 0 until queue.length()) {
         if (queue.optJSONObject(index)?.optString("id") == sourceId) return@synchronized EnqueueResult.DUPLICATE
     }
+
+    // The same approval can be announced by Samsung Messages and Shinhan SOL a few
+    // seconds apart. Collapse only cross-app duplicates; identical repeat payments
+    // from the same app remain independent records.
+    val matches = JSArray(prefs.getString(RECENT_APPROVAL_MATCHES_KEY, "[]"))
+    val matchId = approvalMatchId(approval)
+    for (index in 0 until matches.length()) {
+        val previous = matches.optJSONObject(index) ?: continue
+        val previousPostedAt = previous.optLong("postedAt", 0L)
+        if (isCrossSourceApprovalDuplicate(
+                previous.optString("matchId"),
+                previous.optString("sourcePackage"),
+                previousPostedAt,
+                matchId,
+                sourcePackage,
+                postedAt,
+            )) return@synchronized EnqueueResult.DUPLICATE
+    }
+
     queue.put(approval.toJson(sourceId))
     while (queue.length() > MAX_QUEUE_SIZE) queue.remove(0)
+    matches.put(JSONObject()
+        .put("matchId", matchId)
+        .put("sourcePackage", sourcePackage)
+        .put("postedAt", postedAt))
+    while (matches.length() > MAX_RECENT_APPROVAL_MATCHES) matches.remove(0)
     processedIds.add(sourceId)
     while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
     val processedJson = JSArray().also { array -> processedIds.forEach(array::put) }
     val committed = prefs.edit()
         .putString(QUEUE_KEY, queue.toString())
         .putString(PROCESSED_SMS_KEY, processedJson.toString())
+        .putString(RECENT_APPROVAL_MATCHES_KEY, matches.toString())
         .commit()
     if (committed) EnqueueResult.ADDED else EnqueueResult.WRITE_FAILED
 }

@@ -18,6 +18,7 @@ export type SmsDiagnosticEvent = {
   matchedCount?: number;
   recoveredCount?: number;
   errorType?: string;
+  sourceApp?: string;
 };
 type SmsBridgePlugin = {
   addListener(eventName: 'approvalReceived', listener: () => void): Promise<{ remove: () => Promise<void> }>;
