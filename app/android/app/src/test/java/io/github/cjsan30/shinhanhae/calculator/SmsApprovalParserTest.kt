@@ -91,6 +91,7 @@ class SmsApprovalParserTest {
             matchId,
             "com.samsung.android.messaging",
             1_000L,
+            false,
             matchId,
             "com.shinhan.sbanking",
             30_000L,
@@ -106,8 +107,25 @@ class SmsApprovalParserTest {
             matchId,
             "com.samsung.android.messaging",
             1_000L,
+            false,
             matchId,
             "com.samsung.android.messaging",
+            30_000L,
+        ))
+    }
+
+    @Test
+    fun `does not reuse an already paired approval for a later payment`() {
+        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val matchId = approvalMatchId(approval)
+
+        assertFalse(isCrossSourceApprovalDuplicate(
+            matchId,
+            "com.samsung.android.messaging",
+            1_000L,
+            true,
+            matchId,
+            "com.shinhan.sbanking",
             30_000L,
         ))
     }

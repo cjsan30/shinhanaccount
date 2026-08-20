@@ -31,7 +31,7 @@ private const val SMS_LOG_TAG = "ShinhanhaeSms"
 private const val MAX_QUEUE_SIZE = 500
 private const val MAX_PROCESSED_SMS_IDS = 1000
 private const val MAX_RECENT_APPROVAL_MATCHES = 1000
-private const val CROSS_SOURCE_DEDUPLICATION_WINDOW_MS = 5 * 60 * 1000L
+private const val CROSS_SOURCE_DEDUPLICATION_WINDOW_MS = 90 * 1000L
 private val SMS_QUEUE_LOCK = Any()
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
@@ -120,11 +120,13 @@ internal fun isCrossSourceApprovalDuplicate(
     previousMatchId: String,
     previousSourcePackage: String,
     previousPostedAt: Long,
+    previousAlreadyPaired: Boolean,
     matchId: String,
     sourcePackage: String,
     postedAt: Long,
 ): Boolean = previousMatchId == matchId &&
     previousSourcePackage != sourcePackage &&
+    !previousAlreadyPaired &&
     kotlin.math.abs(previousPostedAt - postedAt) <= CROSS_SOURCE_DEDUPLICATION_WINDOW_MS
 
 internal fun enqueueApproval(
@@ -155,10 +157,23 @@ internal fun enqueueApproval(
                 previous.optString("matchId"),
                 previous.optString("sourcePackage"),
                 previousPostedAt,
+                previous.optBoolean("paired", false),
                 matchId,
                 sourcePackage,
                 postedAt,
-            )) return@synchronized EnqueueResult.DUPLICATE
+            )) {
+            // Consume this pairing once. A later, genuinely separate payment with
+            // the same minute/merchant/amount must not be absorbed into this pair.
+            previous.put("paired", true)
+            processedIds.add(sourceId)
+            while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
+            val pairedProcessedJson = JSArray().also { array -> processedIds.forEach(array::put) }
+            val paired = prefs.edit()
+                .putString(PROCESSED_SMS_KEY, pairedProcessedJson.toString())
+                .putString(RECENT_APPROVAL_MATCHES_KEY, matches.toString())
+                .commit()
+            return@synchronized if (paired) EnqueueResult.DUPLICATE else EnqueueResult.WRITE_FAILED
+        }
     }
 
     queue.put(approval.toJson(sourceId))
@@ -166,7 +181,8 @@ internal fun enqueueApproval(
     matches.put(JSONObject()
         .put("matchId", matchId)
         .put("sourcePackage", sourcePackage)
-        .put("postedAt", postedAt))
+        .put("postedAt", postedAt)
+        .put("paired", false))
     while (matches.length() > MAX_RECENT_APPROVAL_MATCHES) matches.remove(0)
     processedIds.add(sourceId)
     while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
