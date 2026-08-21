@@ -8,7 +8,7 @@
 - 무료/유료: 무료
 - 카테고리: 금융
 - 패키지 ID: `io.github.cjsan30.shinhanhae.calculator`
-- 버전: `1.2` (`versionCode 3`)
+- 버전: `1.3` (`versionCode 4`)
 - 최소 Android: Android 10(API 29)
 - 대상 Android: Android 16(API 36)
 
