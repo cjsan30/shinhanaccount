@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WidgetBridgePlugin.class);
         registerPlugin(FileExportPlugin.class);
         registerPlugin(AppHealthPlugin.class);
+        registerPlugin(ExternalAppPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

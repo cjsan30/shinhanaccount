@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { filterTransactionsForConfiguredCard } from '../domain/cardImportSafety';
 import { parseShinhanCardExport, type ImportedCardTransaction } from '../domain/shinhanImport';
+import { openShinhanSolPay } from '../native/externalApp';
 
 type Props = {
   cardLast4: string;
@@ -35,6 +36,7 @@ export function TransactionImport({ cardLast4, onImport, notify }: Props) {
         <li><b>카드이용내역</b>에서 카드와 조회 기간을 선택합니다.</li>
         <li>조회한 뒤 화면 아래 <b>엑셀 저장</b>을 누릅니다.</li>
       </ol>
+      <button className="import-card__open-app" type="button" onClick={() => void openShinhanSolPay().catch(() => notify('신한카드 앱을 열지 못했습니다. 설치 여부를 확인해 주세요.'))}>신한카드 앱 열기</button>
     </section>
     <section className="import-card__upload">
       <strong>거래내역 파일 등록</strong>

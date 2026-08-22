@@ -11,5 +11,6 @@ describe('transaction import', () => {
     expect(input).toHaveAttribute('accept', expect.stringContaining('.xls'));
     expect(input?.getAttribute('accept')).not.toContain('.pdf');
     expect(container.textContent).not.toContain('PDF');
+    expect(container.textContent).toContain('신한카드 앱 열기');
   });
 });
