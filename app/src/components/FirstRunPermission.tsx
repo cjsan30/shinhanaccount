@@ -3,8 +3,84 @@ import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { NotificationBridge } from '../native/notificationBridge';
 import { SmsBridge } from '../native/smsBridge';
 
-export function FirstRunPermission({ onComplete }: { onComplete: (cardLast4: string) => void }) {
-  const [cardLast4, setCardLast4] = useState(''); const [visible, setVisible] = useState(false); const [message, setMessage] = useState<string | null>(null); const [saving, setSaving] = useState(false);
-  const start = async () => { if (!/^\d{4}$/.test(cardLast4)) { setMessage('카드 끝 4자리를 입력해 주세요.'); return; } setSaving(true); setMessage(null); try { const notifications = await NotificationBridge.requestPermission(); if (!notifications.granted) { setMessage('승인 결제와 예산 경고를 알려면 앱 알림을 허용해 주세요.'); return; } const access = await SmsBridge.getNotificationAccessStatus(); if (!access.granted) { await SmsBridge.openNotificationAccessSettings(); setMessage('알림 접근에서 신청해 계산기를 허용한 뒤 앱으로 돌아와 다시 눌러 주세요.'); return; } onComplete(cardLast4); } catch { setMessage('권한 설정을 완료할 수 없습니다. Android 앱에서 다시 시도해 주세요.'); } finally { setSaving(false); } };
-  return <main className="first-run"><div className="first-run__mark">지원금 관리 · 1/3</div><h1>자동 관리를<br />시작할게요</h1><p>결제 알림 사용에 동의한 뒤 실제 사용 계획을 확정합니다.</p><section className="first-run__card"><label>카드 끝 4자리<div className="first-run__input"><input aria-label="초기 카드 끝 4자리" type={visible ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={cardLast4} onChange={(event) => setCardLast4(event.target.value.replace(/\D/g, ''))} /><button type="button" aria-label={visible ? '카드 끝자리 숨기기' : '카드 끝자리 보기'} onClick={() => setVisible((current) => !current)}>{visible ? <EyeSlash size={20} /> : <Eye size={20} />}</button></div></label></section><section className="first-run__notice"><strong>결제 알림 접근 안내</strong><span>신청해 계산기는 삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다. 거래 시각·금액·상호명만 저장하며, 원본 알림을 저장·전송·삭제하지 않습니다. 이 기능은 시스템 설정에서 언제든 해제할 수 있습니다.</span><small>두 앱에서 같은 승인 알림이 오면 한 건으로 합칩니다. 접근이 중단된 동안의 결제는 신한카드 엑셀 또는 직접 등록으로 보완할 수 있습니다.</small></section>{message && <p role="alert" className="first-run__error">{message}</p>}<button className="first-run__start" type="button" onClick={() => void start()} disabled={saving}>{saving ? '권한 확인 중…' : '동의하고 알림 접근 설정'}</button></main>;
+type Props = {
+  onComplete: (cardLast4: string) => void;
+  onSkip?: () => void;
+};
+
+export function FirstRunPermission({ onComplete, onSkip }: Props) {
+  const [cardLast4, setCardLast4] = useState('');
+  const [visible, setVisible] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const start = async () => {
+    if (!/^\d{4}$/.test(cardLast4)) {
+      setMessage('카드 끝 4자리를 입력해 주세요.');
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const notifications = await NotificationBridge.requestPermission();
+      if (!notifications.granted) {
+        setMessage('승인 결제와 예산 경고를 알려면 앱 알림을 허용해 주세요.');
+        return;
+      }
+      const access = await SmsBridge.getNotificationAccessStatus();
+      if (!access.granted) {
+        await SmsBridge.openNotificationAccessSettings();
+        setMessage('알림 접근에서 신청해 계산기를 허용한 뒤 앱으로 돌아와 다시 눌러 주세요.');
+        return;
+      }
+      onComplete(cardLast4);
+    } catch {
+      setMessage('권한 설정을 완료할 수 없습니다. Android 앱에서 다시 시도해 주세요.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="first-run">
+      <div className="first-run__mark">지원금 관리 · 1/3</div>
+      <h1>자동 관리를<br />시작할게요</h1>
+      <p>결제 알림 사용에 동의한 뒤 실제 사용 계획을 확정합니다.</p>
+      <section className="first-run__card">
+        <label>
+          카드 끝 4자리
+          <div className="first-run__input">
+            <input
+              aria-label="초기 카드 끝 4자리"
+              type={visible ? 'text' : 'password'}
+              inputMode="numeric"
+              maxLength={4}
+              value={cardLast4}
+              onChange={(event) => setCardLast4(event.target.value.replace(/\D/g, ''))}
+            />
+            <button type="button" aria-label={visible ? '카드 끝자리 숨기기' : '카드 끝자리 보기'} onClick={() => setVisible((current) => !current)}>
+              {visible ? <EyeSlash size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+        </label>
+      </section>
+      <section className="first-run__notice">
+        <strong>결제 알림 접근 안내</strong>
+        <span>
+          신청해 계산기는 삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다.
+          거래 시각·금액·상호명만 저장하며, 원본 알림을 저장·전송·삭제하지 않습니다. 이 기능은 시스템 설정에서 언제든 해제할 수 있습니다.
+        </span>
+        <small>두 앱에서 같은 승인 알림이 오면 한 건으로 합칩니다. 접근이 중단된 동안의 결제는 신한카드 엑셀 또는 직접 등록으로 보완할 수 있습니다.</small>
+      </section>
+      {message && <p role="alert" className="first-run__error">{message}</p>}
+      <button className="first-run__start" type="button" onClick={() => void start()} disabled={saving}>
+        {saving ? '권한 확인 중…' : '동의하고 알림 접근 설정'}
+      </button>
+      {onSkip && (
+        <button className="guide-toggle" type="button" onClick={() => onSkip()}>
+          넘어가기
+        </button>
+      )}
+    </main>
+  );
 }
