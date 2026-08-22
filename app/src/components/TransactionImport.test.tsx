@@ -4,7 +4,7 @@ import { TransactionImport } from './TransactionImport';
 
 describe('transaction import', () => {
   it('offers only the supported Shinhan Card Excel formats', () => {
-    const { container } = render(<TransactionImport cardLast4="1111" onImport={vi.fn()} onDirectStart={vi.fn()} notify={vi.fn()} />);
+    const { container } = render(<TransactionImport cardLast4="1111" onImport={vi.fn()} notify={vi.fn()} />);
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();

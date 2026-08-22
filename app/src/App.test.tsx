@@ -40,9 +40,11 @@ describe('app entry flows', () => {
     expect(previousPanel('edit')).toBe('detail');
     expect(previousPanel('resident')).toBeNull();
   });
-  it('shows policy onboarding when a new user has no confirmed policy', async () => {
+  it('asks whether a new user is an applicant before policy onboarding', async () => {
     render(<App />);
-    expect(await screen.findByRole('heading', { name: /자동 관리를/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /지원자인가요/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '지원금 관리' })).not.toBeInTheDocument();
   });
 
