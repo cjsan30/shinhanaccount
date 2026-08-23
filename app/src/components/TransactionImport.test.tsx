@@ -12,5 +12,9 @@ describe('transaction import', () => {
     expect(input?.getAttribute('accept')).not.toContain('.pdf');
     expect(container.textContent).not.toContain('PDF');
     expect(container.textContent).toContain('신한카드 앱 열기');
+    const video = container.querySelector('video');
+    expect(video).toHaveAttribute('loop');
+    expect(video?.muted).toBe(true);
+    expect(video?.querySelector('source')).toHaveAttribute('src', '/onboarding-shinhan-solpay-excel-guide.mp4');
   });
 });

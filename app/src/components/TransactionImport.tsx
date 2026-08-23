@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { filterTransactionsForConfiguredCard } from '../domain/cardImportSafety';
 import { parseShinhanCardExport, type ImportedCardTransaction } from '../domain/shinhanImport';
 import { openShinhanSolPay } from '../native/externalApp';
@@ -13,6 +13,17 @@ export function TransactionImport({ cardLast4, onImport, notify }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [transactions, setTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [warning, setWarning] = useState(false);
+  const guideVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = guideVideoRef.current;
+    if (!video || !('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void video.play().catch(() => undefined);
+      else video.pause();
+    }, { threshold: 0.2 });
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
   const readFile = async () => {
     if (!file) return;
     try {
@@ -28,7 +39,9 @@ export function TransactionImport({ cardLast4, onImport, notify }: Props) {
     } catch (error) { notify(error instanceof Error ? error.message : '파일 형식 또는 비밀번호를 확인해 주세요.'); }
   };
   return <section className="import-card import-card--guided">
-    <img className="import-card__example" src="/onboarding-card-history-example-redacted.png" alt="구매처와 금액을 가린 신한 SOL Pay 결제내역 예시. 하단 엑셀 저장 버튼이 강조되어 있다." />
+    <video ref={guideVideoRef} className="import-card__example import-card__video" autoPlay muted loop playsInline preload="metadata" poster="/onboarding-card-history-example-redacted.png" aria-label="개인정보를 가린 신한 SOL Pay 엑셀 저장 방법 안내 영상">
+      <source src="/onboarding-shinhan-solpay-excel-guide.mp4" type="video/mp4" />
+    </video>
     <section className="import-card__guide">
       <strong>신한 SOL Pay에서 엑셀 받기</strong>
       <ol>
