@@ -18,6 +18,7 @@ type Props = {
   onFileSelected: (file: File | null) => void;
   onPreviewImport: () => void;
   onApplyImport: () => void;
+  onOpenImportGuide: () => void;
   onPolicyTextChange: (value: string) => void;
   onReviewPolicy: () => void;
   onReadPolicyScreenshot: () => void;
@@ -36,6 +37,7 @@ export function DataManagementPanel(props: Props) {
       <summary><strong>거래내역</strong><span>신한카드 엑셀 가져오기</span></summary>
       <div className="data-section__body import-card">
         <p>신한카드 앱에서 카드 하나만 선택해 내려받은 이용내역 엑셀(.xls/.xlsx)을 읽습니다.</p>
+        <button className="sheet-action secondary-action" onClick={props.onOpenImportGuide}>거래내역 등록 가이드</button>
         <label className="file-picker">신한카드 엑셀 파일 선택<input aria-label="거래내역 파일" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { props.onFileSelected(event.target.files?.[0] ?? null); event.currentTarget.value = ''; }} /></label>
         {props.importFile && <div className="import-preview"><strong className="import-file-name">{props.importFile.name}</strong><button className="sheet-action" onClick={props.onPreviewImport}>파일 읽기</button></div>}
         {props.importTransactions && <div className="import-preview">{props.hasMaskedCardWarning && <p className="import-warning">카드 번호가 일부 가려져 있습니다. 설정 카드 기준으로 일치하는 내역만 가져옵니다.</p>}<strong>{props.importTransactions.length}건 확인</strong><span>가져오기 전 자동 분류 결과를 확인한 뒤 적용합니다.</span><button className="sheet-action" onClick={props.onApplyImport}>내역 가져오기</button></div>}

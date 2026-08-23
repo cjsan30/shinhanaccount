@@ -96,6 +96,19 @@ describe('app entry flows', () => {
     expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   });
 
+  it('opens the transaction registration guide from data management', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '거래내역 등록 가이드' }));
+    expect(screen.getByRole('heading', { name: /결제내역을\s*등록할까요/ })).toBeInTheDocument();
+  });
+
   it('shows the two notification controls with status-aware copy', () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
