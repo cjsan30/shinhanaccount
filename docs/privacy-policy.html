@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>신청해 계산기 개인정보처리방침</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:#10151b;color:#eef3f7}body{margin:0}main{max-width:760px;margin:auto;padding:48px 24px 80px}h1{font-size:32px}h2{margin-top:36px;font-size:20px;color:#94e3d9}p,li{line-height:1.75;color:#c3cfda}a{color:#7fded4}aside{margin:28px 0;padding:18px;border-radius:16px;background:#192634}code{color:#a9ebe4}small{color:#91a0af}
+  </style>
+</head>
+<body>
+<main>
+  <h1>신청해 계산기 개인정보처리방침</h1>
+  <p>신청해 계산기(이하 “앱”)는 지원금 계획과 지출 내역을 사용자 기기 안에서 관리하는 Android 앱입니다. 이 방침은 앱이 어떤 정보에 접근하고 어떻게 처리·보관·삭제하는지 설명합니다.</p>
+  <aside><strong>시행일: 2026년 8월 21일</strong><br><small>앱 버전 1.3 기준</small></aside>
+
+  <h2>1. 접근하고 처리하는 정보</h2>
+  <p>사용자가 Android 시스템 설정에서 알림 접근을 허용하면 앱은 삼성 메시지(<code>com.samsung.android.messaging</code>)와 신한 SOL(<code>com.shinhan.sbanking</code>) 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 형식만 기기 안에서 처리합니다. 같은 승인 알림이 두 앱에 게시되면 카드 끝 4자리·승인 시각·금액·상호명을 기준으로 한 건으로 합칩니다.</p>
+  <ul><li>결제 시각과 알림 게시 시각</li><li>결제 금액과 상호명</li><li>카드 끝 4자리</li><li>사용자가 정한 분류·상태·자동 분류 규칙</li><li>동일 알림의 중복 처리를 막는 비가역 식별값</li></ul>
+
+  <h2>2. 처리하지 않는 정보</h2>
+  <ul><li>SMS·MMS·통화 기록</li><li>카드 전체 번호</li><li>승인 알림 원문과 발신자 정보</li><li>허용 대상 외 다른 앱의 알림 내용</li><li>삼성 메시지의 일반 대화 내용</li></ul>
+  <p>앱은 <code>READ_SMS</code>와 <code>RECEIVE_SMS</code> 권한을 요청하지 않으며, 처리한 알림을 상단바에서 삭제하지 않습니다.</p>
+
+  <h2>3. 이용 목적</h2>
+  <p>처리된 정보는 결제 내역 생성, 예산 사용량 계산, 자동 분류, 미정 지출 관리, 예산 경고, 홈 위젯 갱신과 사용자 요청에 따른 증빙 PDF 생성에만 사용합니다.</p>
+
+  <h2>4. 보관과 보안</h2>
+  <p>거래·정책·분류 규칙은 사용자 기기의 암호화 SQLite에 저장하고, 카드 끝 4자리와 미처리 승인 대기열은 Android Keystore 기반 암호화 저장소에 보관합니다. 앱은 해당 정보를 운영 서버, 광고 SDK, 분석 서비스 또는 제3자에게 전송하거나 공유하지 않습니다.</p>
+
+  <h2>5. 권한 선택과 대체 기능</h2>
+  <p>알림 접근과 앱 알림 권한은 Android 시스템 설정에서 언제든 해제할 수 있습니다. 알림 접근을 허용하지 않거나 중단해도 신한카드 엑셀 가져오기와 직접 지출 등록을 사용할 수 있습니다. 접근 중단 기간의 거래는 자동 복구되지 않을 수 있으므로 파일 가져오기로 대조해야 합니다.</p>
+
+  <h2>6. 보관 기간과 삭제</h2>
+  <p>정보는 사용자가 삭제할 때까지 기기에 보관됩니다. 사용자는 앱에서 개별 거래를 삭제할 수 있고, Android 앱 정보에서 데이터 삭제를 실행하거나 앱을 제거하면 기기 내부 데이터가 삭제됩니다. 사용자가 생성한 암호화 백업과 PDF는 사용자가 직접 보관·삭제합니다.</p>
+
+  <h2>7. 아동의 개인정보</h2>
+  <p>앱은 만 18세 미만을 대상으로 하지 않으며, 사용자 계정이나 생년월일 정보를 수집하지 않습니다.</p>
+
+  <h2>8. 문의</h2>
+  <p>개인정보 관련 문의는 <a href="https://github.com/cjsan30/shinhanaccount/issues/new">GitHub 문의 등록</a>을 이용할 수 있습니다. 공개 이슈에는 카드번호, 승인 원문, 영수증 등 개인정보를 작성하지 마세요.</p>
+
+  <h2>9. 방침 변경</h2>
+  <p>앱 기능이나 처리 범위가 변경되면 이 페이지의 시행일과 내용을 갱신합니다.</p>
+</main>
+</body>
+</html>
