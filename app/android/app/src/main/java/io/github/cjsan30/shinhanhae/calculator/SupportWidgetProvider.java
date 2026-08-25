@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.RemoteViews;
 import java.text.NumberFormat;
 import java.util.Locale;
@@ -23,29 +24,51 @@ public class SupportWidgetProvider extends AppWidgetProvider {
     private static final String RESIDENT = "\uC815\uC8FC\uBE44";
     private static final String STUDY = "\uD559\uC2B5\uACF5\uAC04\uBE44";
     private static final String COUNT = "\uAC74";
+    private static final String RESIZE_HINT_PREFIX = "widget_resize_hint_";
+    private static final String INITIAL_WIDTH_PREFIX = "widget_initial_width_";
+    private static final String INITIAL_HEIGHT_PREFIX = "widget_initial_height_";
 
     @Override public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
-        for (int id : ids) manager.updateAppWidget(id, render(context, id, widgetLayout()));
+        for (int id : ids) {
+            Bundle options = manager.getAppWidgetOptions(id);
+            storeInitialSize(context, id, options);
+            manager.updateAppWidget(id, render(context, id, layoutForSize(width(options), height(options))));
+        }
     }
 
     @Override public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int id, Bundle options) {
         super.onAppWidgetOptionsChanged(context, manager, id, options);
-        manager.updateAppWidget(id, render(context, id, widgetLayout()));
+        dismissResizeHintAfterResize(context, id, options);
+        manager.updateAppWidget(id, render(context, id, layoutForSize(width(options), height(options))));
     }
 
-    protected int widgetLayout() { return R.layout.widget_4x2; }
+    @Override public void onDeleted(Context context, int[] ids) {
+        SharedPreferences.Editor editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit();
+        for (int id : ids) {
+            editor.remove(RESIZE_HINT_PREFIX + id);
+            editor.remove(INITIAL_WIDTH_PREFIX + id);
+            editor.remove(INITIAL_HEIGHT_PREFIX + id);
+        }
+        editor.apply();
+        super.onDeleted(context, ids);
+    }
 
     public static void updateAll(Context context) {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
-        updateProvider(context, manager, SupportWidgetProvider.class, R.layout.widget_4x2);
-        updateProvider(context, manager, SupportWidget4x1Provider.class, R.layout.widget_4x1);
-        updateProvider(context, manager, SupportWidget2x1Provider.class, R.layout.widget_2x1);
-        updateProvider(context, manager, SupportWidget1x1Provider.class, R.layout.widget_1x1);
+        int[] ids = manager.getAppWidgetIds(new ComponentName(context, SupportWidgetProvider.class));
+        for (int id : ids) {
+            Bundle options = manager.getAppWidgetOptions(id);
+            manager.updateAppWidget(id, render(context, id, layoutForSize(width(options), height(options))));
+        }
     }
 
-    private static void updateProvider(Context context, AppWidgetManager manager, Class<? extends SupportWidgetProvider> provider, int layout) {
-        int[] ids = manager.getAppWidgetIds(new ComponentName(context, provider));
-        for (int id : ids) manager.updateAppWidget(id, render(context, id, layout));
+    static int layoutForSize(int widthDp, int heightDp) {
+        if (widthDp < 110) return R.layout.widget_1x1;
+        if (widthDp < 170) return R.layout.widget_2x1;
+        if (heightDp >= 95) return R.layout.widget_4x2;
+        if (widthDp < 230) return R.layout.widget_4x1;
+        if (widthDp < 290) return R.layout.widget_4x1_detail;
+        return R.layout.widget_5x1;
     }
 
     private static RemoteViews render(Context context, int id, int layout) {
@@ -93,6 +116,21 @@ public class SupportWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_amount, totalAmount);
             views.setTextViewText(R.id.widget_percent, percent(totalProgress));
             views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
+        } else if (layout == R.layout.widget_4x1_detail) {
+            views.setTextViewText(R.id.widget_title, TITLE);
+            views.setTextViewText(R.id.widget_amount, totalAmount);
+            views.setTextViewText(R.id.widget_percent, percent(totalProgress));
+            views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
+            views.setTextViewText(R.id.widget_breakdown, breakdown(hide, residentRemaining, studyRemaining));
+            boolean resized = prefs.getBoolean(RESIZE_HINT_PREFIX + id, false);
+            views.setViewVisibility(R.id.widget_resize_hint, resized ? View.GONE : View.VISIBLE);
+        } else if (layout == R.layout.widget_5x1) {
+            views.setTextViewText(R.id.widget_title, TITLE);
+            views.setTextViewText(R.id.widget_amount, totalAmount);
+            views.setTextViewText(R.id.widget_percent, percent(totalProgress));
+            views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
+            views.setTextViewText(R.id.widget_breakdown, breakdown(hide, residentRemaining, studyRemaining));
+            views.setTextViewText(R.id.widget_undecided, UNDECIDED + undecided + COUNT);
         } else {
             views.setTextViewText(R.id.widget_title, TITLE);
             views.setTextViewText(R.id.widget_amount, totalAmount);
@@ -117,5 +155,26 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         return Math.max(0, Math.min(MAX, Math.round((spent * 1f / limit) * MAX)));
     }
     static String percent(int progress) { return String.format(Locale.KOREA, "%.1f%%", progress / 10f); }
+    private static String breakdown(boolean hide, int residentRemaining, int studyRemaining) {
+        return RESIDENT + " " + (hide ? HIDDEN : won(residentRemaining)) + "   ·   " + STUDY + " " + (hide ? HIDDEN : won(studyRemaining));
+    }
+    private static int width(Bundle options) { return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250); }
+    private static int height(Bundle options) { return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 40); }
+    private static void storeInitialSize(Context context, int id, Bundle options) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!prefs.contains(INITIAL_WIDTH_PREFIX + id)) {
+            prefs.edit().putInt(INITIAL_WIDTH_PREFIX + id, width(options)).putInt(INITIAL_HEIGHT_PREFIX + id, height(options)).apply();
+        }
+    }
+    private static void dismissResizeHintAfterResize(Context context, int id, Bundle options) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!prefs.contains(INITIAL_WIDTH_PREFIX + id)) {
+            storeInitialSize(context, id, options);
+            return;
+        }
+        int changedWidth = Math.abs(width(options) - prefs.getInt(INITIAL_WIDTH_PREFIX + id, width(options)));
+        int changedHeight = Math.abs(height(options) - prefs.getInt(INITIAL_HEIGHT_PREFIX + id, height(options)));
+        if (changedWidth >= 20 || changedHeight >= 20) prefs.edit().putBoolean(RESIZE_HINT_PREFIX + id, true).apply();
+    }
     private static String won(int amount) { return NumberFormat.getNumberInstance(Locale.KOREA).format(amount) + "\uC6D0"; }
 }

@@ -1,1 +1,0 @@
-package io.github.cjsan30.shinhanhae.calculator; public final class SupportWidget4x1Provider extends SupportWidgetProvider { @Override protected int widgetLayout() { return R.layout.widget_4x1; } }

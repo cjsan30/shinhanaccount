@@ -5,10 +5,7 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>
-        <receiver android:name=".SupportWidgetProvider" android:exported="false" android:label="@string/widget_name_4x2"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_4x2_info" /></receiver>
-        <receiver android:name=".SupportWidget4x1Provider" android:exported="false" android:label="@string/widget_name_4x1"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_4x1_info" /></receiver>
-        <receiver android:name=".SupportWidget2x1Provider" android:exported="false" android:label="@string/widget_name_2x1"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_2x1_info" /></receiver>
-        <receiver android:name=".SupportWidget1x1Provider" android:exported="false" android:label="@string/widget_name_1x1"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_1x1_info" /></receiver>
+        <receiver android:name=".SupportWidgetProvider" android:exported="false" android:label="@string/widget_name"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_info" /></receiver>
         <service
             android:name=".ShinhanMessageNotificationListener"
             android:exported="false"
