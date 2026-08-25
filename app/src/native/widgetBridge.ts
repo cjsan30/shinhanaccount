@@ -10,6 +10,7 @@ export type WidgetSnapshot = {
   studyLimit: number;
   studySpent: number;
   undecidedCount: number;
+  categoryRows: Array<{ label: string; limit: number; spent: number }>;
 };
 
 type WidgetBridgePlugin = { sync(snapshot: WidgetSnapshot): Promise<void> };
