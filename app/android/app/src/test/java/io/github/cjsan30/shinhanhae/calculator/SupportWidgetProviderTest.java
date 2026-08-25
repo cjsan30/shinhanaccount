@@ -28,5 +28,6 @@ public class SupportWidgetProviderTest {
         assertEquals(R.layout.widget_4x1_detail, SupportWidgetProvider.layoutForSize(250, 40));
         assertEquals(R.layout.widget_5x1, SupportWidgetProvider.layoutForSize(310, 40));
         assertEquals(R.layout.widget_4x2, SupportWidgetProvider.layoutForSize(250, 110));
+        assertEquals(R.layout.widget_tall, SupportWidgetProvider.layoutForSize(250, 160));
     }
 }

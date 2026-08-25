@@ -63,6 +63,7 @@ public class SupportWidgetProvider extends AppWidgetProvider {
     }
 
     static int layoutForSize(int widthDp, int heightDp) {
+        if (widthDp >= 170 && heightDp >= 150) return R.layout.widget_tall;
         if (widthDp < 110) return R.layout.widget_1x1;
         if (widthDp < 170) return R.layout.widget_2x1;
         if (heightDp >= 95) return R.layout.widget_4x2;
@@ -131,6 +132,18 @@ public class SupportWidgetProvider extends AppWidgetProvider {
             views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
             views.setTextViewText(R.id.widget_breakdown, breakdown(hide, residentRemaining, studyRemaining));
             views.setTextViewText(R.id.widget_undecided, UNDECIDED + undecided + COUNT);
+        } else if (layout == R.layout.widget_tall) {
+            views.setTextViewText(R.id.widget_title, TITLE);
+            views.setTextViewText(R.id.widget_amount, totalAmount);
+            views.setTextViewText(R.id.widget_percent, percent(totalProgress));
+            views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
+            views.setTextViewText(R.id.widget_resident_amount, RESIDENT + " · " + (hide ? HIDDEN : won(residentRemaining)));
+            views.setTextViewText(R.id.widget_study_amount, STUDY + " · " + (hide ? HIDDEN : won(studyRemaining)));
+            views.setTextViewText(R.id.widget_undecided, UNDECIDED + undecided + COUNT);
+            setResidentRow(views, R.id.widget_resident_row_1, R.id.widget_resident_row_1_progress, prefs, 0);
+            setResidentRow(views, R.id.widget_resident_row_2, R.id.widget_resident_row_2_progress, prefs, 1);
+            setResidentRow(views, R.id.widget_resident_row_3, R.id.widget_resident_row_3_progress, prefs, 2);
+            setResidentRow(views, R.id.widget_resident_row_4, R.id.widget_resident_row_4_progress, prefs, 3);
         } else {
             views.setTextViewText(R.id.widget_title, TITLE);
             views.setTextViewText(R.id.widget_amount, totalAmount);
@@ -177,6 +190,20 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         int changedWidth = Math.abs(width(options) - prefs.getInt(INITIAL_WIDTH_PREFIX + id, width(options)));
         int changedHeight = Math.abs(height(options) - prefs.getInt(INITIAL_HEIGHT_PREFIX + id, height(options)));
         if (changedWidth >= 20 || changedHeight >= 20) prefs.edit().putBoolean(RESIZE_HINT_PREFIX + id, true).apply();
+    }
+    private static void setResidentRow(RemoteViews views, int textId, int progressId, SharedPreferences prefs, int index) {
+        String label = prefs.getString("residentRowLabel" + index, "");
+        int limit = prefs.getInt("residentRowLimit" + index, 0);
+        if (label == null || label.isEmpty() || limit <= 0) {
+            views.setViewVisibility(textId, View.GONE);
+            views.setViewVisibility(progressId, View.GONE);
+            return;
+        }
+        int itemProgress = progress(prefs.getInt("residentRowSpent" + index, 0), limit);
+        views.setViewVisibility(textId, View.VISIBLE);
+        views.setViewVisibility(progressId, View.VISIBLE);
+        views.setTextViewText(textId, label + "  " + percent(itemProgress));
+        views.setProgressBar(progressId, MAX, itemProgress, false);
     }
     private static String won(int amount) { return NumberFormat.getNumberInstance(Locale.KOREA).format(amount) + "\uC6D0"; }
 }
