@@ -188,11 +188,6 @@ function App() {
   const recent = useMemo(() => getRecentEntries(ledger, activePolicy.periodKey, Number.POSITIVE_INFINITY, todayEnd), [ledger, activePolicy.periodKey, todayEnd]);
   const detailTarget = detailTargetId ? ledger.entries.find((entry) => entry.id === detailTargetId) ?? null : null;
   const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
-  const widgetCategoryRows = useMemo(() => POLICY_ITEMS.map((item) => ({
-    label: item.label,
-    limit: policy.plans[item.key],
-    spent: item.ledgerCategories.reduce((sum, category) => sum + (categorySpent[category] ?? 0), 0),
-  })).filter((item) => item.limit > 0).sort((left, right) => right.spent - left.spent || right.limit - left.limit).slice(0, 4), [categorySpent, policy]);
   useEffect(() => {
     void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey }).catch(() => undefined);
   }, [activePolicy.periodKey, categoryLimits, categorySpent, ledger.alertThresholds]);
@@ -208,9 +203,8 @@ function App() {
       studyLimit: budgetLimits.studySpace,
       studySpent: study.spent,
       undecidedCount,
-      categoryRows: widgetCategoryRows,
     }).catch(() => undefined);
-  }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount, widgetCategoryRows]);
+  }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
   // A foreground native event handles new approvals immediately. The initial and
   // visibility checks recover approvals queued while the app was not active.

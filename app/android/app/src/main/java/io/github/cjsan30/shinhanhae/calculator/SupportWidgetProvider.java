@@ -63,7 +63,6 @@ public class SupportWidgetProvider extends AppWidgetProvider {
     }
 
     static int layoutForSize(int widthDp, int heightDp) {
-        if (widthDp >= 170 && heightDp >= 150) return R.layout.widget_tall;
         if (widthDp < 110) return R.layout.widget_1x1;
         if (widthDp < 170) return R.layout.widget_2x1;
         if (heightDp >= 95) return R.layout.widget_4x2;
@@ -108,10 +107,10 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         } else if (layout == R.layout.widget_2x1) {
             views.setTextViewText(R.id.widget_resident_title, RESIDENT);
             views.setTextViewText(R.id.widget_study_title, STUDY);
+            views.setTextViewText(R.id.widget_resident_amount, hide ? HIDDEN : won(residentRemaining));
+            views.setTextViewText(R.id.widget_study_amount, hide ? HIDDEN : won(studyRemaining));
             views.setTextViewText(R.id.widget_resident_percent, percent(residentProgress));
-            views.setImageViewBitmap(R.id.widget_resident_drop, WidgetDropBitmap.create(residentProgress));
             views.setTextViewText(R.id.widget_study_percent, percent(studyProgress));
-            views.setImageViewBitmap(R.id.widget_study_drop, WidgetDropBitmap.create(studyProgress));
         } else if (layout == R.layout.widget_4x1) {
             views.setTextViewText(R.id.widget_title, TITLE);
             views.setTextViewText(R.id.widget_amount, totalAmount);
@@ -132,15 +131,6 @@ public class SupportWidgetProvider extends AppWidgetProvider {
             views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
             views.setTextViewText(R.id.widget_breakdown, breakdown(hide, residentRemaining, studyRemaining));
             views.setTextViewText(R.id.widget_undecided, UNDECIDED + undecided + COUNT);
-        } else if (layout == R.layout.widget_tall) {
-            views.setTextViewText(R.id.widget_title, TITLE);
-            views.setTextViewText(R.id.widget_amount, totalAmount);
-            views.setTextViewText(R.id.widget_percent, percent(totalProgress));
-            views.setProgressBar(R.id.widget_progress, MAX, totalProgress, false);
-            setCategoryRow(views, R.id.widget_category_1, R.id.widget_category_1_progress, prefs, 0);
-            setCategoryRow(views, R.id.widget_category_2, R.id.widget_category_2_progress, prefs, 1);
-            setCategoryRow(views, R.id.widget_category_3, R.id.widget_category_3_progress, prefs, 2);
-            setCategoryRow(views, R.id.widget_category_4, R.id.widget_category_4_progress, prefs, 3);
         } else {
             views.setTextViewText(R.id.widget_title, TITLE);
             views.setTextViewText(R.id.widget_amount, totalAmount);
@@ -187,20 +177,6 @@ public class SupportWidgetProvider extends AppWidgetProvider {
         int changedWidth = Math.abs(width(options) - prefs.getInt(INITIAL_WIDTH_PREFIX + id, width(options)));
         int changedHeight = Math.abs(height(options) - prefs.getInt(INITIAL_HEIGHT_PREFIX + id, height(options)));
         if (changedWidth >= 20 || changedHeight >= 20) prefs.edit().putBoolean(RESIZE_HINT_PREFIX + id, true).apply();
-    }
-    private static void setCategoryRow(RemoteViews views, int textId, int progressId, SharedPreferences prefs, int index) {
-        String label = prefs.getString("categoryLabel" + index, "");
-        if (label == null || label.isEmpty()) {
-            views.setViewVisibility(textId, View.GONE);
-            views.setViewVisibility(progressId, View.GONE);
-            return;
-        }
-        int spent = prefs.getInt("categorySpent" + index, 0);
-        int limit = prefs.getInt("categoryLimit" + index, 0);
-        views.setViewVisibility(textId, View.VISIBLE);
-        views.setViewVisibility(progressId, View.VISIBLE);
-        views.setTextViewText(textId, label + "  " + percent(progress(spent, limit)));
-        views.setProgressBar(progressId, MAX, progress(spent, limit), false);
     }
     private static String won(int amount) { return NumberFormat.getNumberInstance(Locale.KOREA).format(amount) + "\uC6D0"; }
 }
