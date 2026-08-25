@@ -158,8 +158,12 @@ public class SupportWidgetProvider extends AppWidgetProvider {
     private static String breakdown(boolean hide, int residentRemaining, int studyRemaining) {
         return RESIDENT + " " + (hide ? HIDDEN : won(residentRemaining)) + "   ·   " + STUDY + " " + (hide ? HIDDEN : won(studyRemaining));
     }
-    private static int width(Bundle options) { return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250); }
-    private static int height(Bundle options) { return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 40); }
+    private static int width(Bundle options) {
+        return Math.max(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250), options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0));
+    }
+    private static int height(Bundle options) {
+        return Math.max(options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 40), options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0));
+    }
     private static void storeInitialSize(Context context, int id, Bundle options) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!prefs.contains(INITIAL_WIDTH_PREFIX + id)) {
