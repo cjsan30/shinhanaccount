@@ -23,7 +23,7 @@ type Props = {
   onReviewPolicy: () => void;
   onReadPolicyScreenshot: () => void;
   onUpdatePolicyDraft: (item: PolicyItem, value: string) => void;
-  onConfirmPolicy: () => void;
+  onConfirmPolicy: (applyTo: 'current' | 'next') => void;
   onOpenRules: () => void;
   onRestore: (payload: BackupPayload) => void;
   notify: (message: string) => void;
@@ -61,7 +61,7 @@ export function DataManagementPanel(props: Props) {
           <section className="policy-group"><h4>정주비 <span>{won(getPolicyLimit(props.policyDraft, 'resident'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'resident').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <section className="policy-group"><h4>학습공간비 <span>{won(getPolicyLimit(props.policyDraft, 'studySpace'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'studySpace').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <strong>총 한도 {won(getPolicyLimit(props.policyDraft, 'resident') + getPolicyLimit(props.policyDraft, 'studySpace'))}</strong>
-        </div><button className="sheet-action" onClick={props.onConfirmPolicy}>검토 후 정책 확정</button></div>}
+        </div><p className="policy-apply-note">이번 기간에 반영하면 기존 결제는 유지한 채 한도와 사용률만 다시 계산합니다.</p><button className="sheet-action" onClick={() => props.onConfirmPolicy('current')}>이번 기간에 바로 반영</button><button className="sheet-action secondary-action" onClick={() => props.onConfirmPolicy('next')}>다음 적용 기간부터 예약</button></div>}
       </div>
     </details>
 

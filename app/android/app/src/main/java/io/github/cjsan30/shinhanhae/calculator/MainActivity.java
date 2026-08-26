@@ -14,4 +14,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ExternalAppPlugin.class);
         super.onCreate(savedInstanceState);
     }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        SupportWidgetProvider.updateAll(this);
+    }
 }

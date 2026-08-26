@@ -23,15 +23,15 @@ public class WidgetBridgePlugin extends Plugin {
         editor.putInt("studyLimit", call.getInt("studyLimit", 0));
         editor.putInt("studySpent", call.getInt("studySpent", 0));
         editor.putInt("undecidedCount", call.getInt("undecidedCount", 0));
-        JSArray residentRows = call.getArray("residentRows");
-        for (int index = 0; index < 4; index++) {
-            JSONObject row = residentRows == null ? null : residentRows.optJSONObject(index);
+        JSArray detailRows = call.getArray("detailRows");
+        for (int index = 0; index < 7; index++) {
+            JSONObject row = detailRows == null ? null : detailRows.optJSONObject(index);
             if (row == null) {
-                editor.remove("residentRowLabel" + index).remove("residentRowLimit" + index).remove("residentRowSpent" + index);
+                editor.remove("detailLabel" + index).remove("detailLimit" + index).remove("detailSpent" + index);
             } else {
-                editor.putString("residentRowLabel" + index, row.optString("label", ""));
-                editor.putInt("residentRowLimit" + index, row.optInt("limit", 0));
-                editor.putInt("residentRowSpent" + index, row.optInt("spent", 0));
+                editor.putString("detailLabel" + index, row.optString("label", ""));
+                editor.putInt("detailLimit" + index, row.optInt("limit", 0));
+                editor.putInt("detailSpent" + index, row.optInt("spent", 0));
             }
         }
         editor.apply();

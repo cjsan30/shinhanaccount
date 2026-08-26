@@ -188,11 +188,10 @@ function App() {
   const recent = useMemo(() => getRecentEntries(ledger, activePolicy.periodKey, Number.POSITIVE_INFINITY, todayEnd), [ledger, activePolicy.periodKey, todayEnd]);
   const detailTarget = detailTargetId ? ledger.entries.find((entry) => entry.id === detailTargetId) ?? null : null;
   const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
-  const widgetResidentRows = useMemo(() => POLICY_ITEMS.filter((item) => item.bucket === 'resident').map((item) => ({
-    label: item.label,
-    limit: policy.plans[item.key],
-    spent: item.ledgerCategories.reduce((sum, category) => sum + (categorySpent[category] ?? 0), 0),
-  })), [categorySpent, policy]);
+  const widgetDetailRows = useMemo(() => POLICY_ITEMS.map((item) => {
+    const entries = ledger.entries.filter((entry) => entry.status === 'classified' && isEntryInPolicyPeriod(entry, activePolicy.periodKey) && item.ledgerCategories.includes(String(entry.category)));
+    return { label: item.label, limit: policy.plans[item.key], spent: entries.reduce((sum, entry) => sum + entry.amount, 0), count: entries.length };
+  }).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [ledger.entries, activePolicy.periodKey, policy]);
   useEffect(() => {
     void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey }).catch(() => undefined);
   }, [activePolicy.periodKey, categoryLimits, categorySpent, ledger.alertThresholds]);
@@ -208,9 +207,9 @@ function App() {
       studyLimit: budgetLimits.studySpace,
       studySpent: study.spent,
       undecidedCount,
-      residentRows: widgetResidentRows,
+      detailRows: widgetDetailRows,
     }).catch(() => undefined);
-  }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount, widgetResidentRows]);
+  }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount, widgetDetailRows]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
   // A foreground native event handles new approvals immediately. The initial and
   // visibility checks recover approvals queued while the app was not active.
@@ -416,12 +415,15 @@ function App() {
     if (!Number.isFinite(amount) || amount < 0) return;
     setPolicyDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current);
   };
-  const confirmPolicy = () => {
+  const confirmPolicy = (applyTo: 'current' | 'next') => {
     if (!policyDraft) return;
-    setPolicyBook((current) => confirmPolicyForPeriod(current, policyDraft, getNextPolicyPeriodKey(now)));
+    const periodKey = applyTo === 'current' ? activePolicy.periodKey : getNextPolicyPeriodKey(now);
+    setPolicyBook((current) => confirmPolicyForPeriod(current, policyDraft, periodKey));
     setPolicyDraft(null);
     setPolicyText('');
-    show(`${getNextPolicyPeriodKey(now)} 기간 정책을 저장했습니다.`);
+    show(applyTo === 'current'
+      ? '이번 적용 기간 정책을 반영했습니다. 대시보드와 위젯 사용률을 다시 계산합니다.'
+      : `${periodKey} 기간 정책을 예약했습니다.`);
   };
   const openSettings = () => {
     setPolicyText('');
