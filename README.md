@@ -1,15 +1,127 @@
-# 지원금 관리 모바일 앱
+# 신청해 계산기
 
-Android 우선의 개인별 지원금 관리 앱입니다. 삼성 메시지의 신한카드 승인 알림을 기기 안에서 처리해 예산 사용량을 기록하고, 미정 지출·한도 알림·홈 화면 위젯을 제공합니다.
+지원금의 사용 현황을 확인하고 사용 보고서 준비를 돕는 Android 우선 개인 지원금 관리 앱입니다.
+
+카드 승인 알림과 카드사 거래내역을 기기 안에서 정리해 예산 사용량을 보여주고, 분류가 애매한 지출은 사용자가 직접 확인할 수 있도록 설계했습니다. 현재는 신청해 사업 사용 흐름을 기준으로 구현했으며, 향후 다른 지원금 사업에도 적용할 수 있는 구조를 목표로 합니다.
+
+> 개인 학습 프로젝트입니다. 실제 카드 번호, 거래 내역, 비밀번호, 서명키 등 민감한 정보는 저장소에 포함하지 않습니다.
+
+## 해결하려는 문제
+
+지원금을 사용할 때는 결제 내역 확인, 예산 초과 방지, 지출 분류, 증빙 파일 정리가 각각 다른 곳에서 이뤄집니다. 이 앱은 아래 흐름을 한곳으로 모으는 데 초점을 맞췄습니다.
+
+```text
+지원금 정책 등록 → 결제 인식 또는 거래내역 가져오기 → 지출 분류 확인
+→ 예산 사용량·경고 확인 → 증빙 PDF 준비
+```
+
+## 주요 기능
+
+- 지원 항목별 예산 정책 등록 및 사용 현황 대시보드
+- 결제 알림 기반 승인 내역 인식과 중복 방지
+- 신한카드 거래내역 엑셀·PDF 가져오기 및 카드 식별 안전 검증
+- 상호명 키워드 기반 자동 분류, 미정 지출의 수동 분류·관리
+- 경고 비율을 직접 설정하는 예산 초과 알림
+- 정주비·학습공간비 사용량을 보여주는 Android 홈 화면 위젯
+- 영수증·증빙 이미지를 정렬해 하나의 PDF로 내보내기
+- 기기 내 암호화 저장소와 암호화 백업·복원
+
+## 사용자 경험 설계
+
+### 정책 우선 온보딩
+
+지원금 정책을 확정한 뒤에만 결제 내역을 예산과 연결합니다. 정책 이전 결제는 자동으로 예산에 반영하지 않고, 사용자가 허용한 경우에만 미정 지출로 가져옵니다.
+
+### 자동화와 사용자 판단의 분리
+
+상호명 규칙으로 자동 분류하되, 처음 보는 결제처나 불확실한 결과는 `미정 지출`로 남깁니다. 잘못된 자동 분류보다 사용자가 빠르게 수정할 수 있는 흐름을 우선했습니다.
+
+### 개인정보와 권한 최소화
+
+공개 배포를 고려해 제한적인 SMS 권한 대신 Android 알림 접근을 사용합니다. 결제 알림은 기기에서만 처리하며, 카드 정보는 마스킹해 표시합니다.
+
+## 기술 스택
+
+| 영역 | 선택 |
+| --- | --- |
+| 앱 UI | React, TypeScript, Vite |
+| Android 컨테이너 | Capacitor |
+| Android 네이티브 | Kotlin, Java, RemoteViews 위젯 |
+| 로컬 데이터 | Capacitor Community SQLite, 기기 암호화 저장소 |
+| 파일 처리 | SheetJS, PDF.js, pdf-lib |
+| 테스트 | Vitest, Testing Library, Android Unit Test |
+| 배포 | 서명 APK, Android App Bundle(AAB), Google Play 비공개 테스트 |
+
+## 주요 기술적 판단
+
+| 주제 | 선택과 이유 |
+| --- | --- |
+| 결제 인식 | 알림 접근을 사용해 메신저 기반 카드 알림과 카드 앱 알림을 처리하고, 동일 승인 후보는 시각·상호·금액 기준으로 중복 방지 |
+| 오프라인 우선 | 개인 1인 사용과 민감한 거래 데이터를 고려해 서버 없이 기기 내 암호화 저장소를 기본값으로 선택 |
+| 파일 가져오기 | 엑셀·PDF의 마스킹된 카드 식별값이 중복되면 가져오기를 중단해 다른 카드 내역의 혼입을 방지 |
+| OCR 실패 대응 | 계획표 이미지를 우선 읽되 결과가 비정상적이면 동일 구조의 직접 입력 화면으로 전환 |
+| 증빙 PDF | 사용자가 자료의 순서를 직접 정하고, 이미지 품질·용량의 균형을 맞춰 하나의 제출 파일을 생성 |
+
+## 검증 방식
+
+- 도메인 로직: 예산 계산, 정책 전환, 중복 결제, 자동 분류, 가져오기 안전성 단위 테스트
+- UI 흐름: 온보딩, 거래내역 등록, 미정 지출, 백업·복원, 경고 설정 컴포넌트 테스트
+- Android 통합: 알림 브리지, 암호화 저장소, 위젯, 파일 저장 동작 검증
+- 실기기: 결제 알림 접근, 홈 위젯 갱신, Android 파일 선택·저장, PDF 생성 흐름 확인
+
+실기기와 카드사 앱 환경에 의존하는 승인·취소 알림은 테스트용 데이터와 실제 기기 검증을 함께 사용합니다.
+
+## 실행 방법
+
+### 요구 사항
+
+- Node.js 24 LTS
+- Android Studio와 Android SDK
+- JDK 17 이상 (Android Studio JBR 사용 가능)
+
+### 웹 개발·테스트
+
+```powershell
+Set-Location app
+npm install
+npm run test:run
+npm run build
+npm run dev
+```
+
+### Android 디버그 빌드
+
+```powershell
+Set-Location app
+npm run android:sync
+Set-Location android
+.\gradlew.bat :app:assembleDebug
+```
+
+생성된 APK는 `app/android/app/build/outputs/apk/debug/app-debug.apk`에 있습니다.
+
+릴리스 APK와 AAB는 `app/build-play-release.ps1`을 통해 생성합니다. 서명키 경로와 비밀번호는 저장소에 기록하지 않고, 실행 시에만 입력합니다.
 
 ## 문서
 
-- `docs/00-latest-decisions.md` — 최신 확정 사항
-- `docs/01-product-requirements.md` — 배경, 목표, 정책, 화면 흐름
-- `docs/02-technical-design.md` — 기술 스택, 데이터 모델, 결제 알림 처리, 보안
-- `docs/03-tdd-test-plan.md` — TDD 기준과 테스트 계획
-- `docs/04-ai-guardrails.md` — AI·개인정보 처리 가드레일
-- `docs/05-github-guardrails.md` — 브랜치·커밋·비밀정보 관리 가드레일
-- `docs/06-future-enhancements.md` — 의도적으로 보류한 후속 개선 과제
-- `docs/07-device-release-checklist.md` — 최종 APK 실기기 검증 체크리스트
-- `docs/09-play-release-privacy-draft.md` — Play 공개 배포 개인정보 고지·심사 준비 초안
+- [최신 결정 사항](docs/00-latest-decisions.md)
+- [제품 요구사항](docs/01-product-requirements.md)
+- [기술 설계](docs/02-technical-design.md)
+- [TDD·테스트 계획](docs/03-tdd-test-plan.md)
+- [AI·개인정보 가드레일](docs/04-ai-guardrails.md)
+- [GitHub 가드레일](docs/05-github-guardrails.md)
+- [후속 개선 과제](docs/06-future-enhancements.md)
+- [실기기·릴리스 체크리스트](docs/07-device-release-checklist.md)
+
+## 향후 개선
+
+- 카드 취소 승인 매칭과 확인 흐름
+- 대용량 증빙 PDF의 백그라운드 처리
+- 지원금 사업별 정책 템플릿과 카테고리 확장
+- 다중 기기 동기화가 필요한 경우를 위한 선택형 백업 저장소
+
+## 저장소 운영
+
+- `dev`: 기능 단위 개발과 검증
+- `main`: 비공개 테스트·릴리스 기준의 안정 버전
+- 커밋 메시지: Conventional Commits 형식의 영문 타입 + 한국어 설명
