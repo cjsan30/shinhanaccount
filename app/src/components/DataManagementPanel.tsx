@@ -5,6 +5,7 @@ import type { ImportedCardTransaction } from '../domain/shinhanImport';
 import { SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, POLICY_ITEMS, type PolicyBook, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../domain/policy';
 import type { MerchantRule } from '../domain/merchantRules';
 import { BackupRestore } from './BackupRestore';
+import { DataIntegrityPanel } from './DataIntegrityPanel';
 
 type Props = {
   importFile: File | null;
@@ -29,6 +30,10 @@ type Props = {
   onUpdatePolicyAlertTarget: (item: PolicyItem) => void;
   onConfirmPolicy: (applyTo: 'current' | 'next') => void;
   onOpenRules: () => void;
+  periodKey: string;
+  canUndoImport: boolean;
+  onUndoImport: () => void;
+  onResetData: (scopes: Array<'ledger' | 'rules' | 'policy'>) => void;
   onRestore: (payload: BackupPayload) => void;
   notify: (message: string) => void;
 };
@@ -78,5 +83,7 @@ export function DataManagementPanel(props: Props) {
       <summary><strong>백업 · 복원</strong><span>기기 변경과 초기화 대비</span></summary>
       <div className="data-section__body"><BackupRestore embedded ledger={props.ledger} policyBook={props.policyBook} merchantRules={props.merchantRules} onRestore={props.onRestore} notify={props.notify} /></div>
     </details>
+
+    <DataIntegrityPanel ledger={props.ledger} periodKey={props.periodKey} canUndoImport={props.canUndoImport} onUndoImport={props.onUndoImport} onReset={props.onResetData} />
   </section>;
 }

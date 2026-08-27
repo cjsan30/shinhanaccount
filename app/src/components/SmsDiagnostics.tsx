@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SmsBridge, type SmsDiagnosticEvent } from '../native/smsBridge';
+import { saveFile } from '../native/fileExport';
 
 const stageLabels: Record<string, string> = {
   RECEIVER_ENTERED: 'SMS 수신기 진입',
@@ -62,12 +63,34 @@ export function SmsDiagnostics({ notify }: { notify: (message: string) => void }
       notify('결제 수신 진단 이력을 지우지 못했습니다.');
     }
   };
+  const exportLog = async () => {
+    if (!items.length) { notify('내보낼 진단 이력이 없습니다.'); return; }
+    const content = [
+      '신청해 계산기 결제 수신 진단 이력',
+      '개인정보 보호: 원문 알림, 금액, 상호명, 카드번호는 포함하지 않습니다.',
+      '',
+      ...items.map((event) => [
+        new Date(event.recordedAt).toISOString(),
+        stageLabels[event.stage] ?? event.stage,
+        event.status,
+        detailText(event),
+        `event:${event.eventId.slice(0, 8)}`,
+      ].filter(Boolean).join(' | ')),
+    ].join('\n');
+    try {
+      const result = await saveFile('shinhanhae_sms_diagnostics.txt', new TextEncoder().encode(content), 'text/plain;charset=utf-8');
+      notify(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
+    } catch {
+      notify('진단 이력을 내보내지 못했습니다.');
+    }
+  };
 
   return <section className="sms-diagnostics">
     <h3>결제 수신 진단 이력</h3>
     <p>삼성 메시지·신한 SOL 승인 알림의 원문·금액·상호명·카드번호 없이 최근 처리 단계만 암호화 저장합니다.</p>
     <div className="sms-diagnostic-actions">
       <button className="sheet-action secondary-action" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? '불러오는 중…' : '진단 이력 새로고침'}</button>
+      <button className="sheet-action secondary-action" type="button" onClick={() => void exportLog()} disabled={!items.length}>진단 로그 내보내기</button>
       <button className="sheet-action secondary-action" type="button" onClick={() => void clear()}>진단 이력 지우기</button>
     </div>
     {loaded && (items.length ? <div className="sms-diagnostic-list">{items.map((event) => <article key={event.id} data-status={event.status}>

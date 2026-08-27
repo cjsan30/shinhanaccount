@@ -91,8 +91,8 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
 
-    const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원)$/);
-    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '계획표', '백업 · 복원']);
+    const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원|누락 가능성 점검|데이터 초기화)$/);
+    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '계획표', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
     expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   });
 

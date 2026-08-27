@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NotificationBridgePlugin.class);
         registerPlugin(WidgetBridgePlugin.class);
         registerPlugin(FileExportPlugin.class);
+        registerPlugin(EvidenceVaultPlugin.class);
         registerPlugin(AppHealthPlugin.class);
         registerPlugin(ExternalAppPlugin.class);
         super.onCreate(savedInstanceState);

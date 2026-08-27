@@ -2,10 +2,11 @@ import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, 
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
+import type { StoredEvidence } from '../native/evidenceVault';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string; evidence?: StoredEvidence[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
