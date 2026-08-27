@@ -6,23 +6,24 @@ function createBlankPolicy(): SupportPolicy {
   return { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [] };
 }
 
-export function PolicyOnboarding({ onConfirm }: { onConfirm: (policy: SupportPolicy) => void }) {
-  const [profileId, setProfileId] = useState<SupportProfileId>(DEFAULT_SUPPORT_PROFILE_ID);
+export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange }: { onConfirm: (policy: SupportPolicy) => void; initialDraft?: SupportPolicy | null; onDraftChange?: (policy: SupportPolicy | null) => void }) {
+  const [profileId, setProfileId] = useState<SupportProfileId>(initialDraft?.profileId ?? DEFAULT_SUPPORT_PROFILE_ID);
   const [text, setText] = useState('');
-  const [draft, setDraft] = useState<SupportPolicy | null>(null);
+  const [draft, setDraft] = useState<SupportPolicy | null>(initialDraft);
   const [message, setMessage] = useState<string | null>(null);
   const draftRef = useRef<HTMLDivElement>(null);
   const scrollAfterRead = useRef(false);
+  const updateDraft = (next: SupportPolicy | null | ((current: SupportPolicy | null) => SupportPolicy | null)) => setDraft((current) => { const value = typeof next === 'function' ? next(current) : next; onDraftChange?.(value); return value; });
   useEffect(() => {
     if (!draft || !scrollAfterRead.current) return;
     scrollAfterRead.current = false;
     requestAnimationFrame(() => draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [draft]);
   const profile = getSupportProfile(profileId);
-  const applyProfile = (nextId: SupportProfileId) => { setProfileId(nextId); setDraft((current) => current ? { ...current, profileId: nextId } : current); };
-  const readImage = async () => { try { const result = await PolicyOcr.pickAndRecognize(); scrollAfterRead.current = true; if (!result.text.trim()) { setText(''); setDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; } setText(result.text); setDraft({ ...parsePolicyText(result.text), profileId }); setMessage('OCR 결과를 확인하고 필요한 금액만 수정해 주세요.'); } catch { scrollAfterRead.current = true; setText(''); setDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지를 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); } };
-  const update = (item: PolicyItem, value: string) => { const amount = Number(value.replaceAll(',', '')); if (!Number.isFinite(amount) || amount < 0) return; setDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current); };
-  const toggleAlertTarget = (item: PolicyItem) => setDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
+  const applyProfile = (nextId: SupportProfileId) => { setProfileId(nextId); updateDraft((current) => current ? { ...current, profileId: nextId } : current); };
+  const readImage = async () => { try { const result = await PolicyOcr.pickAndRecognize(); scrollAfterRead.current = true; if (!result.text.trim()) { setText(''); updateDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; } setText(result.text); updateDraft({ ...parsePolicyText(result.text), profileId }); setMessage('OCR 결과를 확인하고 필요한 금액만 수정해 주세요.'); } catch { scrollAfterRead.current = true; setText(''); updateDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지를 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); } };
+  const update = (item: PolicyItem, value: string) => { const amount = Number(value.replaceAll(',', '')); if (!Number.isFinite(amount) || amount < 0) return; updateDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current); };
+  const toggleAlertTarget = (item: PolicyItem) => updateDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
   const confirm = () => { if (!draft) return; const issues = validatePolicyAgainstProfile({ ...draft, profileId }); if (issues.length) { setMessage(issues[0]); return; } onConfirm({ ...draft, profileId, alertTargets: getAlertTargets(draft), sourceText: text || draft.sourceText }); };
   const policyGroups = [
     { key: 'resident', label: '정주비', limit: profile.bucketLimits.resident, items: POLICY_ITEMS.filter((item) => item.bucket === 'resident') },

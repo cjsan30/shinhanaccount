@@ -6,6 +6,12 @@ import { POLICY_MAX_LIMITS } from './budget';
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
 
 describe('expense ledger', () => {
+  it('uses a notification quick classification before merchant auto rules', () => {
+    const result = applyPayment({ ...createInitialLedger(), entries: [] }, {
+      id: 'quick-food', cardLast4: '1111', occurredAt: '2026-08-20T12:00:00+09:00', amount: 7000, merchant: '처음 보는 결제처', quickCategory: 'food',
+    }, POLICY_MAX_LIMITS);
+    expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'food' });
+  });
   it('separates spending by the policy period beginning on the 14th', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
     const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);

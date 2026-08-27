@@ -65,7 +65,13 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
-  const classification = classifier(payment.merchant, payment.amount);
+  const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {
+    lodging: { status: 'classified', bucket: 'resident', category: 'lodging' }, food: { status: 'classified', bucket: 'resident', category: 'food' }, education: { status: 'classified', bucket: 'resident', category: 'education' }, transport: { status: 'classified', bucket: 'resident', category: 'transport' }, studyCafe: { status: 'classified', bucket: 'studySpace', category: 'studyCafe' }, generalCafe: { status: 'classified', bucket: 'studySpace', category: 'generalCafe' }, readingRoom: { status: 'classified', bucket: 'studySpace', category: 'readingRoom' },
+  };
+  const quick = payment.quickCategory ? quickCategories[payment.quickCategory] : undefined;
+  const classification: PaymentClassification = payment.quickCategory === 'undecided'
+    ? { status: 'undecided' }
+    : quick ?? classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   // Live notification/SMS approvals carry a source event ID. Two genuine payments
   // can otherwise have the same minute, merchant, and amount, so only that stable

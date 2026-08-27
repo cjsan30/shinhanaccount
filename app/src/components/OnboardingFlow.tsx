@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FirstRunPermission } from './FirstRunPermission';
 import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
@@ -7,6 +7,9 @@ import type { SupportPolicy } from '../domain/policy';
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
 type ApplicantStatus = 'applicant' | 'not-applicant';
+type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy; cardLast4?: string };
+const PROGRESS_KEY = 'shinhanhae-onboarding-progress-v1';
+function loadProgress(): SavedProgress | null { try { const saved = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) || 'null') as SavedProgress | null; return saved?.step ? saved : null; } catch { return null; } }
 
 type CompletePayload = {
   applicantStatus: ApplicantStatus;
@@ -18,13 +21,19 @@ type CompletePayload = {
 };
 
 export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompletePayload) => void }) {
-  const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'history'>('applicant');
-  const [cardLast4, setCardLast4] = useState('');
-  const [policy, setPolicy] = useState<SupportPolicy | null>(null);
+  const [progress] = useState(loadProgress);
+  const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'history'>(progress?.step ?? 'applicant');
+  const [cardLast4, setCardLast4] = useState(progress?.cardLast4 ?? '');
+  const [policy, setPolicy] = useState<SupportPolicy | null>(progress?.policy ?? null);
   const [pendingApprovals, setPendingApprovals] = useState<NativeApproval[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (step === 'applicant') { window.localStorage.removeItem(PROGRESS_KEY); return; }
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined, cardLast4: cardLast4 || undefined }));
+  }, [cardLast4, policy, step]);
 
   const skipToDashboard = (messageOverride?: string) => {
+    window.localStorage.removeItem(PROGRESS_KEY);
     onComplete({
       applicantStatus: 'not-applicant',
       cardLast4: '',
@@ -62,6 +71,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     if (!policy) {
       return;
     }
+    window.localStorage.removeItem(PROGRESS_KEY);
     onComplete({
       applicantStatus: 'applicant',
       cardLast4,
@@ -78,7 +88,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
         <section className="applicant-question" aria-label="신청해 사업 지원자 여부">
           <h1>신청해 사업<br />지원자인가요?</h1>
           <div>
-            <button className="first-run__start" type="button" onClick={() => setStep('policy')}>Yes</button>
+            <button className="first-run__start" type="button" onClick={() => setStep('permissions')}>Yes</button>
             <button className="onboarding-secondary" type="button" onClick={() => skipToDashboard()}>No</button>
           </div>
         </section>
@@ -100,7 +110,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
   if (step === 'policy') {
     return (
       <>
-        <PolicyOnboarding onConfirm={(confirmedPolicy) => { void continueAfterPolicy(confirmedPolicy); }} />
+        <PolicyOnboarding initialDraft={policy} onDraftChange={setPolicy} onConfirm={(confirmedPolicy) => { void continueAfterPolicy(confirmedPolicy); }} />
         <button className="guide-toggle" type="button" onClick={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}>
           넘어가기
         </button>

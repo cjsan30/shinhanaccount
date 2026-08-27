@@ -152,7 +152,7 @@ export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
 export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string };
-export type PolicyBook = { versions: PolicyVersion[] };
+export type PolicyBook = { versions: PolicyVersion[]; mode?: 'not-applicant' };
 export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
 
 export function getNextPolicyPeriodKey(date: Date) {
@@ -170,7 +170,7 @@ export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = 
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [] })) };
+      if (Array.isArray(parsed.versions)) return { mode: parsed.mode, versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [] })) };
     }
     return { versions: [] };
   } catch { return { versions: [] }; }
@@ -185,6 +185,7 @@ export function getPolicyVersion(book: PolicyBook, periodKey: string) {
 }
 
 export function getEffectivePolicy(book: PolicyBook, date: Date) {
+  if (book.mode === 'not-applicant') return { policy: emptyPolicy, periodKey: getPolicyPeriodKey(date), confirmed: true };
   const periodKey = getPolicyPeriodKey(date);
   const exact = getPolicyVersion(book, periodKey);
   // Older test builds could persist an all-zero draft as a "confirmed" policy.

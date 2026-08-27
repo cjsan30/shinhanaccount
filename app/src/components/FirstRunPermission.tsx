@@ -45,7 +45,7 @@ export function FirstRunPermission({ onComplete, onSkip }: Props) {
     <main className="first-run">
       <div className="first-run__mark">지원금 관리 · 1/3</div>
       <h1>자동 관리를<br />시작할게요</h1>
-      <p>결제 알림 사용에 동의한 뒤 실제 사용 계획을 확정합니다.</p>
+      <p>필요한 권한을 설정한 뒤 사용 계획을 확정합니다.</p>
       <section className="first-run__card">
         <label>
           카드 끝 4자리
@@ -65,12 +65,9 @@ export function FirstRunPermission({ onComplete, onSkip }: Props) {
         </label>
       </section>
       <section className="first-run__notice">
-        <strong>결제 알림 접근 안내</strong>
-        <span>
-          신청해 계산기는 삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다.
-          거래 시각·금액·상호명만 저장하며, 원본 알림을 저장·전송·삭제하지 않습니다. 이 기능은 시스템 설정에서 언제든 해제할 수 있습니다.
-        </span>
-        <small>두 앱에서 같은 승인 알림이 오면 한 건으로 합칩니다. 접근이 중단된 동안의 결제는 신한카드 엑셀 또는 직접 등록으로 보완할 수 있습니다.</small>
+        <strong>권한이 필요한 이유</strong>
+        <span>알림 접근은 등록한 카드의 승인 알림만 기기 안에서 기록합니다.</span>
+        <small>앱 알림은 예산 경고와 새 결제 안내를 보여줍니다. 두 권한 모두 설정에서 언제든 해제할 수 있습니다.</small>
       </section>
       {message && <p role="alert" className="first-run__error">{message}</p>}
       <button className="first-run__start" type="button" onClick={() => void start()} disabled={saving}>

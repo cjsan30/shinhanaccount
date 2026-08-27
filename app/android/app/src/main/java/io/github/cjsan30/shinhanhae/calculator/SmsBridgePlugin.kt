@@ -222,8 +222,26 @@ internal fun postApprovalQueuedNotification(
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .also { builder -> contentIntent?.let(builder::setContentIntent) }
-            .build()
-        NotificationManagerCompat.from(context).notify(2001, notification)
+        val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+        val quickCategories = state.optJSONArray("quickCategories") ?: org.json.JSONArray()
+        for (index in 0 until minOf(2, quickCategories.length())) {
+            val item = quickCategories.optJSONObject(index) ?: continue
+            val category = item.optString("category")
+            val label = item.optString("label")
+            if (category.isBlank() || label.isBlank()) continue
+            val actionIntent = Intent(context, ApprovalClassificationReceiver::class.java)
+                .setAction(ApprovalClassificationReceiver.ACTION_CLASSIFY)
+                .putExtra(ApprovalClassificationReceiver.EXTRA_APPROVAL_ID, eventId)
+                .putExtra(ApprovalClassificationReceiver.EXTRA_CATEGORY, category)
+            val actionPendingIntent = PendingIntent.getBroadcast(context, 2100 + index, actionIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            notification.addAction(0, "${label}로 분류", actionPendingIntent)
+        }
+        val undecidedIntent = Intent(context, ApprovalClassificationReceiver::class.java)
+            .setAction(ApprovalClassificationReceiver.ACTION_UNDECIDED)
+            .putExtra(ApprovalClassificationReceiver.EXTRA_APPROVAL_ID, eventId)
+        val undecidedPendingIntent = PendingIntent.getBroadcast(context, 2103, undecidedIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        notification.addAction(0, "미정으로", undecidedPendingIntent)
+        NotificationManagerCompat.from(context).notify(2001, notification.build())
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
     } catch (error: Exception) {
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
@@ -292,12 +310,14 @@ class SmsBridgePlugin : Plugin() {
         val alertCategories = call.getArray("alertCategories") ?: JSArray()
         val thresholds = call.getArray("thresholds") ?: JSArray()
         val periodKey = call.getString("periodKey") ?: ""
+        val quickCategories = call.getArray("quickCategories") ?: JSArray()
         val state = JSONObject()
             .put("categoryLimits", JSONObject(categoryLimits.toString()))
             .put("categorySpent", JSONObject(categorySpent.toString()))
             .put("alertCategories", alertCategories)
             .put("thresholds", thresholds)
             .put("periodKey", periodKey)
+            .put("quickCategories", quickCategories)
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
         call.resolve()
     }

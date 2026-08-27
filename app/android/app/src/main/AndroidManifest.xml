@@ -6,6 +6,7 @@
         </activity>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>
         <receiver android:name=".SupportWidgetProvider" android:exported="false" android:label="@string/widget_name"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/support_widget_info" /></receiver>
+        <receiver android:name=".ApprovalClassificationReceiver" android:exported="false" />
         <service
             android:name=".ShinhanMessageNotificationListener"
             android:exported="false"

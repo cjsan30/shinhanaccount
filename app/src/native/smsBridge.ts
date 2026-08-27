@@ -1,7 +1,7 @@
 import { registerPlugin } from '@capacitor/core';
 
-export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; notificationPostedAt?: number; source?: 'demo' | 'sms' | 'notification' | 'excel' | 'manual' };
-export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; alertCategories: string[]; thresholds: [number, number]; periodKey: string };
+export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; notificationPostedAt?: number; source?: 'demo' | 'sms' | 'notification' | 'excel' | 'manual'; quickCategory?: string };
+export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; alertCategories: string[]; thresholds: [number, number]; periodKey: string; quickCategories: Array<{ category: string; label: string }> };
 export type SmsDiagnosticEvent = {
   id: string;
   eventId: string;
