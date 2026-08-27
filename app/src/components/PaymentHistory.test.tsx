@@ -18,7 +18,7 @@ const entries: LedgerEntry[] = Array.from({ length: 12 }, (_, index) => ({
 describe('payment history', () => {
   it('shows ten entries per page and opens an entry from the row', () => {
     const open = vi.fn();
-    render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} onOpen={open} />);
+    render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={open} />);
     expect(screen.getByText('전체 기간 동안 총 12건의 결제가 있었습니다.')).toBeInTheDocument();
     expect(screen.getByText('상호 0')).toBeInTheDocument();
     expect(screen.queryByText('상호 10')).not.toBeInTheDocument();
@@ -29,7 +29,7 @@ describe('payment history', () => {
   });
 
   it('moves to the next page with a left swipe', () => {
-    const { container } = render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} onOpen={() => undefined} />);
+    const { container } = render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
     const history = container.querySelector('.payment-history');
     expect(history).not.toBeNull();
     fireEvent.touchStart(history!, { changedTouches: [{ clientX: 300 }] });

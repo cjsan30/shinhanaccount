@@ -9,7 +9,7 @@ import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
 import { previousPanel, type Panel } from './domain/navigation';
 import { roundUsagePercent, type BudgetKey } from './domain/budget';
-import { applyPayment, cancelPayment, removeLedgerEntry, updateLedgerEntry, getRecentEntries, getSummary, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
+import { applyPayment, cancelPayment, findSuspectedDuplicates, getHistoryEntries, removeLedgerEntry, updateLedgerEntry, getSummary, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
 import {
@@ -26,7 +26,7 @@ import {
   type SupportPolicy,
 } from './domain/policy';
 import { type PaymentClassification } from './domain/sms';
-import { classifyWithMerchantRules, createMerchantRule, type MerchantMatchMode, type MerchantRule } from './domain/merchantRules';
+import { classifyWithMerchantRules, createMerchantRule, getMerchantAlias, type MerchantMatchMode, type MerchantRule } from './domain/merchantRules';
 import { SmsBridge, type NativeApproval } from './native/smsBridge';
 import { PolicyOcr } from './native/policyOcr';
 import { NotificationBridge } from './native/notificationBridge';
@@ -36,6 +36,7 @@ import { createEmptyAppState, initializeAppState, loadLegacyAppState, persistApp
 import { AppHealth } from './native/appHealth';
 import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import { PaymentHistory } from './components/PaymentHistory';
+import { UndecidedPanel } from './components/UndecidedPanel';
 import './App.css';
 
 const EvidenceExport = lazy(() => import('./components/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
@@ -69,6 +70,7 @@ function App() {
   const [ruleMerchant, setRuleMerchant] = useState('');
   const [ruleItemKey, setRuleItemKey] = useState<PolicyItem>('food');
   const [ruleMatchMode, setRuleMatchMode] = useState<MerchantMatchMode>('contains');
+  const [ruleAlias, setRuleAlias] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [card, setCard] = useState('');
   const [showCard, setShowCard] = useState(false);
@@ -92,6 +94,7 @@ function App() {
   const policy = activePolicy.policy;
   const [policyText, setPolicyText] = useState('');
   const [policyDraft, setPolicyDraft] = useState<SupportPolicy | null>(null);
+  const [policyDraftFocusToken, setPolicyDraftFocusToken] = useState(0);
   const [cancellationTarget, setCancellationTarget] = useState<LedgerEntry | null>(null);
   const [editTarget, setEditTarget] = useState<LedgerEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LedgerEntry | null>(null);
@@ -185,7 +188,7 @@ function App() {
   const previousUndecided = undecidedEntries.filter((entry) => !isEntryInPolicyPeriod(entry, activePolicy.periodKey));
   const undecidedCount = currentUndecided.length;
   const todayEnd = useMemo(() => { const value = new Date(now); value.setHours(23, 59, 59, 999); return value; }, [now]);
-  const recent = useMemo(() => getRecentEntries(ledger, activePolicy.periodKey, Number.POSITIVE_INFINITY, todayEnd), [ledger, activePolicy.periodKey, todayEnd]);
+  const recent = useMemo(() => getHistoryEntries(ledger, todayEnd), [ledger, todayEnd]);
   const detailTarget = detailTargetId ? ledger.entries.find((entry) => entry.id === detailTargetId) ?? null : null;
   const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
   const widgetDetailRows = useMemo(() => POLICY_ITEMS.map((item) => {
@@ -325,12 +328,12 @@ function App() {
       show(paymentAlertsEnabled ? '알림 접근에서 신청해 계산기를 해제해 주세요.' : '알림 접근에서 신청해 계산기를 허용해 주세요.');
     } catch { show('이 기능은 Android 앱에서 사용할 수 있습니다.'); }
   };
-  const resetRuleEditor = () => { setRuleMerchant(''); setRuleItemKey('food'); setRuleMatchMode('contains'); setEditingRuleId(null); };
+  const resetRuleEditor = () => { setRuleMerchant(''); setRuleItemKey('food'); setRuleMatchMode('contains'); setRuleAlias(''); setEditingRuleId(null); };
   const saveMerchantRule = () => {
     const item = POLICY_ITEMS.find((candidate) => candidate.key === ruleItemKey);
     if (!item) return;
     try {
-      const created = createMerchantRule(ruleMerchant, { bucket: item.bucket, category: item.ledgerCategories[0] }, new Date().toISOString(), ruleMatchMode);
+      const created = createMerchantRule(ruleMerchant, { bucket: item.bucket, category: item.ledgerCategories[0] }, new Date().toISOString(), ruleMatchMode, ruleAlias);
       const remaining = merchantRules.filter((current) => current.id !== editingRuleId && current.normalizedMerchant !== created.normalizedMerchant);
       if (remaining.length >= 50) { show('자동 분류 규칙은 최대 50개까지 저장할 수 있습니다.'); return; }
       const previous = merchantRules.find((current) => current.id === editingRuleId);
@@ -346,6 +349,7 @@ function App() {
     setRuleMerchant(rule.merchant);
     if (item) setRuleItemKey(item.key);
     setRuleMatchMode(rule.matchMode ?? 'contains');
+    setRuleAlias(rule.alias ?? '');
     setEditingRuleId(rule.id);
   };
   const deleteMerchantRule = (rule: MerchantRule) => {
@@ -398,6 +402,7 @@ function App() {
   const reviewPolicyText = () => {
     if (!policyText.trim()) { show('계획표 내용을 붙여넣어 주세요.'); return; }
     setPolicyDraft(parsePolicyText(policyText));
+    setPolicyDraftFocusToken((current) => current + 1);
   };
   const readPolicyScreenshot = async () => {
     try {
@@ -405,6 +410,7 @@ function App() {
       if (!result.text.trim()) { show('사진에서 읽을 수 있는 텍스트가 없습니다.'); return; }
       setPolicyText(result.text);
       setPolicyDraft(parsePolicyText(result.text));
+      setPolicyDraftFocusToken((current) => current + 1);
       show('스크린샷의 텍스트를 읽었습니다. 검토 후 확정해 주세요.');
     } catch {
       show('사진 선택 또는 텍스트 인식을 취소했습니다.');
@@ -441,6 +447,8 @@ function App() {
     const occurredAt = new Date(manualPayment.occurredAt);
     if (!merchant || !Number.isFinite(amount) || amount <= 0 || Number.isNaN(occurredAt.getTime())) { show('결제일시, 상호명, 금액을 확인해 주세요.'); return; }
     const payment: NativeApproval = { id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, cardLast4: card, occurredAt: occurredAt.toISOString(), merchant, amount: Math.floor(amount), source: 'manual' };
+    const suspected = findSuspectedDuplicates(ledger, payment);
+    if (suspected.length && !window.confirm(`같은 상호명·금액의 결제가 ${suspected.length}건 있습니다. 그래도 등록할까요?`)) return;
     let result: ReturnType<typeof applyPayment>;
     let message: string;
     if (manualClassification === 'undecided') {
@@ -468,7 +476,8 @@ function App() {
     const merchant = (document.getElementById('edit-merchant') as HTMLInputElement | null)?.value ?? editTarget.merchant;
     const amount = Number((document.getElementById('edit-amount') as HTMLInputElement | null)?.value ?? editTarget.amount);
     const occurredAt = (document.getElementById('edit-occurred-at') as HTMLInputElement | null)?.value ?? editTarget.occurredAt.slice(0, 16);
-    try { setLedger(updateLedgerEntry(ledger, editTarget.id, { merchant, amount, occurredAt, bucket, category })); setPanel('recent'); show('결제 내역을 수정했습니다.'); }
+    const memo = (document.getElementById('edit-memo') as HTMLInputElement | null)?.value ?? editTarget.memo ?? '';
+    try { setLedger(updateLedgerEntry(ledger, editTarget.id, { merchant, amount, occurredAt, bucket, category, memo })); setPanel('recent'); show('결제 내역을 수정했습니다.'); }
     catch { show('결제일시, 상호명, 금액을 확인해 주세요.'); }
   };
   const confirmDelete = () => { if (!deleteTarget) return; setLedger(removeLedgerEntry(ledger, deleteTarget.id)); setDetailTargetId(null); setPanel('recent'); show('결제 내역을 삭제했습니다.'); };
@@ -478,29 +487,43 @@ function App() {
     setPanel('recent');
     show('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
   };
-  const applyManualClassification = (entryId: string, item: (typeof POLICY_ITEMS)[number]) => {
-    const result = reclassifyUndecided(ledger, entryId, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits, categoryLimits);
-    setLedger(result.ledger);
-    void sendBudgetAlerts(result.alerts, item.bucket, item.ledgerCategories[0]);
-    const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
-    show(`${item.label}로 분류했습니다.${alert}`);
+  const applyUndecidedBatch = (entryIds: string[], item: (typeof POLICY_ITEMS)[number], saveRule: boolean) => {
+    let nextLedger = ledger;
+    const alerts: number[] = [];
+    for (const entryId of entryIds) {
+      const result = reclassifyUndecided(nextLedger, entryId, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits, categoryLimits);
+      nextLedger = result.ledger;
+      alerts.push(...result.alerts);
+    }
+    if (saveRule && entryIds.length === 1) {
+      const entry = ledger.entries.find((candidate) => candidate.id === entryIds[0]);
+      if (entry) {
+        const created = createMerchantRule(entry.merchant, { bucket: item.bucket, category: item.ledgerCategories[0] });
+        const remaining = merchantRules.filter((current) => current.normalizedMerchant !== created.normalizedMerchant);
+        if (remaining.length < 50) setMerchantRules([...remaining, created]);
+        else show('분류는 완료했지만 자동 분류 규칙은 최대 50개까지 저장할 수 있습니다.');
+      }
+    }
+    setLedger(nextLedger);
+    void sendBudgetAlerts(alerts, item.bucket, item.ledgerCategories[0]);
+    show(`${entryIds.length}건을 ${item.label}로 분류했습니다.${saveRule && entryIds.length === 1 ? ' 다음 결제부터 같은 상호명도 자동 분류합니다.' : ''}`);
   };
 
   let content: ReactNode;
   if (panel === 'resident') content = <Table rows={rowsFor('resident')} />;
   else if (panel === 'study') content = <Table rows={rowsFor('studySpace')} />;
-  else if (panel === 'undecided') content = <><p className="undecided-summary">미정 지출 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p>{currentUndecided.length ? currentUndecided.map((entry) => <section className="reclassify-card" key={entry.id}><div className="item"><strong>{entry.merchant}</strong><span>{entry.occurredAt.slice(0, 16).replace('T', ' ')} · {won(entry.amount)}</span></div><p>지원 항목을 선택하면 즉시 예산에 반영됩니다.</p><div className="reclassify-options">{POLICY_ITEMS.map((item) => <button key={item.key} onClick={() => applyManualClassification(entry.id, item)}>{item.label}</button>)}</div></section>) : <p>현재 기간에 미정 지출이 없습니다.</p>}{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 미정 지출 {previousUndecided.length}건</summary>{previousUndecided.map((entry) => <section className="reclassify-card" key={entry.id}><div className="item"><strong>{entry.merchant}</strong><span>{entry.occurredAt.slice(0, 16).replace('T', ' ')} · {won(entry.amount)}</span></div><div className="reclassify-options">{POLICY_ITEMS.map((item) => <button key={item.key} onClick={() => applyManualClassification(entry.id, item)}>{item.label}</button>)}</div></section>)}</details>}</>;
-  else if (panel === 'recent') content = <PaymentHistory entries={recent} categoryNames={categoryNames} onOpen={beginDetail} />;
-  else if (panel === 'detail') content = detailTarget ? <section className="payment-detail"><div className="payment-detail__hero"><strong>{detailTarget.merchant}</strong><span>{new Date(detailTarget.occurredAt).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' })}</span><b>{won(detailTarget.amount)}</b><small>{detailTarget.status === 'cancelled' ? '취소됨' : `${detailTarget.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[detailTarget.category ?? ''] || '분류 없음'}`}</small></div>{detailTarget.status === 'classified' && <div className="payment-detail__actions"><button className="sheet-action" onClick={() => beginEdit(detailTarget)}>수정 · 분류 변경</button><button className="sheet-action secondary-action" onClick={() => { setCancellationTarget(detailTarget); setPanel('cancel'); }}>취소 확인</button><button className="sheet-action danger-action" onClick={() => { setDeleteTarget(detailTarget); setPanel('delete'); }}>삭제</button></div>}</section> : <p>결제 내역을 찾지 못했습니다.</p>;
-  else if (panel === 'edit') content = editTarget ? <><p>수정한 내역은 수동 입력 내역으로 기록됩니다.</p><label>결제일시<input id="edit-occurred-at" aria-label="수정 결제일시" type="datetime-local" defaultValue={editTarget.occurredAt.slice(0, 16)} /></label><label>상호명<input id="edit-merchant" aria-label="수정 상호명" defaultValue={editTarget.merchant} /></label><label>금액<input id="edit-amount" aria-label="수정 금액" type="number" inputMode="numeric" min="1" defaultValue={editTarget.amount} /></label><label>분류<select id="edit-category" aria-label="수정 분류" defaultValue={POLICY_ITEMS.find((item) => item.ledgerCategories.includes(String(editTarget.category)))?.key ?? 'food'}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><button className="sheet-action" onClick={() => { const item = POLICY_ITEMS.find((candidate) => candidate.key === (document.getElementById('edit-category') as HTMLSelectElement | null)?.value); if (item) saveEditedEntry(item.bucket, item.ledgerCategories[0]); }}>수정 저장</button></> : <p>수정할 결제가 없습니다.</p>;
+  else if (panel === 'undecided') content = <><p className="undecided-summary">미정 지출 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p><UndecidedPanel entries={currentUndecided} items={POLICY_ITEMS} onClassify={applyUndecidedBatch} />{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 미정 지출 {previousUndecided.length}건</summary><UndecidedPanel entries={previousUndecided} items={POLICY_ITEMS} onClassify={applyUndecidedBatch} /></details>}</>;
+  else if (panel === 'recent') content = <PaymentHistory entries={recent} categoryNames={categoryNames} filterOptions={POLICY_ITEMS.map((item) => ({ key: item.ledgerCategories[0], label: item.label }))} isEntryInActivePeriod={(entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey)} displayMerchant={(entry) => getMerchantAlias(entry.merchant, merchantRules) || entry.merchant} isSuspectedDuplicate={(entry) => findSuspectedDuplicates(ledger, entry, entry.id).length > 0} onOpen={beginDetail} />;
+  else if (panel === 'detail') content = detailTarget ? <section className="payment-detail"><div className="payment-detail__hero"><strong>{getMerchantAlias(detailTarget.merchant, merchantRules) || detailTarget.merchant}</strong>{getMerchantAlias(detailTarget.merchant, merchantRules) && <small>원본 결제처 · {detailTarget.merchant}</small>}<span>{new Date(detailTarget.occurredAt).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' })}</span><b>{won(detailTarget.amount)}</b><small>{detailTarget.status === 'cancelled' ? '취소됨' : `${detailTarget.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[detailTarget.category ?? ''] || '분류 없음'}`}</small>{!isEntryInPolicyPeriod(detailTarget, activePolicy.periodKey) && <p className="period-outside-note">현재 적용 기간 외 결제입니다. 보존되지만 예산·경고·위젯에는 반영되지 않습니다.</p>}{findSuspectedDuplicates(ledger, detailTarget, detailTarget.id).length > 0 && <p className="duplicate-note">같은 상호명과 금액의 유사 결제가 있습니다. 실제 중복인지 확인해 주세요.</p>}{detailTarget.memo && <p className="payment-memo">메모 · {detailTarget.memo}</p>}</div>{detailTarget.status === 'classified' && <div className="payment-detail__actions"><button className="sheet-action" onClick={() => beginEdit(detailTarget)}>수정 · 분류 변경</button><button className="sheet-action secondary-action" onClick={() => { setCancellationTarget(detailTarget); setPanel('cancel'); }}>취소 확인</button><button className="sheet-action danger-action" onClick={() => { setDeleteTarget(detailTarget); setPanel('delete'); }}>삭제</button></div>}</section> : <p>결제 내역을 찾지 못했습니다.</p>;
+  else if (panel === 'edit') content = editTarget ? <><p>수정한 내역은 수동 입력 내역으로 기록됩니다.</p><label>결제일시<input id="edit-occurred-at" aria-label="수정 결제일시" type="datetime-local" defaultValue={editTarget.occurredAt.slice(0, 16)} /></label><label>상호명<input id="edit-merchant" aria-label="수정 상호명" defaultValue={editTarget.merchant} /></label><label>금액<input id="edit-amount" aria-label="수정 금액" type="number" inputMode="numeric" min="1" defaultValue={editTarget.amount} /></label><label>분류<select id="edit-category" aria-label="수정 분류" defaultValue={POLICY_ITEMS.find((item) => item.ledgerCategories.includes(String(editTarget.category)))?.key ?? 'food'}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><label>메모 (선택)<input id="edit-memo" aria-label="결제 메모" defaultValue={editTarget.memo ?? ''} placeholder="예: 스터디 모임" maxLength={80} /></label><button className="sheet-action" onClick={() => { const item = POLICY_ITEMS.find((candidate) => candidate.key === (document.getElementById('edit-category') as HTMLSelectElement | null)?.value); if (item) saveEditedEntry(item.bucket, item.ledgerCategories[0]); }}>수정 저장</button></> : <p>수정할 결제가 없습니다.</p>;
   else if (panel === 'delete') content = deleteTarget ? <><p>삭제하면 이 앱의 결제 내역과 예산 사용액에서 제거됩니다. 카드사·은행 원본 내역은 삭제되지 않습니다.</p><div className="item"><strong>{deleteTarget.merchant}</strong><span>{deleteTarget.occurredAt.slice(0, 10)} · {won(deleteTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmDelete}>결제 내역 삭제</button></> : <p>삭제할 결제가 없습니다.</p>;
   else if (panel === 'cancel') content = cancellationTarget ? <><p>실제 취소가 확인된 경우에만 확정하세요. 취소 확정 후에는 이 결제의 예산 사용액이 제외됩니다.</p><div className="item"><strong>{cancellationTarget.merchant}</strong><span>{cancellationTarget.occurredAt.slice(0, 10)} · {won(cancellationTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmCancellation}>취소 확정</button></> : <p>확인할 결제가 없습니다.</p>;
   else if (panel === 'evidence') content = <EvidenceExport />;
   else if (panel === 'import') content = <TransactionImport cardLast4={card} notify={show} onImport={(transactions) => { const result = importCardTransactions(ledger, transactions, card); setLedger(result.ledger); leaveImport(); show(result.replacedDemo ? '데모 내역을 실제 ' + result.imported + '건으로 교체했습니다.' : result.imported + '건을 가져왔습니다.'); }} />;
-  else if (panel === 'rules') content = <section className="rule-manager"><p>결제처에 키워드가 포함되면 자동 분류합니다. 정확 일치는 상호명 전체가 같을 때만 적용됩니다.</p><div className="rule-editor"><label>상호명 또는 키워드<input aria-label="규칙 상호명" value={ruleMerchant} onChange={(event) => setRuleMerchant(event.target.value)} placeholder="예: 메가커피" /></label><label>인식 방법<select aria-label="규칙 인식 방법" value={ruleMatchMode} onChange={(event) => setRuleMatchMode(event.target.value as MerchantMatchMode)}><option value="contains">포함</option><option value="exact">정확히 일치</option></select></label><label>분류 항목<select aria-label="규칙 분류" value={ruleItemKey} onChange={(event) => setRuleItemKey(event.target.value as PolicyItem)}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><button className="sheet-action" onClick={saveMerchantRule}>{editingRuleId ? '규칙 수정 저장' : '규칙 추가'}</button>{editingRuleId && <button className="sheet-action secondary-action" onClick={resetRuleEditor}>수정 취소</button>}</div><div className="rule-management-list"><strong>저장된 규칙 {merchantRules.length}/50</strong>{merchantRules.length ? [...merchantRules].sort((a, b) => a.merchant.localeCompare(b.merchant, 'ko')).map((rule) => <article key={rule.id}><div><strong>{rule.merchant}</strong><span>{(rule.matchMode ?? 'contains') === 'contains' ? '포함' : '정확히 일치'} · {categoryNames[rule.category]}</span></div><button type="button" onClick={() => editMerchantRule(rule)}>수정</button><button type="button" className="delete-action" onClick={() => deleteMerchantRule(rule)}>삭제</button></article>) : <p>저장된 자동 분류 규칙이 없습니다.</p>}</div></section>;
+  else if (panel === 'rules') content = <section className="rule-manager"><p>결제처에 키워드가 포함되면 자동 분류합니다. 정확 일치는 상호명 전체가 같을 때만 적용됩니다.</p><div className="rule-editor"><label>상호명 또는 키워드<input aria-label="규칙 상호명" value={ruleMerchant} onChange={(event) => setRuleMerchant(event.target.value)} placeholder="예: 메가커피" /></label><label>표시 별칭 (선택)<input aria-label="규칙 표시 별칭" value={ruleAlias} onChange={(event) => setRuleAlias(event.target.value)} placeholder="예: 스터디 카페" maxLength={40} /></label><label>인식 방법<select aria-label="규칙 인식 방법" value={ruleMatchMode} onChange={(event) => setRuleMatchMode(event.target.value as MerchantMatchMode)}><option value="contains">포함</option><option value="exact">정확히 일치</option></select></label><label>분류 항목<select aria-label="규칙 분류" value={ruleItemKey} onChange={(event) => setRuleItemKey(event.target.value as PolicyItem)}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><button className="sheet-action" onClick={saveMerchantRule}>{editingRuleId ? '규칙 수정 저장' : '규칙 추가'}</button>{editingRuleId && <button className="sheet-action secondary-action" onClick={resetRuleEditor}>수정 취소</button>}</div><div className="rule-management-list"><strong>저장된 자동 분류 규칙 {merchantRules.length}/50</strong>{merchantRules.length ? [...merchantRules].sort((a, b) => a.merchant.localeCompare(b.merchant, 'ko')).map((rule) => <article key={rule.id}><div><strong>{rule.alias || rule.merchant}</strong><span>{rule.alias ? `${rule.merchant} · ` : ''}{(rule.matchMode ?? 'contains') === 'contains' ? '포함' : '정확히 일치'} · {categoryNames[rule.category]}</span></div><button type="button" onClick={() => editMerchantRule(rule)}>수정</button><button type="button" className="delete-action" onClick={() => deleteMerchantRule(rule)}>삭제</button></article>) : <p>저장된 자동 분류 규칙이 없습니다.</p>}</div></section>;
   else if (panel === 'settings') content = <section className="settings-hub"><p>필요한 설정만 선택해 관리하세요.</p><button className="settings-destination" onClick={() => setPanel('operations')}><strong>운영 설정</strong><span>카드 · 결제 알림 · 예산 경고</span><CaretRight size={26} /></button><button className="settings-destination" onClick={() => setPanel('data')}><strong>데이터 관리</strong><span>계획표 · 거래내역 · 백업</span><CaretRight size={26} /></button><details className="privacy-notice"><summary>개인정보 처리 안내</summary><h3>결제 알림 처리</h3><p>삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다. 같은 승인이 두 앱에 표시되면 한 건으로 합칩니다. 거래 시각·금액·상호명·분류만 저장하며 원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다.</p><h3>저장과 보안</h3><p>거래·정책·자동 분류 규칙은 기기 내부 암호화 저장소에 보관합니다. 서버나 제3자 분석 서비스로 전송하지 않습니다.</p><h3>권한과 대체 입력</h3><p>알림 접근은 Android 시스템 설정에서 언제든 해제할 수 있습니다. 자동 인식이 중단된 기간은 신한카드 엑셀 가져오기 또는 직접 지출 등록으로 보완할 수 있습니다.</p><h3>삭제와 백업</h3><p>개별 결제는 결제 상세에서 삭제할 수 있고, 앱 데이터 초기화 또는 앱 삭제 시 기기 내부 데이터가 삭제됩니다. 암호화 백업은 사용자가 직접 생성·관리합니다.</p><a href="https://cjsan30.github.io/shinhanaccount/privacy-policy.html" target="_blank" rel="noreferrer">전체 개인정보처리방침 보기</a></details></section>;
   else if (panel === 'operations') content = <section className="operations-settings"><p>결제 수신과 예산 경고를 관리합니다. 버튼 문구로 현재 사용 상태를 확인할 수 있습니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setCard(value); if (value.length === 4) void SmsBridge.configure({ cardLast4: value }); }} /></label><button className="mask-toggle" type="button" onClick={() => setShowCard((current) => !current)}>{showCard ? '숨기기' : '보기'}</button><button className={`sheet-action status-action ${paymentAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void togglePaymentNotifications()}>{paymentAlertsEnabled ? '결제 알림 수신 해제' : '결제 알림 수신 설정'}</button><button className={`sheet-action status-action ${budgetAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void toggleBudgetNotifications()}>{budgetAlertsEnabled ? '예산 경고 알림 해제' : '예산 경고 알림 설정'}</button><AlertThresholdSettings first={first} second={second} onChange={updateAlertThreshold} /></section>;
-  else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onUpdatePolicyDraft={updatePolicyDraft} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
+  else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} policyDraftFocusToken={policyDraftFocusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onUpdatePolicyDraft={updatePolicyDraft} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
   else content = <><p>직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>지출 등록</button></>;
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="240" viewBox="0 0 540 240" role="img" aria-label="지원자 아님 대시보드 예시">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#182638"/>
+      <stop offset="100%" stopColor="#2b4566"/>
+    </linearGradient>
+  </defs>
+  <rect width="540" height="240" rx="16" fill="url(#bg3)"/>
+  <rect x="24" y="22" width="492" height="36" rx="12" fill="#ffffff15" stroke="#4f6e8c"/>
+  <text x="42" y="46" font-size="16" fill="#cde4ff" font-family="Pretendard, Arial, sans-serif">내부 대시보드</text>
+  <rect x="24" y="74" width="492" height="62" rx="12" fill="#ffffff12" stroke="#4f6e8c"/>
+  <text x="42" y="108" font-size="18" fill="#dff1ff" font-family="Pretendard, Arial, sans-serif">총액 0원 · 직계정 모드</text>
+  <text x="42" y="132" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">수동 입력 / 업로드로 직접 관리</text>
+  <rect x="24" y="154" width="236" height="62" rx="12" fill="#ffffff12" stroke="#4f6e8c"/>
+  <text x="44" y="189" font-size="14" fill="#d3e4f7" font-family="Pretendard, Arial, sans-serif">직접 지출 입력</text>
+  <rect x="280" y="154" width="236" height="62" rx="12" fill="#9be5d822" stroke="#6be5d2"/>
+  <text x="300" y="189" font-size="14" fill="#dff9f2" font-family="Pretendard, Arial, sans-serif">파일로 가져오기</text>
+</svg>

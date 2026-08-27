@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
 import type { ImportedCardTransaction } from '../domain/shinhanImport';
@@ -12,6 +13,7 @@ type Props = {
   hasMaskedCardWarning: boolean;
   policyText: string;
   policyDraft: SupportPolicy | null;
+  policyDraftFocusToken: number;
   merchantRules: MerchantRule[];
   ledger: Ledger;
   policyBook: PolicyBook;
@@ -32,6 +34,11 @@ type Props = {
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 
 export function DataManagementPanel(props: Props) {
+  const policyDraftRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!props.policyDraft || !props.policyDraftFocusToken) return;
+    requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [props.policyDraft, props.policyDraftFocusToken]);
   return <section className="data-sections">
     <details className="data-section">
       <summary><strong>거래내역</strong><span>신한카드 엑셀 가져오기</span></summary>
@@ -57,7 +64,7 @@ export function DataManagementPanel(props: Props) {
         <textarea aria-label="계획표 내용" value={props.policyText} onChange={(event) => props.onPolicyTextChange(event.target.value)} placeholder="예: 숙박비 50,000원 · 식비 200,000원 · 교통비 250,000원 · 카페 200,000원" />
         <button className="sheet-action" onClick={props.onReviewPolicy}>계획표 읽기</button>
         <button className="sheet-action secondary-action" onClick={props.onReadPolicyScreenshot}>스크린샷에서 읽기</button>
-        {props.policyDraft && <div className="policy-preview"><strong>검토 결과</strong><div className="policy-lines">
+        {props.policyDraft && <div className="policy-preview" ref={policyDraftRef}><strong>검토 결과</strong><div className="policy-lines">
           <section className="policy-group"><h4>정주비 <span>{won(getPolicyLimit(props.policyDraft, 'resident'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'resident').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <section className="policy-group"><h4>학습공간비 <span>{won(getPolicyLimit(props.policyDraft, 'studySpace'))}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'studySpace').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <strong>총 한도 {won(getPolicyLimit(props.policyDraft, 'resident') + getPolicyLimit(props.policyDraft, 'studySpace'))}</strong>

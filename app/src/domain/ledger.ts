@@ -5,7 +5,7 @@ import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -86,7 +86,7 @@ export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyP
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }
 
-export type EditableLedgerEntry = Pick<LedgerEntry, 'merchant' | 'amount' | 'occurredAt' | 'bucket' | 'category'>;
+export type EditableLedgerEntry = Pick<LedgerEntry, 'merchant' | 'amount' | 'occurredAt' | 'bucket' | 'category' | 'memo'>;
 export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: EditableLedgerEntry): Ledger {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status === 'cancelled') return ledger;
@@ -100,6 +100,7 @@ export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: Editab
     periodKey: getPolicyPeriodKey(occurredAt),
     bucket: patch.bucket,
     category: patch.category,
+    memo: patch.memo?.trim() || undefined,
     status: 'classified',
     source: 'manual',
   } : candidate) };
@@ -143,6 +144,25 @@ export function findCancellationCandidates(ledger: Ledger, notice: CancellationN
 export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNotice) {
   const candidates = findCancellationCandidates(ledger, notice);
   return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
+}
+
+export type SuspectedDuplicate = { entry: LedgerEntry; minutesApart: number };
+export function findSuspectedDuplicates(ledger: Ledger, payment: Pick<NativeApproval, 'merchant' | 'amount' | 'occurredAt' | 'cardLast4'>, excludeId?: string, windowMinutes = 2): SuspectedDuplicate[] {
+  const occurredAt = new Date(payment.occurredAt).getTime();
+  if (Number.isNaN(occurredAt)) return [];
+  return ledger.entries
+    .filter((entry) => entry.id !== excludeId && entry.status !== 'cancelled' && entry.amount === payment.amount && normalizedMerchant(entry.merchant) === normalizedMerchant(payment.merchant))
+    .filter((entry) => !payment.cardLast4 || !entry.cardLast4 || entry.cardLast4 === payment.cardLast4)
+    .map((entry) => ({ entry, minutesApart: Math.abs(new Date(entry.occurredAt).getTime() - occurredAt) / 60_000 }))
+    .filter((candidate) => candidate.minutesApart <= windowMinutes)
+    .sort((left, right) => left.minutesApart - right.minutesApart);
+}
+
+export function getHistoryEntries(ledger: Ledger, through?: Date) {
+  return ledger.entries
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
+    .slice()
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
 }
 
 export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date) {

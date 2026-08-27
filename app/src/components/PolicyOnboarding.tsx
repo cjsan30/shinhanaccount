@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PolicyOcr } from '../native/policyOcr';
 import { POLICY_ITEMS, getPolicyLimit, parsePolicyText, type PolicyItem, type SupportPolicy } from '../domain/policy';
 import { POLICY_MAX_LIMITS } from '../domain/budget';
@@ -11,7 +11,14 @@ export function PolicyOnboarding({ onConfirm }: { onConfirm: (policy: SupportPol
   const [text, setText] = useState('');
   const [draft, setDraft] = useState<SupportPolicy | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const readImage = async () => { try { const result = await PolicyOcr.pickAndRecognize(); if (!result.text.trim()) { setText(''); setDraft(createBlankPolicy()); setMessage('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; } setText(result.text); setDraft(parsePolicyText(result.text)); setMessage('OCR 결과를 확인하고 필요한 금액만 수정해 주세요.'); } catch { setText(''); setDraft(createBlankPolicy()); setMessage('이미지를 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); } };
+  const draftRef = useRef<HTMLDivElement>(null);
+  const scrollAfterRead = useRef(false);
+  useEffect(() => {
+    if (!draft || !scrollAfterRead.current) return;
+    scrollAfterRead.current = false;
+    requestAnimationFrame(() => draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [draft]);
+  const readImage = async () => { try { const result = await PolicyOcr.pickAndRecognize(); scrollAfterRead.current = true; if (!result.text.trim()) { setText(''); setDraft(createBlankPolicy()); setMessage('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; } setText(result.text); setDraft(parsePolicyText(result.text)); setMessage('OCR 결과를 확인하고 필요한 금액만 수정해 주세요.'); } catch { scrollAfterRead.current = true; setText(''); setDraft(createBlankPolicy()); setMessage('이미지를 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); } };
   const update = (item: PolicyItem, value: string) => { const amount = Number(value.replaceAll(',', '')); if (!Number.isFinite(amount) || amount < 0) return; setDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current); };
   const confirm = () => { if (!draft) return; const resident = getPolicyLimit(draft, 'resident'); const study = getPolicyLimit(draft, 'studySpace'); if (resident !== POLICY_MAX_LIMITS.resident || study !== POLICY_MAX_LIMITS.studySpace) { setMessage(`정주비는 ${POLICY_MAX_LIMITS.resident.toLocaleString()}원, 학습공간비는 ${POLICY_MAX_LIMITS.studySpace.toLocaleString()}원으로 항목 합계를 맞춰 주세요.`); return; } onConfirm({ ...draft, sourceText: text || draft.sourceText }); };
   const policyGroups = [
@@ -27,7 +34,7 @@ export function PolicyOnboarding({ onConfirm }: { onConfirm: (policy: SupportPol
         <img className="onboarding-policy-example" src="/onboarding-policy-example.png" alt="정주비와 학습공간비의 사용처별 예상금액이 담긴 계획표 예시" />
         <button className="first-run__start" type="button" onClick={() => void readImage()}>이미지로 계획표 불러오기</button>
         {draft && (
-          <div className="onboarding-policy">
+          <div className="onboarding-policy" ref={draftRef}>
             <div className="onboarding-policy__heading"><strong>읽은 계획 금액</strong><span>필요한 항목만 수정하세요</span></div>
             <div className="onboarding-policy__groups">
               {policyGroups.map((group) => (
