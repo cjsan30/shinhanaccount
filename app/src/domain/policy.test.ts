@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { confirmPolicyForPeriod, createPolicyBook, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, parsePolicyText } from './policy';
+import { confirmPolicyForPeriod, createPolicyBook, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, parsePolicyText, validatePolicyAgainstProfile } from './policy';
 
 describe('policy text import', () => {
   it('keeps the current policy stable and schedules a confirmed policy for the next period', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
-    const book = createPolicyBook(parsePolicyText('숙박비 50,000원 식비 200,000원 교통비 250,000원 카페 200,000원'), now);
-    const scheduled = { ...getEffectivePolicy(book, now).policy, plans: { ...getEffectivePolicy(book, now).policy.plans, housing: 100000 } };
+    const initial = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    const book = createPolicyBook(initial, now);
+    const scheduled = { ...getEffectivePolicy(book, now).policy, plans: { ...getEffectivePolicy(book, now).policy.plans, housing: 100000, transport: 200000 } };
     const nextBook = confirmPolicyForPeriod(book, scheduled, getNextPolicyPeriodKey(now));
     expect(getEffectivePolicy(nextBook, now).policy.plans.housing).toBe(50000);
     expect(getEffectivePolicy(nextBook, new Date('2026-08-14T00:00:00+09:00')).policy.plans.housing).toBe(100000);
@@ -42,5 +43,17 @@ describe('policy text import', () => {
       cafe: 200000,
       readingRoom: 0,
     });
+  });
+
+  it('applies the selected 40만원 profile total and item caps', () => {
+    const policy = { ...parsePolicyText(''), profileId: 'shinhanhae-40' as const, plans: { housing: 200_000, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    expect(validatePolicyAgainstProfile(policy)).toEqual([]);
+    expect(validatePolicyAgainstProfile({ ...policy, plans: { ...policy.plans, food: 90_000, housing: -10_000 } })).toContain('식비는 최대 80,000원까지 설정할 수 있습니다.');
+  });
+
+  it('does not treat a persisted all-zero draft as a confirmed policy', () => {
+    const now = new Date('2026-08-01T12:00:00+09:00');
+    const emptyVersion = { ...parsePolicyText(''), periodKey: '2026-08', confirmedAt: now.toISOString() };
+    expect(getEffectivePolicy({ versions: [emptyVersion] }, now).confirmed).toBe(false);
   });
 });

@@ -1,7 +1,9 @@
 import { getPolicyPeriodKey, type BudgetKey } from './budget';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
-export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string };
+export type SupportProfileId = 'shinhanhae-70' | 'shinhanhae-40';
+export type SupportProfile = { id: SupportProfileId; label: string; totalLimit: number; bucketLimits: Record<BudgetKey, number>; itemCaps: Record<PolicyItem, number> };
+export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string; profileId?: SupportProfileId; alertTargets?: PolicyItem[] };
 export type PolicyItemDefinition = { key: PolicyItem; bucket: BudgetKey; label: string; ledgerCategories: string[] };
 
 export const POLICY_STORAGE_KEY = 'shinhanhae-policy-v1';
@@ -14,7 +16,26 @@ export const POLICY_ITEMS: PolicyItemDefinition[] = [
   { key: 'cafe', bucket: 'studySpace', label: '카페', ledgerCategories: ['generalCafe'] },
   { key: 'readingRoom', bucket: 'studySpace', label: '독서실', ledgerCategories: ['readingRoom'] },
 ];
-export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '' };
+export const SHINHANHAE_PROFILES: SupportProfile[] = [
+  { id: 'shinhanhae-70', label: '월 70만 원형', totalLimit: 700_000, bucketLimits: { resident: 500_000, studySpace: 200_000 }, itemCaps: { housing: 500_000, food: 200_000, education: 400_000, transport: 400_000, studyCafe: 200_000, cafe: 200_000, readingRoom: 200_000 } },
+  { id: 'shinhanhae-40', label: '월 40만 원형', totalLimit: 400_000, bucketLimits: { resident: 200_000, studySpace: 200_000 }, itemCaps: { housing: 200_000, food: 80_000, education: 160_000, transport: 160_000, studyCafe: 200_000, cafe: 200_000, readingRoom: 200_000 } },
+];
+export const DEFAULT_SUPPORT_PROFILE_ID: SupportProfileId = 'shinhanhae-70';
+export function getSupportProfile(id: SupportProfileId | undefined) { return SHINHANHAE_PROFILES.find((profile) => profile.id === id) ?? SHINHANHAE_PROFILES[0]; }
+export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [] };
+export function getAlertTargets(policy: SupportPolicy) { return policy.alertTargets ?? POLICY_ITEMS.filter((item) => policy.plans[item.key] > 0).map((item) => item.key); }
+export function validatePolicyAgainstProfile(policy: SupportPolicy) {
+  const profile = getSupportProfile(policy.profileId);
+  const resident = getPolicyLimit(policy, 'resident');
+  const study = getPolicyLimit(policy, 'studySpace');
+  const total = resident + study;
+  const issues: string[] = [];
+  if (resident !== profile.bucketLimits.resident) issues.push(`정주비 합계를 ${profile.bucketLimits.resident.toLocaleString()}원으로 맞춰 주세요.`);
+  if (study !== profile.bucketLimits.studySpace) issues.push(`학습공간비 합계를 ${profile.bucketLimits.studySpace.toLocaleString()}원으로 맞춰 주세요.`);
+  if (total !== profile.totalLimit) issues.push(`전체 합계를 ${profile.totalLimit.toLocaleString()}원으로 맞춰 주세요.`);
+  for (const item of POLICY_ITEMS) if (policy.plans[item.key] > profile.itemCaps[item.key]) issues.push(`${item.label}는 최대 ${profile.itemCaps[item.key].toLocaleString()}원까지 설정할 수 있습니다.`);
+  return issues;
+}
 
 const fields: Array<[PolicyItem, RegExp]> = [
   ['housing', /숙박비[\s\S]{0,80}?([\d,]+)\s*원?/],
@@ -81,7 +102,7 @@ export function parsePolicyText(text: string): SupportPolicy {
   const visualRows = parsePlansByVisualRow(text);
   if (Object.keys(visualRows).length >= 7) {
     const visualPolicy = { plans: { ...plans, ...visualRows }, sourceText: text };
-    if (getPolicyLimit(visualPolicy, 'resident') === 500_000 && getPolicyLimit(visualPolicy, 'studySpace') === 200_000) return visualPolicy;
+    return visualPolicy;
   }
 
   const flattenedNumbers = [...text.slice(Math.max(0, text.indexOf('예상금액'))).split('비율')[0].matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(',', '')));
@@ -126,7 +147,7 @@ export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
     const raw = storage.getItem(POLICY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SupportPolicy;
-    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '' };
+    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [] };
   } catch { return null; }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
@@ -149,7 +170,7 @@ export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = 
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans } })) };
+      if (Array.isArray(parsed.versions) && parsed.versions.length) return { versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [] })) };
     }
     return { versions: [] };
   } catch { return { versions: [] }; }
@@ -166,7 +187,12 @@ export function getPolicyVersion(book: PolicyBook, periodKey: string) {
 export function getEffectivePolicy(book: PolicyBook, date: Date) {
   const periodKey = getPolicyPeriodKey(date);
   const exact = getPolicyVersion(book, periodKey);
-  if (exact) return { policy: exact as SupportPolicy, periodKey, confirmed: true };
+  // Older test builds could persist an all-zero draft as a "confirmed" policy.
+  // An exact version is usable only when it satisfies the selected support profile;
+  // otherwise the user must return to onboarding and confirm a real plan.
+  if (exact && validatePolicyAgainstProfile(exact).length === 0) {
+    return { policy: exact as SupportPolicy, periodKey, confirmed: true };
+  }
   const fallback = [...book.versions].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).at(-1);
   return { policy: (fallback ?? emptyPolicy) as SupportPolicy, periodKey, confirmed: false };
 }

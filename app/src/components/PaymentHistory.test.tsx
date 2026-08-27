@@ -36,4 +36,15 @@ describe('payment history', () => {
     fireEvent.touchEnd(history!, { changedTouches: [{ clientX: 100 }] });
     expect(screen.getByText('상호 10')).toBeInTheDocument();
   });
+
+  it('filters by a detailed category and sorts by amount', () => {
+    const mixed = [{ ...entries[0], id: 'cafe', merchant: '카페', category: 'generalCafe', amount: 9000 }, { ...entries[1], id: 'food', merchant: '식당', category: 'food', amount: 2000 }];
+    render(<PaymentHistory entries={mixed} categoryNames={{ food: '식비', generalCafe: '카페' }} filterOptions={[{ key: 'food', label: '식비' }, { key: 'generalCafe', label: '카페' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
+    fireEvent.change(screen.getByLabelText('결제 내역 세부항목 필터'), { target: { value: 'generalCafe' } });
+    expect(screen.getByRole('button', { name: /카페/ })).toBeInTheDocument();
+    expect(screen.queryByText('식당')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('결제 내역 세부항목 필터'), { target: { value: 'all' } });
+    fireEvent.change(screen.getByLabelText('결제 내역 정렬'), { target: { value: 'amount-asc' } });
+    expect(screen.getAllByRole('button').find((button) => button.textContent?.includes('식당'))).toBeTruthy();
+  });
 });

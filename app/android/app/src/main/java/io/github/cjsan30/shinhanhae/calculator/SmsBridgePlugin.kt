@@ -65,6 +65,8 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
     if (!isApprovalInPolicyPeriod(approval.occurredAt, state.optString("periodKey"))) return null
     val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
     val limits = state.optJSONObject("categoryLimits") ?: return null
+    val alertCategories = state.optJSONArray("alertCategories") ?: return null
+    if ((0 until alertCategories.length()).none { alertCategories.optString(it) == classification.category }) return null
     val spent = state.optJSONObject("categorySpent") ?: JSONObject()
     val thresholds = state.optJSONArray("thresholds") ?: return null
     val limit = limits.optInt(classification.category, 0)
@@ -80,7 +82,7 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
         val boundary = limit * threshold / 100.0
         if (previous < boundary && current >= boundary) crossed.add(threshold)
     }
-    return if (crossed.isEmpty()) null else classification.label + " 사용액이 " + crossed.joinToString(", ") { it.toString() + "%" } + " 기준을 넘었습니다."
+    return if (crossed.isEmpty()) null else classification.label + " 잔액이 " + crossed.joinToString(", ") { (100 - it).toString() + "%" } + " 남았습니다."
 }
 private val approvalRegex = Regex("""\[?신한(?:체크)?승인\]?\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
 
@@ -287,11 +289,13 @@ class SmsBridgePlugin : Plugin() {
     fun syncBudgetState(call: PluginCall) {
         val categoryLimits = call.getObject("categoryLimits") ?: JSObject()
         val categorySpent = call.getObject("categorySpent") ?: JSObject()
+        val alertCategories = call.getArray("alertCategories") ?: JSArray()
         val thresholds = call.getArray("thresholds") ?: JSArray()
         val periodKey = call.getString("periodKey") ?: ""
         val state = JSONObject()
             .put("categoryLimits", JSONObject(categoryLimits.toString()))
             .put("categorySpent", JSONObject(categorySpent.toString()))
+            .put("alertCategories", alertCategories)
             .put("thresholds", thresholds)
             .put("periodKey", periodKey)
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
