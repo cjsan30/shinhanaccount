@@ -3,8 +3,9 @@ import { getPolicyPeriodKey, type BudgetKey } from './budget';
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
 export type SupportProfileId = 'shinhanhae-70' | 'shinhanhae-40';
 export type SupportProfile = { id: SupportProfileId; label: string; totalLimit: number; bucketLimits: Record<BudgetKey, number>; itemCaps: Record<PolicyItem, number> };
-export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string; profileId?: SupportProfileId; alertTargets?: PolicyItem[] };
+export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string; profileId?: SupportProfileId; alertTargets?: PolicyItem[]; customItems?: CustomPolicyItem[] };
 export type PolicyItemDefinition = { key: PolicyItem; bucket: BudgetKey; label: string; ledgerCategories: string[] };
+export type CustomPolicyItem = { id: string; label: string; bucket: BudgetKey; amount: number };
 
 export const POLICY_STORAGE_KEY = 'shinhanhae-policy-v1';
 export const POLICY_ITEMS: PolicyItemDefinition[] = [
@@ -22,7 +23,11 @@ export const SHINHANHAE_PROFILES: SupportProfile[] = [
 ];
 export const DEFAULT_SUPPORT_PROFILE_ID: SupportProfileId = 'shinhanhae-70';
 export function getSupportProfile(id: SupportProfileId | undefined) { return SHINHANHAE_PROFILES.find((profile) => profile.id === id) ?? SHINHANHAE_PROFILES[0]; }
-export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [] };
+export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [], customItems: [] };
+export type AnyPolicyItemDefinition = Omit<PolicyItemDefinition, 'key'> & { key: string };
+export function getPolicyItems(policy: Pick<SupportPolicy, 'customItems'>): AnyPolicyItemDefinition[] {
+  return [...POLICY_ITEMS, ...(policy.customItems ?? []).filter((item) => item.label.trim() && item.amount >= 0).map((item) => ({ key: item.id, label: item.label.trim(), bucket: item.bucket, ledgerCategories: [`custom:${item.id}`] }))];
+}
 export function getAlertTargets(policy: SupportPolicy) { return policy.alertTargets ?? POLICY_ITEMS.filter((item) => policy.plans[item.key] > 0).map((item) => item.key); }
 export function validatePolicyAgainstProfile(policy: SupportPolicy) {
   const profile = getSupportProfile(policy.profileId);
@@ -140,14 +145,14 @@ export function parsePolicyText(text: string): SupportPolicy {
   return { plans, sourceText: text };
 }
 export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
-  return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0);
+  return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0) + (policy.customItems ?? []).filter((item) => item.bucket === bucket).reduce((sum, item) => sum + item.amount, 0);
 }
 export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
   try {
     const raw = storage.getItem(POLICY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SupportPolicy;
-    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [] };
+    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [], ...(parsed.customItems?.length ? { customItems: parsed.customItems } : {}) };
   } catch { return null; }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
@@ -170,7 +175,7 @@ export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = 
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions)) return { mode: parsed.mode, versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [] })) };
+      if (Array.isArray(parsed.versions)) return { ...(parsed.mode ? { mode: parsed.mode } : {}), versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [], ...(version.customItems?.length ? { customItems: version.customItems } : {}) })) };
     }
     return { versions: [] };
   } catch { return { versions: [] }; }
@@ -204,8 +209,12 @@ export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, 
 }
 export function getCategoryLimit(policy: SupportPolicy, category: string) {
   const item = POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category));
-  return item ? policy.plans[item.key] : 0;
+  if (item) return policy.plans[item.key];
+  const custom = (policy.customItems ?? []).find((candidate) => `custom:${candidate.id}` === category);
+  return custom?.amount ?? 0;
 }
-export function getCategoryLabel(category: string) {
-  return POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category))?.label ?? category;
+export function getCategoryLabel(category: string, policy?: SupportPolicy) {
+  return POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category))?.label
+    ?? policy?.customItems?.find((candidate) => `custom:${candidate.id}` === category)?.label
+    ?? category;
 }

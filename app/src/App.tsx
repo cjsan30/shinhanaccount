@@ -19,6 +19,7 @@ import {
   getCategoryLabel,
   getCategoryLimit,
   getAlertTargets,
+  getPolicyItems,
   getNextPolicyPeriodKey,
   getPolicyLimit,
   parsePolicyText,
@@ -52,7 +53,7 @@ const TransactionImport = lazy(() => import('./components/TransactionImport').th
 const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then((module) => ({ default: module.OnboardingFlow })));
 const LoadingPanel = () => <p className="panel-loading" role="status">화면을 준비하고 있습니다…</p>;
 
-type ManualClassificationChoice = 'auto' | 'undecided' | PolicyItem;
+type ManualClassificationChoice = 'auto' | 'undecided' | string;
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const manualDateTimeValue = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const categoryNames: Record<string, string> = { lodging: '주거비', food: '식비', education: '교육비', transport: '교통비', studyCafe: '스터디카페', generalCafe: '카페', readingRoom: '독서실' };
@@ -101,6 +102,7 @@ function App() {
   const [budgetAlertsEnabled, setBudgetAlertsEnabled] = useState(false);
   const activePolicy = getEffectivePolicy(policyBook, now);
   const policy = activePolicy.policy;
+  const allPolicyItems = useMemo(() => getPolicyItems(policy), [policy]);
   const [policyText, setPolicyText] = useState('');
   const [policyDraft, setPolicyDraft] = useState<SupportPolicy | null>(null);
   const [policyDraftFocusToken, setPolicyDraftFocusToken] = useState(0);
@@ -195,7 +197,7 @@ function App() {
   const acknowledgeApprovals = (approvals: NativeApproval[]) => SmsBridge.acknowledgePendingApprovals({ ids: approvals.map(approvalQueueId) }).catch(() => undefined);
 
   const budgetLimits = { resident: getPolicyLimit(policy, 'resident'), studySpace: getPolicyLimit(policy, 'studySpace') };
-  const categoryLimits = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, getCategoryLimit(policy, category)]))), [policy]);
+  const categoryLimits = useMemo(() => Object.fromEntries(allPolicyItems.flatMap((item) => item.ledgerCategories.map((category) => [category, getCategoryLimit(policy, category)]))), [allPolicyItems, policy]);
   const alertCategories = useMemo(() => getAlertTargets(policy).flatMap((key) => POLICY_ITEMS.find((item) => item.key === key)?.ledgerCategories ?? []), [policy]);
   const [first, second] = ledger.alertThresholds;
   const resident = getSummary(ledger, 'resident', budgetLimits.resident, activePolicy.periodKey);
@@ -203,7 +205,7 @@ function App() {
   const totalSpent = resident.spent + study.spent;
   const totalLimit = budgetLimits.resident + budgetLimits.studySpace;
   const totalUsage = roundUsagePercent(totalSpent, totalLimit);
-  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => [item.label, policy.plans[item.key], ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && isEntryInPolicyPeriod(entry, activePolicy.periodKey) && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
+  const rowsFor = (bucket: BudgetKey): Array<[string, number, number]> => allPolicyItems.filter((item) => item.bucket === bucket).map((item) => [item.label, item.key in policy.plans ? policy.plans[item.key as PolicyItem] : policy.customItems?.find((custom) => custom.id === item.key)?.amount ?? 0, ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && isEntryInPolicyPeriod(entry, activePolicy.periodKey) && item.ledgerCategories.includes(String(entry.category))).reduce((sum, entry) => sum + entry.amount, 0)]);
   const undecidedEntries = useMemo(() => ledger.entries.filter((entry) => entry.status === 'undecided').slice().sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)), [ledger.entries]);
   const currentUndecided = undecidedEntries.filter((entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey));
   const previousUndecided = undecidedEntries.filter((entry) => !isEntryInPolicyPeriod(entry, activePolicy.periodKey));
@@ -218,10 +220,10 @@ function App() {
     .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'ko'))
     .slice(0, 2)
     .map(({ category, label }) => ({ category, label })), [activePolicy.periodKey, ledger.entries, policy]);
-  const widgetDetailRows = useMemo(() => POLICY_ITEMS.map((item) => {
+  const widgetDetailRows = useMemo(() => allPolicyItems.map((item) => {
     const entries = ledger.entries.filter((entry) => entry.status === 'classified' && isEntryInPolicyPeriod(entry, activePolicy.periodKey) && item.ledgerCategories.includes(String(entry.category)));
-    return { label: item.label, limit: policy.plans[item.key], spent: entries.reduce((sum, entry) => sum + entry.amount, 0), count: entries.length };
-  }).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [ledger.entries, activePolicy.periodKey, policy]);
+    return { label: item.label, limit: getCategoryLimit(policy, item.ledgerCategories[0]), spent: entries.reduce((sum, entry) => sum + entry.amount, 0), count: entries.length };
+  }).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [ledger.entries, activePolicy.periodKey, allPolicyItems, policy]);
   useEffect(() => {
     void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, quickCategories }).catch(() => undefined);
   }, [activePolicy.periodKey, alertCategories, categoryLimits, categorySpent, ledger.alertThresholds, quickCategories]);
@@ -522,7 +524,7 @@ function App() {
       result = applyPayment(ledger, payment, budgetLimits, categoryLimits, (value, paymentAmount) => classifyWithMerchantRules(value, paymentAmount, merchantRules));
       message = `${classificationText(classifyWithMerchantRules(merchant, amount, merchantRules))}로 저장했습니다.`;
     } else {
-      const item = POLICY_ITEMS.find((candidate) => candidate.key === manualClassification);
+      const item = allPolicyItems.find((candidate) => candidate.key === manualClassification);
       if (!item) return;
       const undecided = saveAsUndecided(ledger, payment);
       result = reclassifyUndecided(undecided.ledger, undecided.entry.id, { bucket: item.bucket, category: item.ledgerCategories[0] }, budgetLimits, categoryLimits);
@@ -551,7 +553,7 @@ function App() {
     setPanel('recent');
     show('취소 결제로 처리했습니다. 예산 사용액에서 제외됩니다.');
   };
-  const applyUndecidedBatch = (entryIds: string[], item: (typeof POLICY_ITEMS)[number], saveRule: boolean) => {
+  const applyUndecidedBatch = (entryIds: string[], item: ReturnType<typeof getPolicyItems>[number], saveRule: boolean) => {
     let nextLedger = ledger;
     const alerts: number[] = [];
     for (const entryId of entryIds) {
@@ -559,7 +561,7 @@ function App() {
       nextLedger = result.ledger;
       alerts.push(...result.alerts);
     }
-    if (saveRule && entryIds.length === 1) {
+    if (saveRule && !item.ledgerCategories[0]?.startsWith('custom:') && entryIds.length === 1) {
       const entry = ledger.entries.find((candidate) => candidate.id === entryIds[0]);
       if (entry) {
         const created = createMerchantRule(entry.merchant, { bucket: item.bucket, category: item.ledgerCategories[0] });
@@ -576,8 +578,8 @@ function App() {
   let content: ReactNode;
   if (panel === 'resident') content = <Table rows={rowsFor('resident')} />;
   else if (panel === 'study') content = <Table rows={rowsFor('studySpace')} />;
-  else if (panel === 'undecided') content = <><p className="undecided-summary">미정 지출 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p><UndecidedPanel entries={currentUndecided} items={POLICY_ITEMS} onClassify={applyUndecidedBatch} />{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 미정 지출 {previousUndecided.length}건</summary><UndecidedPanel entries={previousUndecided} items={POLICY_ITEMS} onClassify={applyUndecidedBatch} /></details>}</>;
-  else if (panel === 'recent') content = <PaymentHistory entries={recent} categoryNames={categoryNames} filterOptions={POLICY_ITEMS.map((item) => ({ key: item.ledgerCategories[0], label: item.label }))} isEntryInActivePeriod={(entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey)} displayMerchant={(entry) => getMerchantAlias(entry.merchant, merchantRules) || entry.merchant} isSuspectedDuplicate={(entry) => findSuspectedDuplicates(ledger, entry, entry.id).length > 0} onOpen={beginDetail} />;
+  else if (panel === 'undecided') content = <><p className="undecided-summary">미정 지출 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p><UndecidedPanel entries={currentUndecided} items={allPolicyItems} onClassify={applyUndecidedBatch} />{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 미정 지출 {previousUndecided.length}건</summary><UndecidedPanel entries={previousUndecided} items={allPolicyItems} onClassify={applyUndecidedBatch} /></details>}</>;
+  else if (panel === 'recent') content = <PaymentHistory entries={recent} categoryNames={{ ...categoryNames, ...Object.fromEntries((policy.customItems ?? []).map((item) => [`custom:${item.id}`, item.label])) }} filterOptions={allPolicyItems.map((item) => ({ key: item.ledgerCategories[0], label: item.label }))} isEntryInActivePeriod={(entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey)} displayMerchant={(entry) => getMerchantAlias(entry.merchant, merchantRules) || entry.merchant} isSuspectedDuplicate={(entry) => findSuspectedDuplicates(ledger, entry, entry.id).length > 0} onOpen={beginDetail} />;
   else if (panel === 'detail') content = detailTarget ? <section className="payment-detail"><div className="payment-detail__hero"><strong>{getMerchantAlias(detailTarget.merchant, merchantRules) || detailTarget.merchant}</strong>{getMerchantAlias(detailTarget.merchant, merchantRules) && <small>원본 결제처 · {detailTarget.merchant}</small>}<span>{new Date(detailTarget.occurredAt).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' })}</span><b>{won(detailTarget.amount)}</b><small>{detailTarget.status === 'cancelled' ? '취소됨' : `${detailTarget.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[detailTarget.category ?? ''] || '분류 없음'}`}</small>{!isEntryInPolicyPeriod(detailTarget, activePolicy.periodKey) && <p className="period-outside-note">현재 적용 기간 외 결제입니다. 보존되지만 예산·경고·위젯에는 반영되지 않습니다.</p>}{findSuspectedDuplicates(ledger, detailTarget, detailTarget.id).length > 0 && <p className="duplicate-note">같은 상호명과 금액의 유사 결제가 있습니다. 실제 중복인지 확인해 주세요.</p>}{detailTarget.memo && <p className="payment-memo">메모 · {detailTarget.memo}</p>}</div>{detailTarget.status === 'classified' && <div className="payment-detail__actions"><button className="sheet-action" onClick={() => beginEdit(detailTarget)}>수정 · 분류 변경</button><button className="sheet-action secondary-action" onClick={() => { setCancellationTarget(detailTarget); setPanel('cancel'); }}>취소 확인</button><button className="sheet-action danger-action" onClick={() => { setDeleteTarget(detailTarget); setPanel('delete'); }}>삭제</button></div>}</section> : <p>결제 내역을 찾지 못했습니다.</p>;
   else if (panel === 'edit') content = editTarget ? <><p>수정한 내역은 수동 입력 내역으로 기록됩니다.</p><label>결제일시<input id="edit-occurred-at" aria-label="수정 결제일시" type="datetime-local" defaultValue={editTarget.occurredAt.slice(0, 16)} /></label><label>상호명<input id="edit-merchant" aria-label="수정 상호명" defaultValue={editTarget.merchant} /></label><label>금액<input id="edit-amount" aria-label="수정 금액" type="number" inputMode="numeric" min="1" defaultValue={editTarget.amount} /></label><label>분류<select id="edit-category" aria-label="수정 분류" defaultValue={POLICY_ITEMS.find((item) => item.ledgerCategories.includes(String(editTarget.category)))?.key ?? 'food'}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><label>메모 (선택)<input id="edit-memo" aria-label="결제 메모" defaultValue={editTarget.memo ?? ''} placeholder="예: 스터디 모임" maxLength={80} /></label><button className="sheet-action" onClick={() => { const item = POLICY_ITEMS.find((candidate) => candidate.key === (document.getElementById('edit-category') as HTMLSelectElement | null)?.value); if (item) saveEditedEntry(item.bucket, item.ledgerCategories[0]); }}>수정 저장</button></> : <p>수정할 결제가 없습니다.</p>;
   else if (panel === 'delete') content = deleteTarget ? <><p>삭제하면 이 앱의 결제 내역과 예산 사용액에서 제거됩니다. 카드사·은행 원본 내역은 삭제되지 않습니다.</p><div className="item"><strong>{deleteTarget.merchant}</strong><span>{deleteTarget.occurredAt.slice(0, 10)} · {won(deleteTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmDelete}>결제 내역 삭제</button></> : <p>삭제할 결제가 없습니다.</p>;
@@ -589,7 +591,7 @@ function App() {
   else if (panel === 'accessibility') content = <AccessibilitySettings preferences={accessibilityPreferences} onChange={setAccessibilityPreferences} />;
   else if (panel === 'operations') content = <section className="operations-settings"><p>결제 수신과 예산 경고를 관리합니다. 버튼 문구로 현재 사용 상태를 확인할 수 있습니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setCard(value); if (value.length === 4) void SmsBridge.configure({ cardLast4: value }); }} /></label><button className="mask-toggle" type="button" onClick={() => setShowCard((current) => !current)}>{showCard ? '숨기기' : '보기'}</button><button className={`sheet-action status-action ${paymentAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void togglePaymentNotifications()}>{paymentAlertsEnabled ? '결제 알림 수신 해제' : '결제 알림 수신 설정'}</button><button className={`sheet-action status-action ${budgetAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void toggleBudgetNotifications()}>{budgetAlertsEnabled ? '예산 경고 알림 해제' : '예산 경고 알림 설정'}</button><AlertThresholdSettings first={first} second={second} onChange={updateAlertThreshold} /><SmsDiagnostics notify={show} /></section>;
   else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} policyDraftFocusToken={policyDraftFocusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onUpdatePolicyDraft={updatePolicyDraft} onUpdatePolicyProfile={updatePolicyProfile} onUpdatePolicyAlertTarget={updatePolicyAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
-  else content = <><p>직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>지출 등록</button></>;
+  else content = <><p>직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{allPolicyItems.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>지출 등록</button></>;
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'accessibility' ? '접근성 · 개인화' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;
   if (!storageReady) return <main className="storage-status"><h1>데이터를 안전하게 불러오는 중</h1><p>암호화 저장소를 확인하고 있습니다.</p></main>;

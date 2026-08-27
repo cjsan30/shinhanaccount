@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { PolicyOcr } from '../native/policyOcr';
-import { DEFAULT_SUPPORT_PROFILE_ID, POLICY_ITEMS, SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, parsePolicyText, validatePolicyAgainstProfile, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../domain/policy';
+import { DEFAULT_SUPPORT_PROFILE_ID, POLICY_ITEMS, SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, parsePolicyText, validatePolicyAgainstProfile, type CustomPolicyItem, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../domain/policy';
 
 function createBlankPolicy(): SupportPolicy {
   return { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [] };
@@ -11,6 +11,9 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
   const [text, setText] = useState('');
   const [draft, setDraft] = useState<SupportPolicy | null>(initialDraft);
   const [message, setMessage] = useState<string | null>(null);
+  const [customLabel, setCustomLabel] = useState('');
+  const [customBucket, setCustomBucket] = useState<'resident' | 'studySpace'>('resident');
+  const [customAmount, setCustomAmount] = useState('');
   const draftRef = useRef<HTMLDivElement>(null);
   const scrollAfterRead = useRef(false);
   const updateDraft = (next: SupportPolicy | null | ((current: SupportPolicy | null) => SupportPolicy | null)) => setDraft((current) => { const value = typeof next === 'function' ? next(current) : next; onDraftChange?.(value); return value; });
@@ -24,6 +27,13 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
   const readImage = async () => { try { const result = await PolicyOcr.pickAndRecognize(); scrollAfterRead.current = true; if (!result.text.trim()) { setText(''); updateDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; } setText(result.text); updateDraft({ ...parsePolicyText(result.text), profileId }); setMessage('OCR 결과를 확인하고 필요한 금액만 수정해 주세요.'); } catch { scrollAfterRead.current = true; setText(''); updateDraft({ ...createBlankPolicy(), profileId }); setMessage('이미지를 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); } };
   const update = (item: PolicyItem, value: string) => { const amount = Number(value.replaceAll(',', '')); if (!Number.isFinite(amount) || amount < 0) return; updateDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current); };
   const toggleAlertTarget = (item: PolicyItem) => updateDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
+  const addCustomItem = () => {
+    const amount = Number(customAmount.replaceAll(',', ''));
+    if (!customLabel.trim() || !Number.isFinite(amount) || amount < 0) { setMessage('사용자 항목 이름과 금액을 확인해 주세요.'); return; }
+    const item: CustomPolicyItem = { id: crypto.randomUUID(), label: customLabel.trim(), bucket: customBucket, amount: Math.floor(amount) };
+    updateDraft((current) => current ? { ...current, customItems: [...(current.customItems ?? []), item] } : current);
+    setCustomLabel(''); setCustomAmount('');
+  };
   const confirm = () => { if (!draft) return; const issues = validatePolicyAgainstProfile({ ...draft, profileId }); if (issues.length) { setMessage(issues[0]); return; } onConfirm({ ...draft, profileId, alertTargets: getAlertTargets(draft), sourceText: text || draft.sourceText }); };
   const policyGroups = [
     { key: 'resident', label: '정주비', limit: profile.bucketLimits.resident, items: POLICY_ITEMS.filter((item) => item.bucket === 'resident') },
@@ -56,6 +66,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
               ))}
             </div>
             <section className="policy-alert-targets"><strong>잔액 경고를 받을 항목</strong><span>선택한 항목만 공통 경고 기준에 따라 알려드립니다.</span>{POLICY_ITEMS.filter((item) => draft.plans[item.key] > 0).map((item) => <label key={item.key}><input type="checkbox" checked={getAlertTargets(draft).includes(item.key)} onChange={() => toggleAlertTarget(item.key)} /> {item.label}</label>)}</section>
+            <section className="policy-custom-items"><strong>지원항목 직접 추가</strong><span>직접 등록·가져온 내역·증빙 연결에만 사용합니다. 알림 자동 분류에는 사용하지 않습니다.</span><div><input aria-label="사용자 지원항목 이름" value={customLabel} onChange={(event) => setCustomLabel(event.target.value)} placeholder="예: 장비 대여" maxLength={30} /><select aria-label="사용자 지원항목 구분" value={customBucket} onChange={(event) => setCustomBucket(event.target.value as 'resident' | 'studySpace')}><option value="resident">정주비</option><option value="studySpace">학습공간비</option></select><input aria-label="사용자 지원항목 금액" type="number" min="0" step="1000" value={customAmount} onChange={(event) => setCustomAmount(event.target.value)} placeholder="금액" /></div><button type="button" onClick={addCustomItem}>항목 추가</button>{(draft.customItems ?? []).map((item) => <p key={item.id}><b>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</b><span>{item.amount.toLocaleString()}원</span><button type="button" onClick={() => updateDraft((current) => current ? { ...current, customItems: (current.customItems ?? []).filter((candidate) => candidate.id !== item.id) } : current)}>삭제</button></p>)}</section>
             <button className="first-run__start" type="button" onClick={confirm}>정책 확정</button>
           </div>
         )}

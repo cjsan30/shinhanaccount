@@ -51,6 +51,12 @@ describe('policy text import', () => {
     expect(validatePolicyAgainstProfile({ ...policy, plans: { ...policy.plans, food: 90_000, housing: -10_000 } })).toContain('식비는 최대 80,000원까지 설정할 수 있습니다.');
   });
 
+  it('includes a user-defined item in the selected budget while keeping it out of fixed item caps', () => {
+    const policy = { ...parsePolicyText(''), plans: { housing: 0, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 }, customItems: [{ id: 'equipment', label: '장비 대여', bucket: 'resident' as const, amount: 50_000 }] };
+    expect(getPolicyLimit(policy, 'resident')).toBe(500_000);
+    expect(validatePolicyAgainstProfile(policy)).toEqual([]);
+  });
+
   it('does not treat a persisted all-zero draft as a confirmed policy', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const emptyVersion = { ...parsePolicyText(''), periodKey: '2026-08', confirmedAt: now.toISOString() };
