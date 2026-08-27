@@ -14,6 +14,15 @@ import { createEmptyLedger } from './domain/ledger';
 
 let approvalListener: (() => void) | null = null;
 
+async function renderApp() {
+  let result: ReturnType<typeof render> | undefined;
+  await act(async () => {
+    result = render(<App />);
+    await Promise.resolve();
+  });
+  return result!;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
@@ -41,32 +50,32 @@ describe('app entry flows', () => {
     expect(previousPanel('resident')).toBeNull();
   });
   it('asks whether a new user is an applicant before policy onboarding', async () => {
-    render(<App />);
+    await renderApp();
     expect(await screen.findByRole('heading', { name: /지원자인가요/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '지원금 관리' })).not.toBeInTheDocument();
   });
 
-  it('opens direct expense registration instead of consuming the SMS queue', () => {
+  it('opens direct expense registration instead of consuming the SMS queue', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '새 지출 직접 등록' }));
     expect(screen.getByRole('heading', { name: '직접 지출 등록' })).toBeInTheDocument();
     expect(screen.getByLabelText('상호명')).toBeInTheDocument();
     expect(smsBridge.consumePendingApprovals).not.toHaveBeenCalled();
   });
-  it('stores a manually entered expense without acknowledging the SMS queue', () => {
+  it('stores a manually entered expense without acknowledging the SMS queue', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '새 지출 직접 등록' }));
     fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '삼성웰스토리' } });
     fireEvent.change(screen.getByLabelText('금액'), { target: { value: '5000' } });
@@ -87,7 +96,7 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
 
@@ -102,45 +111,45 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
     fireEvent.click(await screen.findByRole('button', { name: '거래내역 등록 가이드' }));
     expect(screen.getByRole('heading', { name: /결제내역을\s*등록할까요/ })).toBeInTheDocument();
   });
 
-  it('shows the two notification controls with status-aware copy', () => {
+  it('shows the two notification controls with status-aware copy', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
     expect(screen.getByRole('button', { name: '결제 알림 수신 설정' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '예산 경고 알림 설정' })).toBeInTheDocument();
     expect(screen.queryByText('개발 테스트')).not.toBeInTheDocument();
   });
-  it('provides the privacy disclosure inside settings', () => {
+  it('provides the privacy disclosure inside settings', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByText('개인정보 처리 안내'));
     expect(screen.getByText(/원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '전체 개인정보처리방침 보기' })).toHaveAttribute('href', 'https://cjsan30.github.io/shinhanaccount/privacy-policy.html');
   });
-  it('preserves a confirmed policy and opens the dashboard for an existing user', () => {
+  it('preserves a confirmed policy and opens the dashboard for an existing user', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    render(<App />);
+    await renderApp();
     expect(screen.getByRole('heading', { name: '지원금 관리' })).toBeInTheDocument();
     expect(screen.getByText('700,000원')).toBeInTheDocument();
   });
@@ -155,7 +164,7 @@ describe('app entry flows', () => {
       id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date().toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'sms',
     }] });
 
-    render(<App />);
+    await renderApp();
     await act(async () => { approvalListener?.(); });
 
     await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] }));
@@ -170,7 +179,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<App />);
+    await renderApp();
 
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
