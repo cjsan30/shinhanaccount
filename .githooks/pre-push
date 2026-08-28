@@ -5,6 +5,6 @@ set -eu
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root/app"
 
-npm.cmd run lint
-npm.cmd run test:run
-npm.cmd run build
+npm.cmd run lint </dev/null
+npm.cmd run test:run </dev/null
+npm.cmd run build </dev/null
