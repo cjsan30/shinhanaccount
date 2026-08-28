@@ -46,6 +46,7 @@ import type { StoredEvidence } from './native/evidenceVault';
 import { loadAccessibilityPreferences, saveAccessibilityPreferences, type AccessibilityPreferences } from './domain/accessibility';
 import { AccessibilitySettings } from './components/AccessibilitySettings';
 import './App.css';
+import './AppOverrides.css';
 
 const EvidenceExport = lazy(() => import('./components/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
 const DataManagementPanel = lazy(() => import('./components/DataManagementPanel').then((module) => ({ default: module.DataManagementPanel })));

@@ -1,0 +1,151 @@
+/* Focused refinements kept separate from the legacy compact stylesheet. */
+.accessibility-settings > p {
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
+.undecided-quick-action {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #65d7ce99;
+  border-radius: 13px;
+  background: #1a3342;
+  box-shadow: 0 10px 24px #08101c99;
+}
+
+.undecided-quick-action > label:first-child {
+  display: grid;
+  gap: 7px;
+  margin-top: 0;
+  color: #c9d8e8;
+  font-size: 13px;
+}
+
+.undecided-quick-action select {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 0;
+  padding: 0 10px;
+  border: 1px solid #5c829a;
+  border-radius: 9px;
+  color: #eef4fa;
+  background: #202d3c;
+  font: inherit;
+}
+
+.undecided-quick-action > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.undecided-quick-action > div span {
+  color: #9be5d8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.undecided-quick-action .sheet-action {
+  width: auto;
+  margin: 0;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.undecided-quick-action .undecided-rule {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: 0;
+  min-height: 20px;
+  color: #c9d8e8;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.undecided-quick-action .undecided-rule input {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.undecided-quick-action small { color: #aebdce; font-size: 11px; line-height: 1.45; }
+
+.reclassify-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(124px, 150px);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.undecided-check {
+  position: static;
+  display: flex !important;
+  align-items: center;
+  margin: 0 !important;
+  transform: none;
+}
+
+.undecided-check input,
+.undecided-bulk input {
+  display: block !important;
+  width: 18px !important;
+  height: 18px;
+  margin: 0 !important;
+}
+
+.undecided-bulk label { margin: 0 !important; }
+.reclassify-card__merchant { min-width: 0; }
+.reclassify-card__merchant strong { display: block; overflow-wrap: anywhere; line-height: 1.36; }
+
+.reclassify-card__meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  min-width: 0;
+  color: #b7c6d6;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.reclassify-card__meta time,
+.reclassify-card__meta b { white-space: nowrap; }
+.reclassify-card__meta b { color: #e8f0f8; font-size: 15px; }
+
+.undecided-panel {
+  position: relative;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(52svh, 500px);
+  overflow: hidden;
+}
+
+.undecided-list {
+  min-height: 0;
+  padding: 10px 2px 132px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.undecided-list .reclassify-card + .reclassify-card { margin-top: 9px; }
+
+.payment-row { min-height: 56px; padding: 10px 12px; }
+
+@media (max-width: 390px) {
+  .reclassify-card { grid-template-columns: 22px minmax(0, 1fr) minmax(108px, 122px); gap: 8px; padding: 10px 11px; }
+  .reclassify-card__meta { font-size: 11px; }
+  .reclassify-card__meta b { font-size: 14px; }
+  .undecided-panel { height: min(54svh, 480px); }
+  .undecided-list { padding-bottom: 138px; }
+}
