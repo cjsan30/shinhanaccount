@@ -1,0 +1,10 @@
+#!/bin/sh
+# Windows 개발 환경에서 원격 저장소로 보내기 전 핵심 웹 검증을 실행한다.
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root/app"
+
+npm.cmd run lint
+npm.cmd run test:run
+npm.cmd run build
