@@ -211,8 +211,10 @@ function App() {
   const currentUndecided = undecidedEntries.filter((entry) => isEntryInPolicyPeriod(entry, activePolicy.periodKey));
   const previousUndecided = undecidedEntries.filter((entry) => !isEntryInPolicyPeriod(entry, activePolicy.periodKey));
   const undecidedCount = currentUndecided.length;
-  const todayEnd = useMemo(() => { const value = new Date(now); value.setHours(23, 59, 59, 999); return value; }, [now]);
-  const recent = useMemo(() => getHistoryEntries(ledger, todayEnd), [ledger, todayEnd]);
+  // The app can remain open across midnight. History must therefore not be
+  // constrained by the date captured at startup: a newly received, already
+  // classified approval would affect the budget but otherwise disappear here.
+  const recent = useMemo(() => getHistoryEntries(ledger), [ledger]);
   const detailTarget = detailTargetId ? ledger.entries.find((entry) => entry.id === detailTargetId) ?? null : null;
   const categorySpent = useMemo(() => Object.fromEntries(POLICY_ITEMS.flatMap((item) => item.ledgerCategories.map((category) => [category, ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === category && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0)]))), [ledger.entries, activePolicy.periodKey]);
   const quickCategories = useMemo(() => POLICY_ITEMS

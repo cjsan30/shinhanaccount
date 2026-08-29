@@ -154,14 +154,14 @@ describe('app entry flows', () => {
     expect(screen.getByText('700,000원')).toBeInTheDocument();
   });
 
-  it('applies a native approval event while the dashboard remains open', async () => {
+  it('keeps an automatically classified approval visible in history after the app remains open across midnight', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date().toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'sms',
+      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'notification',
     }] });
 
     await renderApp();
