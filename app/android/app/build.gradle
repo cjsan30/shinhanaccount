@@ -67,6 +67,7 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
     implementation 'com.google.mlkit:text-recognition-korean:16.0.1'
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    implementation 'com.google.android.play:app-update:2.1.0'
 }
 
 apply from: 'capacitor.build.gradle'
