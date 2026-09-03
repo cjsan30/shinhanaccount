@@ -5,11 +5,7 @@
 }
 
 .undecided-quick-action {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 3;
+  position: static;
   display: grid;
   gap: 6px;
   padding: 10px;
@@ -124,18 +120,16 @@
 .reclassify-card__meta b { color: #e8f0f8; font-size: 15px; }
 
 .undecided-panel {
-  position: relative;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: min(52svh, 500px);
-  overflow: hidden;
+  position: static;
+  grid-template-rows: none;
+  height: auto;
+  overflow: visible;
 }
 
 .undecided-list {
-  min-height: 0;
-  padding: 10px 2px 132px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  min-height: auto;
+  padding: 10px 2px 0;
+  overflow: visible;
 }
 
 .undecided-list .reclassify-card + .reclassify-card { margin-top: 9px; }
@@ -146,6 +140,6 @@
   .reclassify-card { grid-template-columns: 22px minmax(0, 1fr) minmax(108px, 122px); gap: 8px; padding: 10px 11px; }
   .reclassify-card__meta { font-size: 11px; }
   .reclassify-card__meta b { font-size: 14px; }
-  .undecided-panel { height: min(54svh, 480px); }
-  .undecided-list { padding-bottom: 138px; }
+  .undecided-panel { height: auto; }
+  .undecided-list { padding-bottom: 0; }
 }
