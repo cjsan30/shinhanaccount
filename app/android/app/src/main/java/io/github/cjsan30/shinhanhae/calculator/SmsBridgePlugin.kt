@@ -2,6 +2,9 @@ package io.github.cjsan30.shinhanhae.calculator
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
+import android.Manifest
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -10,6 +13,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import android.provider.Settings
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -33,6 +37,9 @@ private const val MAX_PROCESSED_SMS_IDS = 1000
 private const val MAX_RECENT_APPROVAL_MATCHES = 1000
 private const val CROSS_SOURCE_DEDUPLICATION_WINDOW_MS = 90 * 1000L
 private val SMS_QUEUE_LOCK = Any()
+
+private fun isDebugBuild(context: Context): Boolean =
+    context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
 
@@ -204,6 +211,11 @@ internal fun postApprovalQueuedNotification(
     budgetAlert: String?,
 ) {
     try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "skipped", errorType = "NotificationPermissionDenied")
+            return
+        }
         val channelId = "sms_approvals"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
@@ -323,6 +335,7 @@ class SmsBridgePlugin : Plugin() {
     }
     @com.getcapacitor.PluginMethod
     fun injectTestApproval(call: PluginCall) {
+        if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
         val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
         val approval = Approval(
             card,
@@ -340,6 +353,7 @@ class SmsBridgePlugin : Plugin() {
 
     @com.getcapacitor.PluginMethod
     fun injectTestNotificationApproval(call: PluginCall) {
+        if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
         val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
         val postedAt = System.currentTimeMillis()
         val approval = Approval(
@@ -365,6 +379,9 @@ class SmsBridgePlugin : Plugin() {
     }
 
     private fun showInjectedNotification(budgetAlert: String?) {
+        if (!isDebugBuild(context)) return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val channelId = "sms_approvals"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH)
@@ -384,10 +401,15 @@ class SmsBridgePlugin : Plugin() {
             .setAutoCancel(true)
             .also { builder -> contentIntent?.let(builder::setContentIntent) }
             .build()
-        NotificationManagerCompat.from(context).notify(2002, notification)
+        try {
+            NotificationManagerCompat.from(context).notify(2002, notification)
+        } catch (error: SecurityException) {
+            Log.w(SMS_LOG_TAG, "Test notification was blocked", error)
+        }
     }
     @com.getcapacitor.PluginMethod
     fun scheduleTestApproval(call: PluginCall) {
+        if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
         val approvalObject = call.getObject("approval") ?: JSObject()
         val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
         val approval = Approval(
