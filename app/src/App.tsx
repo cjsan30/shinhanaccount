@@ -11,6 +11,7 @@ import { previousPanel, type Panel } from './domain/navigation';
 import { roundUsagePercent, type BudgetKey } from './domain/budget';
 import { applyPayment, cancelPayment, createEmptyLedger, findSuspectedDuplicates, getHistoryEntries, removeLedgerEntry, updateLedgerEntry, getSummary, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
+import { readSelectedFile } from './native/fileRead';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
 import {
   confirmPolicyForPeriod,
@@ -92,6 +93,8 @@ function App() {
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importReading, setImportReading] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [undoImportLedger, setUndoImportLedger] = useState<Ledger | null>(null);
   const [importSafety, setImportSafety] = useState<ReturnType<typeof filterTransactionsForConfiguredCard> | null>(null);
   const [policyBook, setPolicyBook] = useState(initialState.policyBook);
@@ -400,8 +403,10 @@ function App() {
   };
   const previewImportFile = async () => {
     if (!importFile) return;
+    setImportReading(true);
+    setImportMessage('파일을 읽고 있습니다…');
     try {
-      const transactions = await parseShinhanCardExport(await importFile.arrayBuffer());
+      const transactions = await parseShinhanCardExport(await readSelectedFile(importFile));
       const safety = filterTransactionsForConfiguredCard(transactions, card);
       setImportSafety(safety);
       setImportResult(null);
@@ -412,17 +417,22 @@ function App() {
           : safety.reason === 'missing-card'
             ? '카드 끝 4자리를 먼저 설정해 주세요.'
             : '설정한 카드와 일치하는 결제 내역을 찾지 못했습니다.';
+        setImportMessage(message);
         show(message);
         return;
       }
       setImportTransactions(safety.transactions);
       const excluded = safety.skippedOtherCards ? ` · 다른 카드 ${safety.skippedOtherCards}건 제외` : '';
-      show(`${safety.transactions.length}\uac74\uc758 \uc2e0\ud55c\uce74\ub4dc Excel \ub0b4\uc5ed\uc744 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4.${excluded}`);
+      const message = `${safety.transactions.length}\uac74\uc758 \uc2e0\ud55c\uce74\ub4dc Excel \ub0b4\uc5ed\uc744 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4.${excluded}`;
+      setImportMessage(message);
+      show(message);
     } catch (error) {
       setImportTransactions(null);
       setImportSafety(null);
-      show(error instanceof Error ? error.message : '파일 형식 또는 비밀번호를 확인해 주세요.');
-    }
+      const message = error instanceof Error ? `읽지 못했습니다: ${error.message}` : '읽지 못했습니다: 파일 형식 또는 비밀번호를 확인해 주세요.';
+      setImportMessage(message);
+      show(message);
+    } finally { setImportReading(false); }
   };
   const applyCardExport = () => {
     if (!importTransactions) return;
@@ -593,7 +603,7 @@ function App() {
   else if (panel === 'settings') content = <section className="settings-hub"><p>필요한 설정만 선택해 관리하세요.</p><button className="settings-destination" onClick={() => setPanel('operations')}><strong>운영 설정</strong><span>카드 · 결제 알림 · 예산 경고</span><CaretRight size={26} /></button><button className="settings-destination" onClick={() => setPanel('data')}><strong>데이터 관리</strong><span>계획표 · 거래내역 · 백업</span><CaretRight size={26} /></button><button className="settings-destination" onClick={() => setPanel('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 고대비 · 진동</span><CaretRight size={26} /></button><a className="settings-destination settings-feedback" href="mailto:cjsan30@gmail.com?subject=%5B%EC%8B%A0%EC%B2%AD%ED%95%B4%20%EA%B3%84%EC%82%B0%EA%B8%B0%5D%20%ED%94%BC%EB%93%9C%EB%B0%B1"><strong>피드백 보내기</strong><span>불편한 점과 개선 의견을 알려주세요</span><CaretRight size={26} /></a><details className="privacy-notice"><summary>개인정보 처리 안내</summary><h3>결제 알림 처리</h3><p>삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다. 같은 승인이 두 앱에 표시되면 한 건으로 합칩니다. 거래 시각·금액·상호명·분류만 저장하며 원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다.</p><h3>저장과 보안</h3><p>거래·정책·자동 분류 규칙은 기기 내부 암호화 저장소에 보관합니다. 서버나 제3자 분석 서비스로 전송하지 않습니다.</p><h3>권한과 대체 입력</h3><p>알림 접근은 Android 시스템 설정에서 언제든 해제할 수 있습니다. 자동 인식이 중단된 기간은 신한카드 엑셀 가져오기 또는 직접 지출 등록으로 보완할 수 있습니다.</p><h3>삭제와 백업</h3><p>개별 결제는 결제 상세에서 삭제할 수 있고, 앱 데이터 초기화 또는 앱 삭제 시 기기 내부 데이터가 삭제됩니다. 암호화 백업은 사용자가 직접 생성·관리합니다.</p><a href="https://cjsan30.github.io/shinhanaccount/privacy-policy.html" target="_blank" rel="noreferrer">전체 개인정보처리방침 보기</a></details></section>;
   else if (panel === 'accessibility') content = <AccessibilitySettings preferences={accessibilityPreferences} onChange={setAccessibilityPreferences} />;
   else if (panel === 'operations') content = <section className="operations-settings"><p>결제 수신과 예산 경고를 관리합니다. 버튼 문구로 현재 사용 상태를 확인할 수 있습니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setCard(value); if (value.length === 4) void SmsBridge.configure({ cardLast4: value }); }} /></label><button className="mask-toggle" type="button" onClick={() => setShowCard((current) => !current)}>{showCard ? '숨기기' : '보기'}</button><button className={`sheet-action status-action ${paymentAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void togglePaymentNotifications()}>{paymentAlertsEnabled ? '결제 알림 수신 해제' : '결제 알림 수신 설정'}</button><button className={`sheet-action status-action ${budgetAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void toggleBudgetNotifications()}>{budgetAlertsEnabled ? '예산 경고 알림 해제' : '예산 경고 알림 설정'}</button><AlertThresholdSettings first={first} second={second} onChange={updateAlertThreshold} /><SmsDiagnostics notify={show} /></section>;
-  else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} policyDraftFocusToken={policyDraftFocusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onUpdatePolicyDraft={updatePolicyDraft} onUpdatePolicyProfile={updatePolicyProfile} onUpdatePolicyAlertTarget={updatePolicyAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
+  else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} policyDraftFocusToken={policyDraftFocusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onUpdatePolicyDraft={updatePolicyDraft} onUpdatePolicyProfile={updatePolicyProfile} onUpdatePolicyAlertTarget={updatePolicyAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
   else content = <><p>직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{allPolicyItems.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>지출 등록</button></>;
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'accessibility' ? '접근성 · 개인화' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;
