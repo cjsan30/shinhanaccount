@@ -10,12 +10,14 @@ import java.security.MessageDigest
 private const val SAMSUNG_MESSAGES_PACKAGE = "com.samsung.android.messaging"
 private const val SHINHAN_SOL_BANK_PACKAGE = "com.shinhan.sbanking"
 private const val SHINHAN_CARD_PACKAGE = "com.shinhancard.smartshinhan"
+private const val SHINHAN_SOL_PAY_PACKAGE = "com.shcard.smartpay"
 private const val NOTIFICATION_LOG_TAG = "ShinhanhaeMessageNotice"
 
 internal val supportedApprovalNotificationPackages = setOf(
     SAMSUNG_MESSAGES_PACKAGE,
     SHINHAN_SOL_BANK_PACKAGE,
     SHINHAN_CARD_PACKAGE,
+    SHINHAN_SOL_PAY_PACKAGE,
 )
 
 internal data class NotificationMessageCandidate(val body: String, val postedAt: Long)
@@ -66,11 +68,28 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
-        if (sbn.packageName !in supportedApprovalNotificationPackages) return
-        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-
         val prefs = secureSmsPreferences(this)
         val eventId = newSmsDiagnosticEventId()
+        if (sbn.packageName !in supportedApprovalNotificationPackages) {
+            recordSmsDiagnostic(
+                prefs,
+                eventId,
+                SmsDiagnosticStage.NOTIFICATION_SOURCE_UNSUPPORTED,
+                status = "skipped",
+                sourceApp = sbn.packageName,
+            )
+            return
+        }
+        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
+            recordSmsDiagnostic(
+                prefs,
+                eventId,
+                SmsDiagnosticStage.NOTIFICATION_GROUP_SUMMARY_SKIPPED,
+                status = "skipped",
+                sourceApp = sbn.packageName,
+            )
+            return
+        }
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_LISTENER_ENTERED)
         val card = prefs.getString("card_last_4", null)
         if (card == null) {

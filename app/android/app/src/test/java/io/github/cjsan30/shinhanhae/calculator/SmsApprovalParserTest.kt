@@ -12,6 +12,7 @@ class SmsApprovalParserTest {
         assertTrue("com.samsung.android.messaging" in supportedApprovalNotificationPackages)
         assertTrue("com.shinhan.sbanking" in supportedApprovalNotificationPackages)
         assertTrue("com.shinhancard.smartshinhan" in supportedApprovalNotificationPackages)
+        assertTrue("com.shcard.smartpay" in supportedApprovalNotificationPackages)
         assertFalse("com.example.untrusted" in supportedApprovalNotificationPackages)
     }
 
