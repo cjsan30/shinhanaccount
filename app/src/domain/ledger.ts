@@ -139,10 +139,10 @@ function normalizedMerchant(value: string) { return value.toLowerCase().replace(
 export function findCancellationCandidates(ledger: Ledger, notice: CancellationNotice): CancellationMatch[] {
   const merchant = normalizedMerchant(notice.merchant);
   return ledger.entries
-    .filter((entry) => entry.status === 'classified' && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'undecided') && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
     .map((entry) => {
       const sameMerchant = normalizedMerchant(entry.merchant) === merchant;
-      const sameCard = Boolean(notice.cardLast4) && entry.cardLast4 === notice.cardLast4;
+      const sameCard = Boolean(notice.cardLast4) && Boolean(entry.cardLast4) && entry.cardLast4 === notice.cardLast4;
       return { entry, score: 3 + (sameMerchant ? 4 : 0) + (sameCard ? 2 : 0) };
     })
     .filter((candidate) => candidate.score >= 7)
@@ -150,6 +150,8 @@ export function findCancellationCandidates(ledger: Ledger, notice: CancellationN
 }
 export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNotice) {
   const candidates = findCancellationCandidates(ledger, notice);
+  // Auto-cancellation is deliberately limited to an exact card, amount, and
+  // merchant match. Multiple identical prior payments are left for the user.
   return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
 }
 

@@ -118,6 +118,17 @@ describe('expense ledger', () => {
     expect(getAutoCancellationMatch(approved, notice)?.id).toContain('2026-07-24');
     expect(getAutoCancellationMatch(approved, { ...notice, merchant: '다른 상호' })).toBeNull();
   });
+  it('does not auto-cancel when two exact historical payments are possible', () => {
+    const first = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'first' }, POLICY_MAX_LIMITS);
+    const second = applyPayment(first.ledger, { ...wellstory5000, id: 'second', occurredAt: '2026-07-24T18:58:00+09:00' }, POLICY_MAX_LIMITS);
+    const notice = { ...wellstory5000, occurredAt: '2026-07-25T10:00:00+09:00' };
+    expect(findCancellationCandidates(second.ledger, notice)).toHaveLength(2);
+    expect(getAutoCancellationMatch(second.ledger, notice)).toBeNull();
+  });
+  it('does not auto-cancel when only amount and merchant match but card differs', () => {
+    const approved = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
+    expect(getAutoCancellationMatch(approved, { ...wellstory5000, cardLast4: '9999', occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
+  });
   it('removes a confirmed cancellation from the affected budget without deleting its history', () => {
     const applied = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS);
     const cancelled = cancelPayment(applied.ledger, applied.entry.id, '2026-07-25T10:00:00+09:00');

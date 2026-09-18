@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
-  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn() },
+  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
@@ -35,6 +35,10 @@ beforeEach(() => {
   smsBridge.syncBudgetState.mockResolvedValue(undefined);
   smsBridge.consumePendingApprovals.mockResolvedValue({ items: [] });
   smsBridge.acknowledgePendingApprovals.mockResolvedValue(undefined);
+  smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [] });
+  smsBridge.acknowledgePendingApprovalReviews.mockResolvedValue(undefined);
+  smsBridge.consumePendingCancellations.mockResolvedValue({ items: [] });
+  smsBridge.acknowledgePendingCancellations.mockResolvedValue(undefined);
   smsBridge.getNotificationAccessStatus.mockResolvedValue({ granted: true });
   smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
   notificationBridge.getPermissionStatus.mockResolvedValue({ granted: true });
