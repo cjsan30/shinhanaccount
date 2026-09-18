@@ -92,7 +92,10 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
     return if (crossed.isEmpty()) null else classification.label + " 잔액이 " + crossed.joinToString(", ") { (100 - it).toString() + "%" } + " 남았습니다."
 }
 private val approvalRegex = Regex("""\[?신한(?:체크)?승인\]?\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
-private val solPayApprovalRegex = Regex("""\[신한(?:체크)?승인\]\s+.*?\((\d{4})\)\s*-\s*승인\s*일시:\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*-\s*승인\s*금액:\s*([\d,]+)\s*원\s*-\s*가맹점\s*명:\s*(.+?)(?=\s*\[신한카드|\s*$)""")
+private val approvalCardRegex = Regex("""\[신한(?:체크)?승인\]\s+.*?\((\d{4})\)""")
+private val approvalOccurredAtRegex = Regex("""(?:승인|거래)\s*(?:일시|시간|시각)\s*[:：]?\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})""")
+private val approvalAmountRegex = Regex("""(?:승인|결제|거래)\s*금액\s*[:：]?\s*([\d,]+)\s*원""")
+private val approvalMerchantRegex = Regex("""(?:가맹점(?:명)?|결제처|상호명)\s*[:：]?\s*(.+?)(?=\s*(?:\[[^]]+]|(?:승인|결제|거래)\s*(?:일시|시간|시각|금액)|$))""")
 
 internal data class Approval(
     val cardLast4: String,
@@ -115,9 +118,43 @@ internal data class Approval(
 
 internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): Approval? {
     val normalized = body.replace(Regex("""\s+"""), " ").trim()
-    val match = approvalRegex.find(normalized) ?: solPayApprovalRegex.find(normalized) ?: return null
-    if (match.groupValues[1] != cardLast4) return null
-    return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
+    approvalRegex.find(normalized)?.let { match ->
+        if (match.groupValues[1] != cardLast4) return null
+        return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
+    }
+
+    // SOL Pay can vary its labels, but never choose one value when the notice
+    // contains conflicting candidates. Ambiguous notices remain unclassified.
+    val matchedCard = approvalCardRegex.findAll(normalized)
+        .map { it.groupValues[1] }
+        .distinct()
+        .singleOrNull() ?: return null
+    if (matchedCard != cardLast4) return null
+    val occurredAt = approvalOccurredAtRegex.findAll(normalized)
+        .map { match -> listOf(match.groupValues[1], match.groupValues[2], match.groupValues[3], match.groupValues[4]) }
+        .distinct()
+        .singleOrNull() ?: return null
+    val amountText = approvalAmountRegex.findAll(normalized)
+        .map { it.groupValues[1].replace(",", "") }
+        .distinct()
+        .singleOrNull() ?: return null
+    val merchant = approvalMerchantRegex.findAll(normalized)
+        .map { it.groupValues[1].trim() }
+        .filter(String::isNotBlank)
+        .distinct()
+        .singleOrNull() ?: return null
+    val month = occurredAt[0].toIntOrNull() ?: return null
+    val day = occurredAt[1].toIntOrNull() ?: return null
+    val hour = occurredAt[2].toIntOrNull() ?: return null
+    val minute = occurredAt[3].toIntOrNull() ?: return null
+    if (month !in 1..12 || !YearMonth.of(year, month).isValidDay(day) || hour !in 0..23 || minute !in 0..59) return null
+    val amount = amountText.toIntOrNull() ?: return null
+    return Approval(
+        matchedCard,
+        "$year-${occurredAt[0]}-${occurredAt[1]}T${occurredAt[2]}:${occurredAt[3]}:00+09:00",
+        amount,
+        merchant,
+    )
 }
 
 internal fun approvalMatchId(approval: Approval): String {
