@@ -73,6 +73,25 @@ class SmsApprovalParserTest {
     }
 
     @Test
+    fun parsesObservedSolPayApproval() {
+        val approval = parseApproval(
+            """[신한카드]
+                [신한체크승인] 박*석(3741)
+                - 승인일시: 09/18 13:29
+                - 승인금액: 1,230원
+                - 가맹점명: 씨유 양곡빌리지점
+                [신한카드 1544-7000]""".trimIndent(),
+            "3741",
+            2026,
+        )
+
+        requireNotNull(approval)
+        assertEquals("2026-09-18T13:29:00+09:00", approval.occurredAt)
+        assertEquals(1230, approval.amount)
+        assertEquals("씨유 양곡빌리지점", approval.merchant)
+    }
+
+    @Test
     fun notificationIdentityKeepsIdenticalSameMinutePaymentsWhenPostedMillisecondsDiffer() {
         val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val first = notificationSourceId(approval, 1000L, "conversation-1")

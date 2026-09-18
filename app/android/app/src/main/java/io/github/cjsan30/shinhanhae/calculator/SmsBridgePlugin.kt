@@ -92,6 +92,7 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
     return if (crossed.isEmpty()) null else classification.label + " 잔액이 " + crossed.joinToString(", ") { (100 - it).toString() + "%" } + " 남았습니다."
 }
 private val approvalRegex = Regex("""\[?신한(?:체크)?승인\]?\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
+private val solPayApprovalRegex = Regex("""\[신한(?:체크)?승인\]\s+.*?\((\d{4})\)\s*-\s*승인\s*일시:\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s*-\s*승인\s*금액:\s*([\d,]+)\s*원\s*-\s*가맹점\s*명:\s*(.+?)(?=\s*\[신한카드|\s*$)""")
 
 internal data class Approval(
     val cardLast4: String,
@@ -114,7 +115,7 @@ internal data class Approval(
 
 internal fun parseApproval(body: String, cardLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): Approval? {
     val normalized = body.replace(Regex("""\s+"""), " ").trim()
-    val match = approvalRegex.find(normalized) ?: return null
+    val match = approvalRegex.find(normalized) ?: solPayApprovalRegex.find(normalized) ?: return null
     if (match.groupValues[1] != cardLast4) return null
     return Approval(match.groupValues[1], "$year-${match.groupValues[2]}-${match.groupValues[3]}T${match.groupValues[4]}:${match.groupValues[5]}:00+09:00", match.groupValues[6].replace(",", "").toInt(), match.groupValues[7].trim())
 }
