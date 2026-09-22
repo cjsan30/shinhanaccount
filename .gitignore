@@ -25,6 +25,14 @@ output/
 audit/
 tmp-widget-*.png
 
+# Local review notes, source references, and generated app-template files
+app/README.md
+app/design-qa.md
+app/resources/icon.png
+references/
+docs/11-readme-portfolio-review.md
+docs/12-play-update-1.3.2.md
+
 # Raw source material is kept outside Git; only the redacted, in-app guide asset is tracked.
 app/public/onboarding-card-history-example-source.png
 
