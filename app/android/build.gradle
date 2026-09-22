@@ -23,6 +23,15 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Kotlin 1.8+ already bundles the JDK 7/8 extensions in kotlin-stdlib.
+    // Older AndroidX transitive dependencies still request the legacy split
+    // artifacts, which makes instrumentation-test APKs contain duplicate
+    // classes alongside the current Kotlin runtime.
+    configurations.configureEach {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
 }
 
 task clean(type: Delete) {

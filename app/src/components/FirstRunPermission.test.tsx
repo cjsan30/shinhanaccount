@@ -34,4 +34,13 @@ describe('first-run permissions', () => {
     await waitFor(() => expect(smsBridge.openNotificationAccessSettings).toHaveBeenCalledOnce());
     expect(complete).not.toHaveBeenCalled();
   });
+
+  it('can skip onboarding from permission setup', async () => {
+    const complete = vi.fn();
+    const skip = vi.fn();
+    render(<FirstRunPermission onComplete={complete} onSkip={skip} />);
+    fireEvent.click(screen.getByRole('button', { name: '넘어가기' }));
+    expect(skip).toHaveBeenCalledOnce();
+    expect(complete).not.toHaveBeenCalled();
+  });
 });

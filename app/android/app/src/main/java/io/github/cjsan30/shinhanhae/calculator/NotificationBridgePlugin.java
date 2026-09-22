@@ -1,6 +1,7 @@
 package io.github.cjsan30.shinhanhae.calculator;
 
 import android.Manifest;
+import android.content.pm.PackageManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.media.AudioAttributes;
@@ -12,6 +13,7 @@ import android.provider.Settings;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -55,7 +57,7 @@ public class NotificationBridgePlugin extends Plugin {
 
     @com.getcapacitor.PluginMethod
     public void show(PluginCall call) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) {
+        if (!canPostNotifications()) {
             call.reject("Notification permission is required");
             return;
         }
@@ -71,9 +73,13 @@ public class NotificationBridgePlugin extends Plugin {
             .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_VIBRATE)
             .setAutoCancel(true);
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(getContext());
-        notificationManager.cancelAll();
-        notificationManager.notify(BUDGET_ALERT_NOTIFICATION_ID, notification.build());
-        call.resolve();
+        try {
+            notificationManager.cancelAll();
+            notificationManager.notify(BUDGET_ALERT_NOTIFICATION_ID, notification.build());
+            call.resolve();
+        } catch (SecurityException error) {
+            call.reject("Notification permission is required", error);
+        }
     }
 
     private void createChannel() {
@@ -88,7 +94,12 @@ public class NotificationBridgePlugin extends Plugin {
     }
 
     private boolean notificationsEnabled() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getPermissionState("notifications") != PermissionState.GRANTED) return false;
+        if (!canPostNotifications()) return false;
         return NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+    }
+
+    private boolean canPostNotifications() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
     }
 }

@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor resolves plugin APIs and their @PluginMethod methods at runtime.
+# Keep the app-owned bridge layer intact while allowing R8 to optimize the
+# remainder of the Android and third-party dependency graph.
+-keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault
+-keep class com.getcapacitor.annotation.** { *; }
+-keep class com.getcapacitor.PluginMethod { *; }
+-keep class io.github.cjsan30.shinhanhae.calculator.** extends com.getcapacitor.Plugin { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod <methods>;
+    @com.getcapacitor.annotation.PermissionCallback <methods>;
+}

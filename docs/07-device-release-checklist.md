@@ -4,6 +4,12 @@
 
 기능 변경을 모두 묶은 최종 APK에서 Galaxy S25 Ultra / Android 16 기준으로 한 번에 검증한다. 개별 수정 중에는 부분 실기기 검증을 반복하지 않는다.
 
+## GitHub 푸시 전 자동 검증
+
+- [ ] `.githooks/pre-push`가 설정되어 있는지 확인한다. 이 훅은 `lint`, `test:run`, `build`를 순서대로 실행한다.
+- [ ] 검증 실패 시 원인을 수정한 뒤 다시 푸시한다. `--no-verify`로 우회하지 않는다.
+- [ ] 릴리스 후보는 별도로 `build-play-release.ps1`을 실행해 Android 단위 테스트, 서명 AAB/APK 생성, 제한 SMS 권한 부재까지 확인한다.
+
 ## 사전 준비
 
 - [ ] release keystore로 서명한 APK와 버전 정보를 준비한다.

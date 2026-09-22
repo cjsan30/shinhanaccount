@@ -10,12 +10,14 @@ import java.security.MessageDigest
 private const val SAMSUNG_MESSAGES_PACKAGE = "com.samsung.android.messaging"
 private const val SHINHAN_SOL_BANK_PACKAGE = "com.shinhan.sbanking"
 private const val SHINHAN_CARD_PACKAGE = "com.shinhancard.smartshinhan"
+private const val SHINHAN_SOL_PAY_PACKAGE = "com.shcard.smartpay"
 private const val NOTIFICATION_LOG_TAG = "ShinhanhaeMessageNotice"
 
 internal val supportedApprovalNotificationPackages = setOf(
     SAMSUNG_MESSAGES_PACKAGE,
     SHINHAN_SOL_BANK_PACKAGE,
     SHINHAN_CARD_PACKAGE,
+    SHINHAN_SOL_PAY_PACKAGE,
 )
 
 internal data class NotificationMessageCandidate(val body: String, val postedAt: Long)
@@ -28,6 +30,12 @@ internal fun notificationSourceId(approval: Approval, postedAt: Long, conversati
         postedAt.toString(),
         conversationKey,
     ).joinToString("|")
+    val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
+    return "notification-" + digest.joinToString("") { "%02x".format(it) }
+}
+
+internal fun notificationReviewSourceId(review: ApprovalReview, postedAt: Long, conversationKey: String, kind: String): String {
+    val raw = listOf(kind, review.cardLast4, review.occurredAt.orEmpty(), review.amount?.toString().orEmpty(), review.merchant.orEmpty(), postedAt.toString(), conversationKey).joinToString("|")
     val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
     return "notification-" + digest.joinToString("") { "%02x".format(it) }
 }
@@ -66,11 +74,28 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
-        if (sbn.packageName !in supportedApprovalNotificationPackages) return
-        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-
         val prefs = secureSmsPreferences(this)
         val eventId = newSmsDiagnosticEventId()
+        if (sbn.packageName !in supportedApprovalNotificationPackages) {
+            recordSmsDiagnostic(
+                prefs,
+                eventId,
+                SmsDiagnosticStage.NOTIFICATION_SOURCE_UNSUPPORTED,
+                status = "skipped",
+                sourceApp = sbn.packageName,
+            )
+            return
+        }
+        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
+            recordSmsDiagnostic(
+                prefs,
+                eventId,
+                SmsDiagnosticStage.NOTIFICATION_GROUP_SUMMARY_SKIPPED,
+                status = "skipped",
+                sourceApp = sbn.packageName,
+            )
+            return
+        }
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_LISTENER_ENTERED)
         val card = prefs.getString("card_last_4", null)
         if (card == null) {
@@ -85,16 +110,38 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
             SmsDiagnosticStage.NOTIFICATION_BODY_EXTRACTED,
             segmentCount = candidates.size,
             bodyLength = candidates.sumOf { it.body.length },
-            markerFound = candidates.any { it.body.contains("[신한체크승인]") },
+            markerFound = candidates.any { it.body.contains("[신한체크승인]") || it.body.contains("[신한체크취소]") },
             cardConfigured = true,
             sourceApp = sbn.packageName,
         )
         var queued = 0
+        var reviewQueued = 0
+        var cancellationQueued = 0
         var budgetAlert: String? = null
         for (candidate in candidates) {
-            val parsed = parseApproval(candidate.body, card) ?: continue
-            val approval = parsed.copy(notificationPostedAt = candidate.postedAt, source = "notification")
-            val sourceId = notificationSourceId(approval, candidate.postedAt, sbn.key)
+            val cancellation = parseCancellation(candidate.body, card)
+            if (cancellation != null) {
+                val notice = cancellation.copy(notificationPostedAt = candidate.postedAt, source = "notification")
+                val sourceId = notificationSourceId(notice, candidate.postedAt, "cancel|${sbn.key}")
+                when (enqueueCancellation(prefs, notice, sourceId)) {
+                    EnqueueResult.ADDED -> cancellationQueued += 1
+                    EnqueueResult.DUPLICATE -> Unit
+                    EnqueueResult.WRITE_FAILED -> { recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMIT_FAILED, status = "error"); return }
+                }
+                continue
+            }
+            val review = parseApprovalReview(candidate.body, card)
+            if (review == null) continue
+            val sourceId = notificationReviewSourceId(review, candidate.postedAt, sbn.key, "approval")
+            val approval = parseApproval(candidate.body, card)?.copy(notificationPostedAt = candidate.postedAt, source = "notification")
+            if (approval == null) {
+                when (enqueueReview(prefs, review.copy(notificationPostedAt = candidate.postedAt, source = "notification"), sourceId)) {
+                    EnqueueResult.ADDED -> reviewQueued += 1
+                    EnqueueResult.DUPLICATE -> Unit
+                    EnqueueResult.WRITE_FAILED -> { recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMIT_FAILED, status = "error"); return }
+                }
+                continue
+            }
             when (enqueueApproval(prefs, approval, sourceId, sbn.packageName, candidate.postedAt)) {
                 EnqueueResult.ADDED -> {
                     queued += 1
@@ -108,16 +155,20 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
                 }
             }
         }
-        if (queued == 0) {
+        if (queued == 0 && reviewQueued == 0 && cancellationQueued == 0) {
             recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_NO_NEW_APPROVAL, status = "ignored")
             return
         }
 
-        val queueSize = org.json.JSONArray(prefs.getString("pending_approvals", "[]")).length()
+        val queueSize = org.json.JSONArray(prefs.getString("pending_approvals", "[]")).length() + org.json.JSONArray(prefs.getString("pending_approval_reviews", "[]")).length() + org.json.JSONArray(prefs.getString("pending_cancellations", "[]")).length()
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = queueSize)
-        Log.i(NOTIFICATION_LOG_TAG, "$queued approval notification(s) queued")
+        Log.i(NOTIFICATION_LOG_TAG, "$queued approval, $reviewQueued review, $cancellationQueued cancellation notification(s) queued")
         SmsBridgePlugin.notifyApprovalQueued()
-        postApprovalQueuedNotification(this, prefs, eventId, budgetAlert)
+        when {
+            reviewQueued > 0 -> postReviewNotification(this, prefs, eventId, "결제 정보를 확인해 주세요", "일부 정보가 누락되었거나 겹칩니다. 앱에서 확인 후 등록하세요.")
+            cancellationQueued > 0 -> postReviewNotification(this, prefs, eventId, "취소 결제 확인", "기존 결제와 대조한 뒤 예산에서 제외합니다.")
+            else -> postApprovalQueuedNotification(this, prefs, eventId, budgetAlert)
+        }
         // Deliberately do not cancel the original Samsung Messages notification.
     }
 }

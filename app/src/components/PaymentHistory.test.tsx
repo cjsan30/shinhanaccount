@@ -18,7 +18,7 @@ const entries: LedgerEntry[] = Array.from({ length: 12 }, (_, index) => ({
 describe('payment history', () => {
   it('shows ten entries per page and opens an entry from the row', () => {
     const open = vi.fn();
-    render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} onOpen={open} />);
+    render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={open} />);
     expect(screen.getByText('전체 기간 동안 총 12건의 결제가 있었습니다.')).toBeInTheDocument();
     expect(screen.getByText('상호 0')).toBeInTheDocument();
     expect(screen.queryByText('상호 10')).not.toBeInTheDocument();
@@ -29,11 +29,22 @@ describe('payment history', () => {
   });
 
   it('moves to the next page with a left swipe', () => {
-    const { container } = render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} onOpen={() => undefined} />);
+    const { container } = render(<PaymentHistory entries={entries} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
     const history = container.querySelector('.payment-history');
     expect(history).not.toBeNull();
     fireEvent.touchStart(history!, { changedTouches: [{ clientX: 300 }] });
     fireEvent.touchEnd(history!, { changedTouches: [{ clientX: 100 }] });
     expect(screen.getByText('상호 10')).toBeInTheDocument();
+  });
+
+  it('filters by a detailed category and sorts by amount', () => {
+    const mixed = [{ ...entries[0], id: 'cafe', merchant: '카페', category: 'generalCafe', amount: 9000 }, { ...entries[1], id: 'food', merchant: '식당', category: 'food', amount: 2000 }];
+    render(<PaymentHistory entries={mixed} categoryNames={{ food: '식비', generalCafe: '카페' }} filterOptions={[{ key: 'food', label: '식비' }, { key: 'generalCafe', label: '카페' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
+    fireEvent.change(screen.getByLabelText('결제 내역 세부항목 필터'), { target: { value: 'generalCafe' } });
+    expect(screen.getByRole('button', { name: /카페/ })).toBeInTheDocument();
+    expect(screen.queryByText('식당')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('결제 내역 세부항목 필터'), { target: { value: 'all' } });
+    fireEvent.change(screen.getByLabelText('결제 내역 정렬'), { target: { value: 'amount-asc' } });
+    expect(screen.getAllByRole('button').find((button) => button.textContent?.includes('식당'))).toBeTruthy();
   });
 });

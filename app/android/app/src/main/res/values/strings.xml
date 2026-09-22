@@ -4,6 +4,7 @@
     <string name="title_activity_main">&#xC2E0;&#xCCAD;&#xD574; &#xACC4;&#xC0B0;&#xAE30;</string>
     <string name="package_name">io.github.cjsan30.shinhanhae.calculator</string>
     <string name="custom_url_scheme">io.github.cjsan30.shinhanhae.calculator</string>
+    <string name="widget_name">지원금 관리</string>
     <string name="widget_name_4x1">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xAC04;&#xB2E8;</string>
     <string name="widget_name_4x2">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xD604;&#xD669;</string>
     <string name="widget_name_2x1">&#xC9C0;&#xC6D0;&#xAE08; &#xAD00;&#xB9AC; &#xB7C; &#xBE44;&#xAD50;</string>

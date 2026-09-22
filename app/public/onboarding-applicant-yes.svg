@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="240" viewBox="0 0 540 240" role="img" aria-label="지원자 온보딩 예시">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d2f4a"/>
+      <stop offset="100%" stop-color="#2b4569"/>
+    </linearGradient>
+  </defs>
+  <rect width="540" height="240" rx="16" fill="url(#bg)"/>
+  <rect x="24" y="24" width="120" height="26" rx="13" fill="#8de8d7"/>
+  <text x="40" y="44" font-size="14" fill="#08131f" font-family="Pretendard, Arial, sans-serif">자동 파싱 온보딩</text>
+  <rect x="24" y="72" width="492" height="54" rx="12" fill="#ffffff1a" stroke="#4f6e8c"/>
+  <text x="42" y="102" font-size="20" fill="#e8eff8" font-family="Pretendard, Arial, sans-serif">정책 확정 완료</text>
+  <text x="42" y="126" font-size="13" fill="#a9bed6" font-family="Pretendard, Arial, sans-serif">지원금 한도와 카테고리 설정이 활성화됨</text>
+  <rect x="24" y="146" width="492" height="54" rx="12" fill="#ffffff1a" stroke="#4f6e8c"/>
+  <text x="42" y="176" font-size="20" fill="#e8eff8" font-family="Pretendard, Arial, sans-serif">결제 알림 자동 수집</text>
+  <text x="42" y="200" font-size="13" fill="#a9bed6" font-family="Pretendard, Arial, sans-serif">신한 알림에서 지원자 건만 실시간 등록</text>
+</svg>

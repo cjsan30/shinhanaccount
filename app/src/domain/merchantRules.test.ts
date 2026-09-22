@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyWithMerchantRules, createMerchantRule, normalizeMerchant } from './merchantRules';
+import { classifyWithMerchantRules, createMerchantRule, getMerchantAlias, normalizeMerchant } from './merchantRules';
 
 describe('merchant rules', () => {
   it('uses contains matching by default for branch names', () => {
@@ -24,5 +24,10 @@ describe('merchant rules', () => {
     expect(classifyWithMerchantRules('메가커피(강남점)', 5000, [broad, specific])).toMatchObject({
       status: 'classified', bucket: 'studySpace', category: 'generalCafe',
     });
+  });
+
+  it('uses an optional display alias without changing the stored merchant', () => {
+    const rule = createMerchantRule('메가커피', { bucket: 'studySpace', category: 'generalCafe' }, '2026-08-27T00:00:00.000Z', 'contains', '스터디 카페');
+    expect(getMerchantAlias('메가커피 강남점', [rule])).toBe('스터디 카페');
   });
 });

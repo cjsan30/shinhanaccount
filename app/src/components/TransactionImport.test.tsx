@@ -4,12 +4,17 @@ import { TransactionImport } from './TransactionImport';
 
 describe('transaction import', () => {
   it('offers only the supported Shinhan Card Excel formats', () => {
-    const { container } = render(<TransactionImport cardLast4="1111" onImport={vi.fn()} onDirectStart={vi.fn()} notify={vi.fn()} />);
+    const { container } = render(<TransactionImport cardLast4="1111" onImport={vi.fn()} notify={vi.fn()} />);
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
     expect(input).toHaveAttribute('accept', expect.stringContaining('.xls'));
     expect(input?.getAttribute('accept')).not.toContain('.pdf');
     expect(container.textContent).not.toContain('PDF');
+    expect(container.textContent).toContain('신한카드 앱 열기');
+    const video = container.querySelector('video');
+    expect(video).toHaveAttribute('loop');
+    expect(video?.muted).toBe(true);
+    expect(video?.querySelector('source')).toHaveAttribute('src', '/onboarding-shinhan-solpay-excel-guide.mp4');
   });
 });

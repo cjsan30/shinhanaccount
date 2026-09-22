@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, getAutoCancellationMatch, getRecentEntries, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 import { POLICY_MAX_LIMITS } from './budget';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
 
 describe('expense ledger', () => {
+  it('uses a notification quick classification before merchant auto rules', () => {
+    const result = applyPayment({ ...createInitialLedger(), entries: [] }, {
+      id: 'quick-food', cardLast4: '1111', occurredAt: '2026-08-20T12:00:00+09:00', amount: 7000, merchant: '처음 보는 결제처', quickCategory: 'food',
+    }, POLICY_MAX_LIMITS);
+    expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'food' });
+  });
   it('separates spending by the policy period beginning on the 14th', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
     const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
@@ -97,12 +103,31 @@ describe('expense ledger', () => {
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });
     expect(getSummary(result.ledger, 'resident', POLICY_MAX_LIMITS.resident).spent).toBe(220700);
   });
+  it('keeps a memo and finds only nearby same-merchant same-amount duplicates', () => {
+    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS);
+    const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: wellstory5000.merchant, amount: 5000, occurredAt: wellstory5000.occurredAt, bucket: 'studySpace', category: 'generalCafe', memo: '점심 스터디' });
+    expect(updated.entries[0].memo).toBe('점심 스터디');
+    expect(findSuspectedDuplicates(updated, { ...wellstory5000, occurredAt: '2026-07-24T17:59:00+09:00' })).toHaveLength(1);
+    expect(findSuspectedDuplicates(updated, { ...wellstory5000, occurredAt: '2026-07-24T18:05:00+09:00' })).toHaveLength(0);
+    expect(getHistoryEntries(updated).map((entry) => entry.id)).toEqual([updated.entries[0].id]);
+  });
   it('matches a cancellation only when amount, merchant, and card all agree', () => {
     const approved = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
     const notice = { ...wellstory5000, occurredAt: '2026-07-25T10:00:00+09:00' };
     expect(findCancellationCandidates(approved, notice)).toHaveLength(1);
     expect(getAutoCancellationMatch(approved, notice)?.id).toContain('2026-07-24');
     expect(getAutoCancellationMatch(approved, { ...notice, merchant: '다른 상호' })).toBeNull();
+  });
+  it('does not auto-cancel when two exact historical payments are possible', () => {
+    const first = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'first' }, POLICY_MAX_LIMITS);
+    const second = applyPayment(first.ledger, { ...wellstory5000, id: 'second', occurredAt: '2026-07-24T18:58:00+09:00' }, POLICY_MAX_LIMITS);
+    const notice = { ...wellstory5000, occurredAt: '2026-07-25T10:00:00+09:00' };
+    expect(findCancellationCandidates(second.ledger, notice)).toHaveLength(2);
+    expect(getAutoCancellationMatch(second.ledger, notice)).toBeNull();
+  });
+  it('does not auto-cancel when only amount and merchant match but card differs', () => {
+    const approved = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
+    expect(getAutoCancellationMatch(approved, { ...wellstory5000, cardLast4: '9999', occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
   });
   it('removes a confirmed cancellation from the affected budget without deleting its history', () => {
     const applied = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS);

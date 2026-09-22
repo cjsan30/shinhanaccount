@@ -2,10 +2,11 @@ import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, 
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
+import type { StoredEvidence } from '../native/evidenceVault';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string; evidence?: StoredEvidence[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -64,7 +65,13 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
-  const classification = classifier(payment.merchant, payment.amount);
+  const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {
+    lodging: { status: 'classified', bucket: 'resident', category: 'lodging' }, food: { status: 'classified', bucket: 'resident', category: 'food' }, education: { status: 'classified', bucket: 'resident', category: 'education' }, transport: { status: 'classified', bucket: 'resident', category: 'transport' }, studyCafe: { status: 'classified', bucket: 'studySpace', category: 'studyCafe' }, generalCafe: { status: 'classified', bucket: 'studySpace', category: 'generalCafe' }, readingRoom: { status: 'classified', bucket: 'studySpace', category: 'readingRoom' },
+  };
+  const quick = payment.quickCategory ? quickCategories[payment.quickCategory] : undefined;
+  const classification: PaymentClassification = payment.quickCategory === 'undecided'
+    ? { status: 'undecided' }
+    : quick ?? classifier(payment.merchant, payment.amount);
   const entry = toEntry(payment, classification);
   // Live notification/SMS approvals carry a source event ID. Two genuine payments
   // can otherwise have the same minute, merchant, and amount, so only that stable
@@ -86,7 +93,7 @@ export function saveAsUndecided(ledger: Ledger, payment: NativeApproval): ApplyP
   return { ledger: { ...ledger, entries: [...ledger.entries, entry] }, entry, alerts: [] };
 }
 
-export type EditableLedgerEntry = Pick<LedgerEntry, 'merchant' | 'amount' | 'occurredAt' | 'bucket' | 'category'>;
+export type EditableLedgerEntry = Pick<LedgerEntry, 'merchant' | 'amount' | 'occurredAt' | 'bucket' | 'category' | 'memo'>;
 export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: EditableLedgerEntry): Ledger {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status === 'cancelled') return ledger;
@@ -100,6 +107,7 @@ export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: Editab
     periodKey: getPolicyPeriodKey(occurredAt),
     bucket: patch.bucket,
     category: patch.category,
+    memo: patch.memo?.trim() || undefined,
     status: 'classified',
     source: 'manual',
   } : candidate) };
@@ -131,10 +139,10 @@ function normalizedMerchant(value: string) { return value.toLowerCase().replace(
 export function findCancellationCandidates(ledger: Ledger, notice: CancellationNotice): CancellationMatch[] {
   const merchant = normalizedMerchant(notice.merchant);
   return ledger.entries
-    .filter((entry) => entry.status === 'classified' && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'undecided') && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
     .map((entry) => {
       const sameMerchant = normalizedMerchant(entry.merchant) === merchant;
-      const sameCard = Boolean(notice.cardLast4) && entry.cardLast4 === notice.cardLast4;
+      const sameCard = Boolean(notice.cardLast4) && Boolean(entry.cardLast4) && entry.cardLast4 === notice.cardLast4;
       return { entry, score: 3 + (sameMerchant ? 4 : 0) + (sameCard ? 2 : 0) };
     })
     .filter((candidate) => candidate.score >= 7)
@@ -142,7 +150,28 @@ export function findCancellationCandidates(ledger: Ledger, notice: CancellationN
 }
 export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNotice) {
   const candidates = findCancellationCandidates(ledger, notice);
+  // Auto-cancellation is deliberately limited to an exact card, amount, and
+  // merchant match. Multiple identical prior payments are left for the user.
   return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
+}
+
+export type SuspectedDuplicate = { entry: LedgerEntry; minutesApart: number };
+export function findSuspectedDuplicates(ledger: Ledger, payment: Pick<NativeApproval, 'merchant' | 'amount' | 'occurredAt' | 'cardLast4'>, excludeId?: string, windowMinutes = 2): SuspectedDuplicate[] {
+  const occurredAt = new Date(payment.occurredAt).getTime();
+  if (Number.isNaN(occurredAt)) return [];
+  return ledger.entries
+    .filter((entry) => entry.id !== excludeId && entry.status !== 'cancelled' && entry.amount === payment.amount && normalizedMerchant(entry.merchant) === normalizedMerchant(payment.merchant))
+    .filter((entry) => !payment.cardLast4 || !entry.cardLast4 || entry.cardLast4 === payment.cardLast4)
+    .map((entry) => ({ entry, minutesApart: Math.abs(new Date(entry.occurredAt).getTime() - occurredAt) / 60_000 }))
+    .filter((candidate) => candidate.minutesApart <= windowMinutes)
+    .sort((left, right) => left.minutesApart - right.minutesApart);
+}
+
+export function getHistoryEntries(ledger: Ledger, through?: Date) {
+  return ledger.entries
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
+    .slice()
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
 }
 
 export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date) {

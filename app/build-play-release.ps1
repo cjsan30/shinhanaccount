@@ -49,7 +49,9 @@ try {
 
     Push-Location android
     try {
-        .\gradlew.bat testDebugUnitTest bundleRelease assembleRelease --offline
+        # Play release builds may introduce a newly declared dependency. Do not
+        # force offline mode here: Gradle must be allowed to resolve it once.
+        .\gradlew.bat testDebugUnitTest bundleRelease assembleRelease
         if ($LASTEXITCODE -ne 0) { throw "Android release build failed with exit code $LASTEXITCODE" }
     } finally {
         Pop-Location

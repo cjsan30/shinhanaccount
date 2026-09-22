@@ -17,4 +17,15 @@ app/android/.gradle-cache*/
 .gradle-build-cache*/
 .idea/
 
+# Local test artifacts and disposable work files
+app/.gradle-user/
+app/tmp/
+tmp/
+output/
+audit/
+tmp-widget-*.png
+
+# Raw source material is kept outside Git; only the redacted, in-app guide asset is tracked.
+app/public/onboarding-card-history-example-source.png
+
 keystore.properties

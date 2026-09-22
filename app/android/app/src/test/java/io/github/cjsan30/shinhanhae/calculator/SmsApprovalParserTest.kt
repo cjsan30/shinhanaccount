@@ -12,6 +12,7 @@ class SmsApprovalParserTest {
         assertTrue("com.samsung.android.messaging" in supportedApprovalNotificationPackages)
         assertTrue("com.shinhan.sbanking" in supportedApprovalNotificationPackages)
         assertTrue("com.shinhancard.smartshinhan" in supportedApprovalNotificationPackages)
+        assertTrue("com.shcard.smartpay" in supportedApprovalNotificationPackages)
         assertFalse("com.example.untrusted" in supportedApprovalNotificationPackages)
     }
 
@@ -72,6 +73,130 @@ class SmsApprovalParserTest {
     }
 
     @Test
+    fun parsesObservedSolPayApproval() {
+        val approval = parseApproval(
+            """[신한카드]
+                [신한체크승인] 박*석(3741)
+                - 승인일시: 09/18 13:29
+                - 승인금액: 1,230원
+                - 가맹점명: 씨유 양곡빌리지점
+                [신한카드 1544-7000]""".trimIndent(),
+            "3741",
+            2026,
+        )
+
+        requireNotNull(approval)
+        assertEquals("2026-09-18T13:29:00+09:00", approval.occurredAt)
+        assertEquals(1230, approval.amount)
+        assertEquals("씨유 양곡빌리지점", approval.merchant)
+    }
+
+    @Test
+    fun parsesSolPayApprovalWhenFieldLabelsVary() {
+        val approval = parseApproval(
+            """[신한체크승인] 박*석(3741)
+                - 거래시간: 09/18 13:29
+                - 결제금액: 1,230원
+                - 결제처: 씨유 양곡빌리지점""".trimIndent(),
+            "3741",
+            2026,
+        )
+
+        requireNotNull(approval)
+        assertEquals("2026-09-18T13:29:00+09:00", approval.occurredAt)
+        assertEquals(1230, approval.amount)
+        assertEquals("씨유 양곡빌리지점", approval.merchant)
+    }
+
+    @Test
+    fun rejectsSolPayApprovalWithConflictingAmounts() {
+        assertNull(parseApproval(
+            """[신한체크승인] 박*석(3741)
+                - 승인일시: 09/18 13:29
+                - 승인금액: 1,230원
+                - 결제금액: 9,999원
+                - 가맹점명: 씨유 양곡빌리지점""".trimIndent(),
+            "3741",
+            2026,
+        ))
+    }
+
+    @Test
+    fun `keeps incomplete approval as review instead of auto registering`() {
+        val review = parseApprovalReview("""[신한체크승인] 박*석(3741) - 승인금액: 1,230원""", "3741", 2026)
+        requireNotNull(review)
+        assertEquals(1230, review.amount)
+        assertNull(review.occurredAt)
+        assertNull(parseApproval("""[신한체크승인] 박*석(3741) - 승인금액: 1,230원""", "3741", 2026))
+    }
+
+    @Test
+    fun `keeps conflicting structured values as review instead of choosing one`() {
+        val body = """[신한체크승인] 박*석(3741) - 승인일시: 09/18 13:29 - 승인금액: 1,230원 - 결제금액: 9,999원 - 가맹점명: 씨유"""
+        val review = parseApprovalReview(body, "3741", 2026)
+        requireNotNull(review)
+        assertNull(review.amount)
+        assertNull(parseApproval(body, "3741", 2026))
+    }
+
+    @Test
+    fun `accepts structured approval proof without the legacy marker`() {
+        val approval = parseApproval(
+            """신한카드 박*석(3741) 결제일시: 09/18 13:29 결제금액: 1,230원 결제처: 씨유 양곡빌리지점""",
+            "3741",
+            2026,
+        )
+        requireNotNull(approval)
+        assertEquals(1230, approval.amount)
+    }
+
+    @Test
+    fun `rejects structured notice with one field and no marker`() {
+        assertNull(parseApprovalReview("""신한카드 박*석(3741) 결제금액: 1,230원""", "3741", 2026))
+    }
+
+    @Test
+    fun `rejects invalid approval date instead of guessing`() {
+        assertNull(parseApproval("""[신한체크승인] 박*석(3741) - 승인일시: 02/30 13:29 - 승인금액: 1,230원 - 가맹점명: 씨유""", "3741", 2026))
+    }
+
+    @Test
+    fun `does not treat account transfer notice as approval`() {
+        assertNull(parseApprovalReview("""[신한체크승인] 박*석(3741) 출금 1,230원""", "3741", 2026))
+    }
+
+    @Test
+    fun `parses observed Shinhan check cancellation`() {
+        val cancellation = parseCancellation("""[Web발신] [신한체크취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "0934", 2026)
+        requireNotNull(cancellation)
+        assertEquals("2026-07-09T11:30:00+09:00", cancellation.occurredAt)
+        assertEquals(47800, cancellation.amount)
+        assertEquals("SR", cancellation.merchant)
+    }
+
+    @Test
+    fun `does not parse full credit cancellation as check cancellation`() {
+        assertNull(parseCancellation("""[신한체크전액신용취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "0934", 2026))
+    }
+
+    @Test
+    fun `parses structured SOL Pay cancellation only with every field`() {
+        val cancellation = parseCancellation(
+            """[신한체크취소] 박*석(0934) - 취소일시: 07/09 11:30 - 취소금액: 47,800원 - 가맹점명: SR""",
+            "0934",
+            2026,
+        )
+        requireNotNull(cancellation)
+        assertEquals("SR", cancellation.merchant)
+        assertNull(parseCancellation("""[신한체크취소] 박*석(0934) - 취소금액: 47,800원 - 가맹점명: SR""", "0934", 2026))
+    }
+
+    @Test
+    fun `rejects cancellation for another card`() {
+        assertNull(parseCancellation("""[신한체크취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "3741", 2026))
+    }
+
+    @Test
     fun notificationIdentityKeepsIdenticalSameMinutePaymentsWhenPostedMillisecondsDiffer() {
         val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val first = notificationSourceId(approval, 1000L, "conversation-1")
@@ -91,6 +216,7 @@ class SmsApprovalParserTest {
             matchId,
             "com.samsung.android.messaging",
             1_000L,
+            false,
             matchId,
             "com.shinhan.sbanking",
             30_000L,
@@ -106,8 +232,25 @@ class SmsApprovalParserTest {
             matchId,
             "com.samsung.android.messaging",
             1_000L,
+            false,
             matchId,
             "com.samsung.android.messaging",
+            30_000L,
+        ))
+    }
+
+    @Test
+    fun `does not reuse an already paired approval for a later payment`() {
+        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val matchId = approvalMatchId(approval)
+
+        assertFalse(isCrossSourceApprovalDuplicate(
+            matchId,
+            "com.samsung.android.messaging",
+            1_000L,
+            true,
+            matchId,
+            "com.shinhan.sbanking",
             30_000L,
         ))
     }

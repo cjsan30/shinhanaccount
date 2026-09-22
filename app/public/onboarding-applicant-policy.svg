@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="240" viewBox="0 0 540 240" role="img" aria-label="정책 등록 예시">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#23374f"/>
+      <stop offset="100%" stop-color="#2e4e76"/>
+    </linearGradient>
+  </defs>
+  <rect width="540" height="240" rx="16" fill="url(#bg2)"/>
+  <rect x="24" y="20" width="492" height="28" rx="14" fill="#9be5d8"/>
+  <text x="42" y="39" font-size="14" fill="#07233b" font-family="Pretendard, Arial, sans-serif">정책서 OCR / 직접 입력</text>
+  <rect x="24" y="68" width="236" height="144" rx="12" fill="#ffffff14" stroke="#4f6e8c"/>
+  <rect x="280" y="68" width="236" height="144" rx="12" fill="#ffffff14" stroke="#4f6e8c"/>
+  <text x="44" y="95" font-size="18" fill="#e7eef8" font-family="Pretendard, Arial, sans-serif">지원항목</text>
+  <text x="44" y="130" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">주거비</text>
+  <text x="44" y="151" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">식비</text>
+  <text x="44" y="172" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">교통비</text>
+  <text x="44" y="193" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">카페</text>
+  <text x="300" y="95" font-size="18" fill="#e7eef8" font-family="Pretendard, Arial, sans-serif">최종 상태</text>
+  <text x="300" y="130" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">총액 700,000원</text>
+  <text x="300" y="151" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">확정/보류 판단됨</text>
+  <text x="300" y="172" font-size="12" fill="#a7bfda" font-family="Pretendard, Arial, sans-serif">미리보기 요약 표시</text>
+</svg>

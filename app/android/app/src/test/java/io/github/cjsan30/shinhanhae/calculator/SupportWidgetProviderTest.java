@@ -19,4 +19,21 @@ public class SupportWidgetProviderTest {
         assertEquals(0, SupportWidgetProvider.progress(-1, 100));
         assertEquals(1_000, SupportWidgetProvider.progress(120, 100));
     }
+
+    @Test
+    public void selectsResponsiveLayoutFromWidgetSize() {
+        assertEquals(R.layout.widget_1x1, SupportWidgetProvider.layoutForSize(80, 40));
+        assertEquals(R.layout.widget_2x1, SupportWidgetProvider.layoutForSize(140, 40));
+        assertEquals(R.layout.widget_2x1, SupportWidgetProvider.layoutForSize(200, 40));
+        assertEquals(R.layout.widget_wide_1row, SupportWidgetProvider.layoutForSize(250, 62));
+        assertEquals(R.layout.widget_wide_1row, SupportWidgetProvider.layoutForSize(250, 40));
+        assertEquals(R.layout.widget_wide_1row, SupportWidgetProvider.layoutForSize(310, 40));
+        assertEquals(R.layout.widget_4x2, SupportWidgetProvider.layoutForSize(250, 135));
+        assertEquals(R.layout.widget_tall_3, SupportWidgetProvider.layoutForSize(250, 208));
+        assertEquals(R.layout.widget_tall_4, SupportWidgetProvider.layoutForSize(250, 281));
+        assertEquals(R.layout.widget_tall_7, SupportWidgetProvider.layoutForSize(250, 354));
+        assertEquals(5, SupportWidgetProvider.detailRowCount(R.layout.widget_tall_7, 354));
+        assertEquals(6, SupportWidgetProvider.detailRowCount(R.layout.widget_tall_7, 427));
+        assertEquals(7, SupportWidgetProvider.detailRowCount(R.layout.widget_tall_7, 500));
+    }
 }
