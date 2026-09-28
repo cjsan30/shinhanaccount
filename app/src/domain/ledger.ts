@@ -2,10 +2,11 @@ import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, 
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
+import type { ImportedBankTransaction } from './shinhanBankImport';
 import type { StoredEvidence } from '../native/evidenceVault';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
-export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'manual';
+export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual';
 export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string; evidence?: StoredEvidence[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
@@ -45,8 +46,9 @@ function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: str
   return { ...entry, id: `approval-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = ''): ImportResult {
-  const importable = transactions.filter(isImportable);
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string): ImportResult {
+  const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
+  if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
   let imported = 0;
@@ -63,6 +65,20 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
     if (entry.status === 'undecided') undecided += 1;
   }
   return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
+}
+export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string): ImportResult {
+  const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
+  if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
+  const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
+  const baseline = replacesDemo ? [] : ledger.entries;
+  let imported = 0; let duplicates = 0; let undecided = 0; const entries = [...baseline];
+  for (const transaction of importable) {
+    const entry = toEntry({ cardLast4: accountLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount }, { status: 'undecided' });
+    const next = { ...entry, id: `bank-${transaction.transactionId}`, source: 'bankCsv' as const };
+    if (entries.some((existing) => existing.id === next.id || isSameTransaction(existing, next))) { duplicates += 1; continue; }
+    entries.push(next); imported += 1; undecided += 1;
+  }
+  return { ledger: { ...ledger, entries }, imported, duplicates, excluded: 0, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
   const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {

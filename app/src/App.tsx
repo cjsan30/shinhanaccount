@@ -9,10 +9,11 @@ import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
 import { previousPanel, type Panel } from './domain/navigation';
 import { roundUsagePercent, type BudgetKey } from './domain/budget';
-import { applyPayment, cancelPayment, createEmptyLedger, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, removeLedgerEntry, updateLedgerEntry, getSummary, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
+import { applyPayment, cancelPayment, createEmptyLedger, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, removeLedgerEntry, updateLedgerEntry, getSummary, getCategorySpent, importBankTransactions, importCardTransactions, isEntryInPolicyPeriod, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { readSelectedFile } from './native/fileRead';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
+import type { TransactionImportPayload } from './components/TransactionImport';
 import {
   confirmPolicyForPeriod,
   emptyPolicy,
@@ -43,7 +44,7 @@ import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import { PaymentHistory } from './components/PaymentHistory';
 import { UndecidedPanel } from './components/UndecidedPanel';
 import { SmsDiagnostics } from './components/SmsDiagnostics';
-import type { StoredEvidence } from './native/evidenceVault';
+import type { ReportEvidenceRecord } from './domain/reportEvidence';
 import { loadAccessibilityPreferences, saveAccessibilityPreferences, type AccessibilityPreferences } from './domain/accessibility';
 import { AccessibilitySettings } from './components/AccessibilitySettings';
 import './App.css';
@@ -91,6 +92,7 @@ function App() {
   const [approvalReview, setApprovalReview] = useState<NativeApprovalReview | null>(null);
   const [cancellationReviews, setCancellationReviews] = useState<NativeCancellation[]>([]);
   const [ledger, setLedger] = useState<Ledger>(initialState.ledger);
+  const [reportEvidence, setReportEvidence] = useState<ReportEvidenceRecord[]>(initialState.reportEvidence ?? []);
   const ledgerRef = useRef(ledger);
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -139,6 +141,7 @@ function App() {
       setLedger(state.ledger);
       setPolicyBook(state.policyBook);
       setMerchantRules(state.merchantRules);
+      setReportEvidence(state.reportEvidence ?? []);
       setStorageReady(true);
       if (migrated) show('기존 데이터를 암호화 저장소로 안전하게 이전했습니다.');
     }).catch(() => { if (active) setStorageError('암호화 저장소를 열지 못했습니다. 앱을 다시 실행해 주세요.'); });
@@ -146,8 +149,8 @@ function App() {
   }, [now]);
   useEffect(() => {
     if (!storageReady) return;
-    void persistAppState(window.localStorage, { ledger, policyBook, merchantRules }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
-  }, [ledger, merchantRules, policyBook, storageReady]);
+    void persistAppState(window.localStorage, { ledger, policyBook, merchantRules, reportEvidence }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
+  }, [ledger, merchantRules, policyBook, reportEvidence, storageReady]);
   useEffect(() => { merchantRulesRef.current = merchantRules; }, [merchantRules]);
   useEffect(() => {
     saveAccessibilityPreferences(window.localStorage, accessibilityPreferences);
@@ -202,8 +205,25 @@ function App() {
   const approvalQueueId = (approval: NativeApproval) => approval.id ?? `${approval.cardLast4}|${approval.occurredAt}|${approval.amount}|${approval.merchant}`;
   const acknowledgeApprovals = (approvals: NativeApproval[]) => SmsBridge.acknowledgePendingApprovals({ ids: approvals.map(approvalQueueId) }).catch(() => undefined);
 
-  const budgetLimits = { resident: getPolicyLimit(policy, 'resident'), studySpace: getPolicyLimit(policy, 'studySpace') };
+  const budgetLimits = useMemo(() => ({ resident: getPolicyLimit(policy, 'resident'), studySpace: getPolicyLimit(policy, 'studySpace') }), [policy]);
   const categoryLimits = useMemo(() => Object.fromEntries(allPolicyItems.flatMap((item) => item.ledgerCategories.map((category) => [category, getCategoryLimit(policy, category)]))), [allPolicyItems, policy]);
+  const reportSummary = useMemo(() => ({
+    periodLabel: activePolicy.periodKey,
+    totalBudget: budgetLimits.resident + budgetLimits.studySpace,
+    totalUsed: ledger.entries.filter((entry) => entry.status === 'classified' && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0),
+    buckets: (['resident', 'studySpace'] as BudgetKey[]).map((bucket) => ({
+      key: bucket,
+      label: bucket === 'resident' ? '정주비' : '학습공간비',
+      budget: budgetLimits[bucket],
+      used: ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && isEntryInPolicyPeriod(entry, activePolicy.periodKey)).reduce((sum, entry) => sum + entry.amount, 0),
+      items: allPolicyItems.filter((item) => item.bucket === bucket).map((item) => ({
+        category: item.ledgerCategories[0],
+        label: item.label,
+        budget: categoryLimits[item.ledgerCategories[0]] ?? 0,
+        used: getCategorySpent(ledger, bucket, item.ledgerCategories[0], activePolicy.periodKey),
+      })),
+    })),
+  }), [activePolicy.periodKey, allPolicyItems, budgetLimits, categoryLimits, ledger]);
   const alertCategories = useMemo(() => getAlertTargets(policy).flatMap((key) => POLICY_ITEMS.find((item) => item.key === key)?.ledgerCategories ?? []), [policy]);
   const [first, second] = ledger.alertThresholds;
   const resident = getSummary(ledger, 'resident', budgetLimits.resident, activePolicy.periodKey);
@@ -465,7 +485,7 @@ function App() {
   };
   const applyCardExport = () => {
     if (!importTransactions) return;
-    const result = importCardTransactions(ledger, importTransactions, card);
+    const result = importCardTransactions(ledger, importTransactions, card, activePolicy.periodKey);
     setUndoImportLedger(ledger);
     setLedger(result.ledger);
     if (approvalReview) {
@@ -496,16 +516,6 @@ function App() {
     if (scopes.includes('rules')) setMerchantRules([]);
     if (scopes.includes('policy')) setPolicyBook({ versions: [] });
     show('선택한 데이터를 초기화했습니다.');
-  };
-  const updateEvidenceLink = (entryId: string, evidence: StoredEvidence, attach: boolean) => {
-    setLedger((current) => ({ ...current, entries: current.entries.map((entry) => {
-      if (entry.id !== entryId) return entry;
-      const previous = entry.evidence ?? [];
-      const next = attach
-        ? previous.some((item) => item.id === evidence.id) ? previous : [...previous, evidence]
-        : previous.filter((item) => item.id !== evidence.id);
-      return { ...entry, evidence: next };
-    }) }));
   };
   const reviewPolicyText = () => {
     if (!policyText.trim()) { show('계획표 내용을 붙여넣어 주세요.'); return; }
@@ -640,8 +650,8 @@ function App() {
   else if (panel === 'delete') content = deleteTarget ? <><p>삭제하면 이 앱의 결제 내역과 예산 사용액에서 제거됩니다. 카드사·은행 원본 내역은 삭제되지 않습니다.</p><div className="item"><strong>{deleteTarget.merchant}</strong><span>{deleteTarget.occurredAt.slice(0, 10)} · {won(deleteTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmDelete}>결제 내역 삭제</button></> : <p>삭제할 결제가 없습니다.</p>;
   else if (panel === 'cancel') content = cancellationTarget ? <><p>실제 취소가 확인된 경우에만 확정하세요. 취소 확정 후에는 이 결제의 예산 사용액이 제외됩니다.</p><div className="item"><strong>{cancellationTarget.merchant}</strong><span>{cancellationTarget.occurredAt.slice(0, 10)} · {won(cancellationTarget.amount)}</span></div><button className="sheet-action danger-action" onClick={confirmCancellation}>취소 확정</button></> : <p>확인할 결제가 없습니다.</p>;
   else if (panel === 'cancel-review') content = cancellationReviews.length ? <section className="cancellation-review"><p>취소 알림과 정확히 일치하는 기존 결제를 하나로 정하지 못했습니다. 실제로 취소된 결제를 선택하세요. 선택 전에는 예산이 바뀌지 않습니다.</p>{cancellationReviews.map((notice) => <article key={notice.id ?? `${notice.occurredAt}-${notice.amount}`}><strong>{notice.merchant} · {won(notice.amount)}</strong><small>취소 알림 {new Date(notice.occurredAt).toLocaleString('ko-KR')}</small><div>{findCancellationCandidates(ledger, notice).map(({ entry }) => <button key={entry.id} className="sheet-action secondary-action" onClick={() => confirmCancellationReview(notice, entry)}>{entry.merchant} · {entry.occurredAt.slice(0, 16).replace('T', ' ')} 취소</button>)}{!findCancellationCandidates(ledger, notice).length && <small>일치하는 결제가 없습니다. 카드사 내역을 확인한 뒤 결제 상세에서 직접 취소 처리할 수 있습니다.</small>}</div></article>)}</section> : <p>확인할 취소 알림이 없습니다.</p>;
-  else if (panel === 'evidence') content = <EvidenceExport entries={ledger.entries} onUpdateEvidence={updateEvidenceLink} />;
-  else if (panel === 'import') content = <TransactionImport cardLast4={card} notify={show} onImport={(transactions) => { const result = importCardTransactions(ledger, transactions, card); setLedger(result.ledger); leaveImport(); show(result.replacedDemo ? '데모 내역을 실제 ' + result.imported + '건으로 교체했습니다.' : result.imported + '건을 가져왔습니다.'); }} />;
+  else if (panel === 'evidence') content = <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={reportSummary} />;
+  else if (panel === 'import') content = <TransactionImport cardLast4={card} periodKey={activePolicy.periodKey} notify={show} onImport={(payload: TransactionImportPayload) => { const result = payload.source === 'account' ? importBankTransactions(ledger, payload.bankTransactions ?? [], payload.identifierLast4, activePolicy.periodKey) : importCardTransactions(ledger, payload.cardTransactions ?? [], payload.identifierLast4, activePolicy.periodKey); setLedger(result.ledger); leaveImport(); const outside = payload.excludedOutsidePeriod ? ` 기간 외 ${payload.excludedOutsidePeriod}건은 저장하지 않았습니다.` : ''; show(result.replacedDemo ? `데모 내역을 실제 ${result.imported}건으로 교체했습니다.${outside}` : `${result.imported}건을 가져왔습니다.${outside}`); }} />;
   else if (panel === 'rules') content = <section className="rule-manager"><p>결제처에 키워드가 포함되면 자동 분류합니다. 정확 일치는 상호명 전체가 같을 때만 적용됩니다.</p><div className="rule-editor"><label>상호명 또는 키워드<input aria-label="규칙 상호명" value={ruleMerchant} onChange={(event) => setRuleMerchant(event.target.value)} placeholder="예: 메가커피" /></label><label>표시 별칭 (선택)<input aria-label="규칙 표시 별칭" value={ruleAlias} onChange={(event) => setRuleAlias(event.target.value)} placeholder="예: 스터디 카페" maxLength={40} /></label><label>인식 방법<select aria-label="규칙 인식 방법" value={ruleMatchMode} onChange={(event) => setRuleMatchMode(event.target.value as MerchantMatchMode)}><option value="contains">포함</option><option value="exact">정확히 일치</option></select></label><label>분류 항목<select aria-label="규칙 분류" value={ruleItemKey} onChange={(event) => setRuleItemKey(event.target.value as PolicyItem)}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label><button className="sheet-action" onClick={saveMerchantRule}>{editingRuleId ? '규칙 수정 저장' : '규칙 추가'}</button>{editingRuleId && <button className="sheet-action secondary-action" onClick={resetRuleEditor}>수정 취소</button>}</div><div className="rule-management-list"><strong>저장된 자동 분류 규칙 {merchantRules.length}/50</strong>{merchantRules.length ? [...merchantRules].sort((a, b) => a.merchant.localeCompare(b.merchant, 'ko')).map((rule) => <article key={rule.id}><div><strong>{rule.alias || rule.merchant}</strong><span>{rule.alias ? `${rule.merchant} · ` : ''}{(rule.matchMode ?? 'contains') === 'contains' ? '포함' : '정확히 일치'} · {categoryNames[rule.category]}</span></div><button type="button" onClick={() => editMerchantRule(rule)}>수정</button><button type="button" className="delete-action" onClick={() => deleteMerchantRule(rule)}>삭제</button></article>) : <p>저장된 자동 분류 규칙이 없습니다.</p>}</div></section>;
   else if (panel === 'settings') content = <section className="settings-hub"><p>필요한 설정만 선택해 관리하세요.</p><button className="settings-destination" onClick={() => setPanel('operations')}><strong>운영 설정</strong><span>카드 · 결제 알림 · 예산 경고</span><CaretRight size={26} /></button><button className="settings-destination" onClick={() => setPanel('data')}><strong>데이터 관리</strong><span>계획표 · 거래내역 · 백업</span><CaretRight size={26} /></button><button className="settings-destination" onClick={() => setPanel('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 고대비 · 진동</span><CaretRight size={26} /></button><a className="settings-destination settings-feedback" href="mailto:cjsan30@gmail.com?subject=%5B%EC%8B%A0%EC%B2%AD%ED%95%B4%20%EA%B3%84%EC%82%B0%EA%B8%B0%5D%20%ED%94%BC%EB%93%9C%EB%B0%B1"><strong>피드백 보내기</strong><span>불편한 점과 개선 의견을 알려주세요</span><CaretRight size={26} /></a><details className="privacy-notice"><summary>개인정보 처리 안내</summary><h3>결제 알림 처리</h3><p>삼성 메시지 또는 신한 SOL 알림 중 등록한 카드 끝 4자리와 일치하는 신한카드 승인 알림만 기기 안에서 처리합니다. 같은 승인이 두 앱에 표시되면 한 건으로 합칩니다. 거래 시각·금액·상호명·분류만 저장하며 원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다.</p><h3>저장과 보안</h3><p>거래·정책·자동 분류 규칙은 기기 내부 암호화 저장소에 보관합니다. 서버나 제3자 분석 서비스로 전송하지 않습니다.</p><h3>권한과 대체 입력</h3><p>알림 접근은 Android 시스템 설정에서 언제든 해제할 수 있습니다. 자동 인식이 중단된 기간은 신한카드 엑셀 가져오기 또는 직접 지출 등록으로 보완할 수 있습니다.</p><h3>삭제와 백업</h3><p>개별 결제는 결제 상세에서 삭제할 수 있고, 앱 데이터 초기화 또는 앱 삭제 시 기기 내부 데이터가 삭제됩니다. 암호화 백업은 사용자가 직접 생성·관리합니다.</p><a href="https://cjsan30.github.io/shinhanaccount/privacy-policy.html" target="_blank" rel="noreferrer">전체 개인정보처리방침 보기</a></details></section>;
   else if (panel === 'accessibility') content = <AccessibilitySettings preferences={accessibilityPreferences} onChange={setAccessibilityPreferences} />;

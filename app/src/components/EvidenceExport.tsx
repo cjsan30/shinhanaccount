@@ -2,279 +2,68 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { saveFile } from '../native/fileExport';
 import { fitImageInsidePage } from '../features/evidence/imageLayout';
-import { loadEvidence, removeStoredEvidence, storeEvidence, type StoredEvidence } from '../native/evidenceVault';
-import type { LedgerEntry } from '../domain/ledger';
+import { loadEvidence, removeStoredEvidence, storeEvidence } from '../native/evidenceVault';
+import type { ReportEvidenceRecord, ReportEvidenceSection } from '../domain/reportEvidence';
 
-type Group = 'resident' | 'study';
 type EvidenceKind = 'image' | 'pdf';
-type Evidence = { id: string; file: File; kind: EvidenceKind; url?: string; pages?: number; stored: StoredEvidence; linkedEntryId?: string };
+type Evidence = ReportEvidenceRecord & { file: File; kind: EvidenceKind; url?: string; pages?: number };
 type RasterImage = { bytes: Uint8Array; width: number; height: number };
 type ExportProfile = { id: 'default' | 'compact' | 'minimum'; maxEdge: number; quality: number; pdfDpi: number | null };
 type Progress = { current: number; total: number; stage: string; attempt: number };
+type BenchmarkResult = { label: string; elapsedMs: number; outputBytes: number; attempts: number; imageCount: number };
+export type ReportSummary = { periodLabel: string; totalBudget: number; totalUsed: number; buckets: Array<{ key: 'resident' | 'studySpace'; label: string; budget: number; used: number; items: Array<{ category: string; label: string; budget: number; used: number }> }> };
 
 const A4: [number, number] = [595.28, 841.89];
 const TARGET_BYTES = Math.floor(4.7 * 1024 * 1024);
-const PROFILES: ExportProfile[] = [
-  { id: 'default', maxEdge: 1024, quality: .58, pdfDpi: null },
-  { id: 'compact', maxEdge: 920, quality: .5, pdfDpi: 150 },
-  { id: 'minimum', maxEdge: 800, quality: .42, pdfDpi: 120 },
-];
-
+const PROFILES: ExportProfile[] = [{ id: 'default', maxEdge: 1024, quality: .58, pdfDpi: null }, { id: 'compact', maxEdge: 920, quality: .5, pdfDpi: 150 }, { id: 'minimum', maxEdge: 800, quality: .42, pdfDpi: 120 }];
+const LABEL: Record<ReportEvidenceSection, string> = { statement: '입출금내역', transactionProof: '거래증빙', receipt: '영수증' };
 class ExportCancelled extends Error {}
+const won = (value: number) => `${Math.max(0, value).toLocaleString('ko-KR')}원`;
+const duration = (seconds: number) => seconds <= 25 ? '약 30초 내외' : seconds <= 60 ? '약 1분 내외' : '약 1~2분';
+const supported = (file: File) => ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) || /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+const kindOf = (file: File): EvidenceKind => file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? 'pdf' : 'image';
 
-function durationLabel(seconds: number) {
-  if (seconds <= 25) return '약 30초 내외';
-  if (seconds <= 60) return '약 1분 내외';
-  return '약 1~2분';
-}
-
-function estimateSeconds(items: Evidence[]) {
-  return Math.max(15, Math.round(8 + items.reduce((sum, item) => sum + (item.kind === 'pdf' ? (item.pages ?? 2) : 1), 0) * .7));
-}
-
-function supportsEvidence(file: File) {
-  return ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) || /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
-}
-
-function kindOf(file: File): EvidenceKind {
-  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? 'pdf' : 'image';
-}
-
-async function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));
+async function jpeg(canvas: HTMLCanvasElement, quality: number) {
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));
   return new Uint8Array(await blob.arrayBuffer());
 }
-
 async function compressImage(file: File, maxEdge: number, quality: number): Promise<RasterImage[]> {
-  const bitmap = await createImageBitmap(file);
-  const shouldSplit = bitmap.height / bitmap.width > 2.1;
-  const sourceSegmentHeight = shouldSplit ? Math.ceil(bitmap.width / .68) : bitmap.height;
-  const overlap = shouldSplit ? Math.min(48, Math.round(bitmap.width * .04)) : 0;
-  const targetWidth = Math.min(bitmap.width, maxEdge);
-  const output: RasterImage[] = [];
-  try {
-    for (let top = 0; top < bitmap.height; top += Math.max(1, sourceSegmentHeight - overlap)) {
-      const sourceHeight = Math.min(sourceSegmentHeight, bitmap.height - top);
-      const targetHeight = Math.max(1, Math.round(sourceHeight * targetWidth / bitmap.width));
-      const canvas = document.createElement('canvas');
-      canvas.width = targetWidth; canvas.height = targetHeight;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('이미지를 압축하지 못했습니다.');
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, targetWidth, targetHeight);
-      context.drawImage(bitmap, 0, top, bitmap.width, sourceHeight, 0, 0, targetWidth, targetHeight);
-      const bytes = await canvasToJpeg(canvas, quality);
-      output.push({ bytes, width: targetWidth, height: targetHeight });
-      canvas.width = 1; canvas.height = 1;
-      if (!shouldSplit) break;
-    }
-  } finally {
-    bitmap.close();
-  }
-  return output;
-}
-
-async function renderPdfPages(file: File, dpi: number, quality: number, onPage: () => void, cancelled: () => boolean): Promise<RasterImage[]> {
-  const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const source = await loadingTask.promise;
-  const result: RasterImage[] = [];
-  try {
-    for (let number = 1; number <= source.numPages; number += 1) {
-      if (cancelled()) throw new ExportCancelled();
-      const page = await source.getPage(number);
-      const viewport = page.getViewport({ scale: dpi / 72 });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('PDF 페이지를 준비하지 못했습니다.');
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
-      const bytes = await canvasToJpeg(canvas, quality);
-      result.push({ bytes, width: canvas.width, height: canvas.height });
-      canvas.width = 1; canvas.height = 1;
-      page.cleanup();
-      onPage();
-    }
-  } finally {
-    await loadingTask.destroy();
-  }
+  const bitmap = await createImageBitmap(file); const split = bitmap.height / bitmap.width > 2.1; const segment = split ? Math.ceil(bitmap.width / .68) : bitmap.height; const overlap = split ? Math.min(48, Math.round(bitmap.width * .04)) : 0; const width = Math.min(bitmap.width, maxEdge); const result: RasterImage[] = [];
+  try { for (let top = 0; top < bitmap.height; top += Math.max(1, segment - overlap)) { const height = Math.min(segment, bitmap.height - top); const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = Math.max(1, Math.round(height * width / bitmap.width)); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('이미지를 압축하지 못했습니다.'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, top, bitmap.width, height, 0, 0, canvas.width, canvas.height); result.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; if (!split) break; } } finally { bitmap.close(); }
   return result;
 }
-
-async function inspectPdfPageCount(file: File) {
-  const { PDFDocument } = await import('pdf-lib');
-  const source = await PDFDocument.load(await file.arrayBuffer());
-  return source.getPageCount();
+async function renderPdf(file: File, dpi: number, quality: number, onPage: () => void, cancelled: () => boolean): Promise<RasterImage[]> {
+  const pdfjs = await import('pdfjs-dist'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl; const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }); const source = await task.promise; const result: RasterImage[] = [];
+  try { for (let index = 1; index <= source.numPages; index += 1) { if (cancelled()) throw new ExportCancelled(); const page = await source.getPage(index); const viewport = page.getViewport({ scale: dpi / 72 }); const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('PDF 페이지를 준비하지 못했습니다.'); await page.render({ canvas, canvasContext: ctx, viewport }).promise; result.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; page.cleanup(); onPage(); } } finally { await task.destroy(); }
+  return result;
 }
+async function pdfPages(file: File) { const { PDFDocument } = await import('pdf-lib'); return (await PDFDocument.load(await file.arrayBuffer())).getPageCount(); }
 
-export function EvidenceExport({ entries, onUpdateEvidence }: { entries: LedgerEntry[]; onUpdateEvidence: (entryId: string, evidence: StoredEvidence, attach: boolean) => void }) {
-  const [resident, setResident] = useState<Evidence[]>([]);
-  const [study, setStudy] = useState<Evidence[]>([]);
-  const [dragging, setDragging] = useState<{ group: Group; index: number } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [progress, setProgress] = useState<Progress | null>(null);
-  const previewUrls = useRef(new Set<string>());
-  const rasterCache = useRef(new Map<string, RasterImage[]>());
-  const cancelRequested = useRef(false);
-  const itemsRef = useRef<Evidence[]>([]);
-  const [resultPreviewUrl, setResultPreviewUrl] = useState<string | null>(null);
-  useEffect(() => () => previewUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
-  useEffect(() => () => { itemsRef.current.filter((item) => !item.linkedEntryId).forEach((item) => { void removeStoredEvidence(item.stored).catch(() => undefined); }); }, []);
-  useEffect(() => { itemsRef.current = [...resident, ...study]; }, [resident, study]);
-  useEffect(() => () => { if (resultPreviewUrl) URL.revokeObjectURL(resultPreviewUrl); }, [resultPreviewUrl]);
-  useEffect(() => {
-    let disposed = false;
-    const existing = new Set([...resident, ...study].map((item) => item.stored.id));
-    const restore = async () => {
-      const attached = entries.flatMap((entry) => (entry.evidence ?? []).map((stored) => ({ entry, stored })));
-      const restored = await Promise.all(attached.filter(({ stored }) => !existing.has(stored.id)).map(async ({ entry, stored }) => {
-        try {
-          const file = await loadEvidence(stored);
-          const kind = kindOf(file);
-          const url = kind === 'image' ? URL.createObjectURL(file) : undefined;
-          if (url) previewUrls.current.add(url);
-          return { entry, item: { id: stored.id, file, kind, url, pages: kind === 'image' ? 1 : undefined, stored, linkedEntryId: entry.id } as Evidence };
-        } catch { return null; }
-      }));
-      if (disposed) return;
-      const loaded = restored.filter((value): value is { entry: LedgerEntry; item: Evidence } => value !== null);
-      const residentItems = loaded.filter((value) => value.entry.bucket === 'resident').map((value) => value.item);
-      const studyItems = loaded.filter((value) => value.entry.bucket === 'studySpace').map((value) => value.item);
-      if (residentItems.length) setResident((current) => [...current, ...residentItems]);
-      if (studyItems.length) setStudy((current) => [...current, ...studyItems]);
-    };
-    void restore();
-    return () => { disposed = true; };
-  }, [entries, resident, study]);
-  useEffect(() => {
-    let disposed = false;
-    const scan = async () => {
-      const pending = [...resident, ...study].filter((item) => item.kind === 'pdf' && !item.pages);
-      await Promise.all(pending.map(async (item) => {
-        let pages = 1;
-        try { pages = await inspectPdfPageCount(item.file); } catch { /* the export path reports the readable error */ }
-        if (disposed) return;
-        const updateCount = (entries: Evidence[]) => entries.map((entry) => entry.id === item.id ? { ...entry, pages } : entry);
-        setResident(updateCount); setStudy(updateCount);
-      }));
-    };
-    void scan();
-    return () => { disposed = true; };
-  }, [resident, study]);
-  const totalBytes = useMemo(() => [...resident, ...study].reduce((sum, item) => sum + item.file.size, 0), [resident, study]);
-  const update = (group: Group, action: (items: Evidence[]) => Evidence[]) => (group === 'resident' ? setResident : setStudy)(action);
-  const addFiles = async (group: Group, files: FileList | null) => {
-    if (!files) return;
-    const valid = [...files].filter(supportsEvidence);
-    if (valid.length !== files.length) setMessage('JPG, PNG, WEBP, PDF 파일만 추가할 수 있습니다.');
-    const additions = await Promise.all(valid.map(async (file) => {
-      const kind = kindOf(file);
-      const url = kind === 'image' ? URL.createObjectURL(file) : undefined;
-      if (url) previewUrls.current.add(url);
-      return { id: crypto.randomUUID(), file, kind, url, pages: kind === 'image' ? 1 : undefined, stored: await storeEvidence(file) };
-    }));
-    update(group, (current) => [...current, ...additions]);
-  };
-  const move = (group: Group, index: number, direction: -1 | 1) => update(group, (current) => {
-    const next = [...current]; const target = index + direction;
-    if (target < 0 || target >= next.length) return current;
-    [next[index], next[target]] = [next[target], next[index]];
-    return next;
-  });
-  const reorder = (group: Group, target: number) => {
-    if (!dragging || dragging.group !== group || dragging.index === target) return;
-    update(group, (current) => { const next = [...current]; const [item] = next.splice(dragging.index, 1); next.splice(target, 0, item); return next; });
-    setDragging(null);
-  };
-  const remove = (group: Group, item: Evidence) => {
-    if (item.url) { URL.revokeObjectURL(item.url); previewUrls.current.delete(item.url); }
-    rasterCache.current.delete(item.id);
-    if (item.linkedEntryId) onUpdateEvidence(item.linkedEntryId, item.stored, false);
-    void removeStoredEvidence(item.stored).catch(() => undefined);
-    update(group, (current) => current.filter((candidate) => candidate.id !== item.id));
-  };
-  const link = (group: Group, item: Evidence, entryId: string) => {
-    if (item.linkedEntryId === entryId) return;
-    if (item.linkedEntryId) onUpdateEvidence(item.linkedEntryId, item.stored, false);
-    if (entryId) onUpdateEvidence(entryId, item.stored, true);
-    update(group, (current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, linkedEntryId: entryId || undefined } : candidate));
-  };
-  const clearPreviews = () => {
-    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
-    previewUrls.current.clear(); rasterCache.current.clear();
-    setResident([]); setStudy([]);
-  };
-  const rasterize = async (item: Evidence, profile: ExportProfile, onPage: () => void) => {
-    const cacheKey = `${item.id}:${profile.id}`;
-    const cached = rasterCache.current.get(cacheKey);
-    if (cached) return cached;
-    const output = item.kind === 'pdf'
-      ? await renderPdfPages(item.file, profile.pdfDpi ?? 150, profile.quality, onPage, () => cancelRequested.current)
-      : await compressImage(item.file, profile.maxEdge, profile.quality);
-    rasterCache.current.set(cacheKey, output);
-    return output;
-  };
-  const exportPdf = async () => {
-    const items = [...resident, ...study];
-    if (!items.length) return;
-    const unitCount = items.reduce((sum, item) => sum + (item.pages ?? 1), 0);
-    cancelRequested.current = false;
-    setExporting(true); setProgress({ current: 0, total: unitCount, stage: '제출 파일을 준비하고 있습니다', attempt: 1 }); setMessage(null);
-    try {
-      const { PDFDocument } = await import('pdf-lib');
-      let pdfBytes: Uint8Array<ArrayBufferLike> = new Uint8Array();
-      for (const [profileIndex, profile] of PROFILES.entries()) {
-        const pdf = await PDFDocument.create();
-        let processed = unitCount * profileIndex;
-        const updateProgress = (stage: string) => setProgress({ current: processed, total: unitCount * (profileIndex + 1), stage, attempt: profileIndex + 1 });
-        for (const item of items) {
-          if (cancelRequested.current) throw new ExportCancelled();
-          const stage = profile.pdfDpi ? `용량을 최적화하고 있습니다 · ${profileIndex + 1}차` : '이미지를 압축하고 있습니다';
-          if (item.kind === 'pdf' && !profile.pdfDpi) {
-            const source = await PDFDocument.load(await item.file.arrayBuffer());
-            const pages = await pdf.copyPages(source, source.getPageIndices());
-            pages.forEach((page) => { pdf.addPage(page); processed += 1; updateProgress(stage); });
-            continue;
-          }
-          const images = await rasterize(item, profile, () => { processed += 1; updateProgress(stage); });
-          for (const imageBytes of images) {
-            const image = await pdf.embedJpg(imageBytes.bytes);
-            const page = pdf.addPage(A4);
-            page.drawImage(image, fitImageInsidePage(imageBytes.width, imageBytes.height, A4[0], A4[1], 36));
-          }
-          if (item.kind === 'image') { processed += 1; updateProgress(stage); }
-        }
-        updateProgress('PDF를 합치고 있습니다');
-        pdfBytes = await pdf.save({ useObjectStreams: true });
-        if (pdfBytes.byteLength <= TARGET_BYTES) break;
-      }
-      if (pdfBytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 5MB 이하로 만들 수 없습니다. 불필요한 이미지를 줄인 뒤 다시 시도해 주세요.');
-      setProgress((current) => current ? { ...current, stage: 'Downloads에 저장하고 있습니다' } : current);
-      const result = await saveFile('shinhanhae_report_evidence.pdf', pdfBytes, 'application/pdf');
-      setResultPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(new Blob([pdfBytes as unknown as BlobPart], { type: 'application/pdf' })); });
-      setMessage(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
-      clearPreviews();
-    } catch (error) { setMessage(error instanceof ExportCancelled ? 'PDF 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.' : error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); }
-    finally { setExporting(false); setProgress(null); }
-  };
-  const eligibleEntries = entries.filter((entry) => entry.status === 'classified');
-  const entriesForGroup = (group: Group) => eligibleEntries
-    .filter((entry) => group === 'resident' ? entry.bucket === 'resident' : entry.bucket === 'studySpace')
-    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
-  const renderGroup = (title: string, group: Group, items: Evidence[]) => {
-    const groupEntries = entriesForGroup(group);
-    return <section className="evidence-group"><h3>{title} <span>{items.length}장</span></h3><p>이미지 또는 PDF를 여러 장 고른 뒤, 위·아래 버튼 또는 드래그로 순서를 조정하세요.</p><label className="file-picker">증빙 파일 여러 장 추가<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple onChange={(event) => { void addFiles(group, event.target.files); event.currentTarget.value = ''; }} /></label><div className="evidence-list">{items.map((item, index) => <article key={item.id} draggable onDragStart={() => setDragging({ group, index })} onDragOver={(event) => event.preventDefault()} onDrop={() => reorder(group, index)}>{item.url ? <img src={item.url} alt={`${title} 증빙 ${index + 1}`} /> : <div className="evidence-pdf-preview" aria-label={`${title} PDF 증빙`}>PDF</div>}<div className="evidence-content"><span>{index + 1}. {item.file.name}</span><label className="evidence-link">결제 연결<select aria-label={`${title} 증빙 ${index + 1} 결제 연결`} value={item.linkedEntryId ?? ''} onChange={(event) => link(group, item, event.target.value)}><option value="">나중에 연결</option>{groupEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.occurredAt.slice(0, 16).replace('T', ' ')} · {entry.merchant} · {entry.amount.toLocaleString()}원</option>)}</select></label></div><div className="evidence-order"><button type="button" aria-label={`${title} 증빙 위로 이동`} disabled={index === 0} onClick={() => move(group, index, -1)}>위로</button><button type="button" aria-label={`${title} 증빙 아래로 이동`} disabled={index === items.length - 1} onClick={() => move(group, index, 1)}>아래로</button><button type="button" onClick={() => remove(group, item)}>삭제</button></div></article>)}</div></section>;
-  };
-  const residentPages = resident.reduce((sum, item) => sum + (item.pages ?? 1), 0);
-  const studyPages = study.reduce((sum, item) => sum + (item.pages ?? 1), 0);
-  const count = resident.length + study.length;
-  const pageCount = residentPages + studyPages;
-  const items = [...resident, ...study];
-  const expected = durationLabel(estimateSeconds(items));
-  const progressPercent = progress ? Math.min(100, Math.round(progress.current / Math.max(1, progress.total) * 100)) : 0;
-  const missing = eligibleEntries.filter((entry) => !(entry.evidence?.length));
-  const estimatedOutput = Math.min(4.7, Math.max(.1, totalBytes / 1024 / 1024 * .22));
-  return <section className="evidence-export"><p>증빙 내용을 해석하거나 자동 판정하지 않습니다. 정주비를 먼저, 학습공간비를 다음 순서로 한 PDF에 합칩니다. 컬러는 유지하면서 5MB 이하로 최적화합니다.</p>{count > 0 && <section className="evidence-summary"><strong>제출 전 요약</strong><span>정주비 {residentPages}장 · 학습공간비 {studyPages}장 · 총 {pageCount}장</span><small>원본 파일 {Math.ceil(totalBytes / 1024 / 1024 * 10) / 10}MB · 예상 결과 약 {estimatedOutput.toFixed(1)}MB</small><small>예상 소요 시간 {expected} · 생성 중에는 앱을 열어 두면 안정적으로 완료됩니다.</small></section>}{missing.length > 0 && <section className="evidence-missing"><strong>증빙 누락 가능 결제 {missing.length}건</strong><span>아래 결제에는 연결된 증빙이 없습니다.</span>{missing.slice(0, 10).map((entry) => <small key={entry.id}>{entry.occurredAt.slice(0, 10)} · {entry.merchant} · {entry.amount.toLocaleString()}원</small>)}</section>}{renderGroup('정주비 증빙', 'resident', resident)}{renderGroup('학습공간비 증빙', 'study', study)}{progress && <section className="evidence-progress" role="status"><strong>{progress.stage}</strong><span>증빙 {progress.current} / {progress.total}장 처리 완료 · {progressPercent}%</span><i aria-hidden="true"><b style={{ width: `${progressPercent}%` }} /></i><small>{progress.attempt > 1 ? '추가 최적화 중입니다. 약 30초~1분 더 걸릴 수 있어요.' : `예상 완료 ${expected}`}</small><button type="button" onClick={() => { cancelRequested.current = true; }}>생성 취소</button></section>}{message && <p className="evidence-message">{message}</p>}{resultPreviewUrl && <details className="evidence-result-preview" open><summary>생성 결과 미리보기</summary><object data={resultPreviewUrl} type="application/pdf"><a href={resultPreviewUrl} target="_blank" rel="noreferrer">PDF 미리보기 열기</a></object></details>}<button className="sheet-action" disabled={exporting || !count} onClick={() => void exportPdf()}>{exporting ? 'PDF 생성 중…' : 'PDF 생성'}</button></section>;
+// Korean text is rasterized intentionally: PDF standard fonts omit Korean glyphs on Android.
+async function pageImage(summary: ReportSummary, quality: number): Promise<RasterImage> {
+  await document.fonts?.ready; const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754; const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('요약 페이지를 준비하지 못했습니다.'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1240, 1754); const x = 92; let y = 130; const font = 'Pretendard, "Noto Sans KR", sans-serif';
+  ctx.fillStyle = '#102338'; ctx.font = `700 54px ${font}`; ctx.fillText('지원금 사용 요약', x, y); ctx.fillStyle = '#6d7885'; ctx.font = `400 28px ${font}`; ctx.fillText(`${summary.periodLabel} 적용 기간`, x, y + 54); y += 142; ctx.fillStyle = '#eff8f7'; ctx.fillRect(x, y, 1056, 230); ctx.fillStyle = '#587078'; ctx.font = `600 28px ${font}`; ctx.fillText('총 지원금', x + 42, y + 58); ctx.fillStyle = '#112b37'; ctx.font = `700 58px ${font}`; ctx.fillText(won(summary.totalBudget), x + 42, y + 132); const remain = summary.totalBudget - summary.totalUsed; ctx.fillStyle = '#587078'; ctx.font = `500 28px ${font}`; ctx.fillText(`사용 ${won(summary.totalUsed)} · ${remain > 0 ? `잔액 ${won(remain)}` : '지원금 소진'}`, x + 42, y + 188); y += 300;
+  for (const bucket of summary.buckets) { ctx.fillStyle = '#102338'; ctx.font = `700 38px ${font}`; ctx.fillText(bucket.label, x, y); ctx.fillStyle = '#587078'; ctx.font = `500 25px ${font}`; ctx.fillText(`계획 ${won(bucket.budget)} · 사용 ${won(bucket.used)} · 잔액 ${won(bucket.budget - bucket.used)}`, x + 250, y); y += 42; ctx.fillStyle = '#d9e1e5'; ctx.fillRect(x, y, 1056, 2); y += 44; for (const item of bucket.items) { ctx.fillStyle = '#263b4b'; ctx.font = `600 25px ${font}`; ctx.fillText(item.label, x + 20, y); ctx.fillStyle = '#4e6070'; ctx.font = `500 24px ${font}`; ctx.fillText(`계획 ${won(item.budget)}`, x + 390, y); ctx.fillText(`사용 ${won(item.used)}`, x + 650, y); ctx.fillStyle = '#0e6f6b'; ctx.font = `700 24px ${font}`; ctx.fillText(`잔액 ${won(item.budget - item.used)}`, x + 855, y); y += 52; } y += 38; }
+  ctx.fillStyle = '#6d7885'; ctx.font = `400 22px ${font}`; ctx.fillText('이후 페이지에는 입출금내역, 거래증빙, 세부 항목별 영수증이 이어집니다.', x, 1640); return { bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height };
+}
+async function divider(label: string, quality: number): Promise<RasterImage> { await document.fonts?.ready; const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754; const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('구분 페이지를 준비하지 못했습니다.'); const font = 'Pretendard, "Noto Sans KR", sans-serif'; ctx.fillStyle = '#f4f8f8'; ctx.fillRect(0, 0, 1240, 1754); ctx.fillStyle = '#77d8ca'; ctx.fillRect(92, 760, 14, 180); ctx.fillStyle = '#102338'; ctx.font = `700 36px ${font}`; ctx.fillText('영수증 · 세부 항목', 142, 800); ctx.font = `700 62px ${font}`; ctx.fillText(label, 142, 900); return { bytes: await jpeg(canvas, quality), width: 1240, height: 1754 }; }
+
+export function EvidenceExport({ reportEvidence, onReportEvidenceChange, summary }: { reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: (next: ReportEvidenceRecord[]) => void; summary: ReportSummary }) {
+  const [items, setItems] = useState<Evidence[]>([]); const [message, setMessage] = useState<string | null>(null); const [exporting, setExporting] = useState(false); const [progress, setProgress] = useState<Progress | null>(null); const [resultPreviewUrl, setResultPreviewUrl] = useState<string | null>(null); const [benchmarks, setBenchmarks] = useState<Partial<Record<'legacy' | 'current', BenchmarkResult>>>({}); const urls = useRef(new Set<string>()); const raster = useRef(new Map<string, RasterImage[]>()); const cancelled = useRef(false);
+  useEffect(() => () => urls.current.forEach((url) => URL.revokeObjectURL(url)), []); useEffect(() => () => { if (resultPreviewUrl) URL.revokeObjectURL(resultPreviewUrl); }, [resultPreviewUrl]);
+  useEffect(() => { let disposed = false; void Promise.all(reportEvidence.map(async (record) => { try { const file = await loadEvidence(record.stored); const kind = kindOf(file); const url = kind === 'image' ? URL.createObjectURL(file) : undefined; if (url) urls.current.add(url); return { ...record, file, kind, url, pages: kind === 'image' ? 1 : undefined } as Evidence; } catch { return null; } })).then((loaded) => { if (!disposed) setItems(loaded.filter((item): item is Evidence => item !== null)); }); return () => { disposed = true; }; }, [reportEvidence]);
+  useEffect(() => { let disposed = false; const pending = items.filter((item) => item.kind === 'pdf' && !item.pages); void Promise.all(pending.map(async (item) => { let pages = 1; try { pages = await pdfPages(item.file); } catch { /* export will give a readable error */ } if (!disposed) setItems((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, pages } : candidate)); })); return () => { disposed = true; }; }, [items]);
+  const inSection = (section: ReportEvidenceSection) => items.filter((item) => item.section === section).sort((a, b) => a.order - b.order);
+  const addFiles = async (section: ReportEvidenceSection, files: FileList | null) => { if (!files) return; const valid = [...files].filter(supported); if (valid.length !== files.length) setMessage('JPG, PNG, WEBP, PDF 파일만 추가할 수 있습니다.'); const start = reportEvidence.filter((item) => item.section === section).length; const additions = await Promise.all(valid.map(async (file, index) => ({ id: crypto.randomUUID(), stored: await storeEvidence(file), section, ...(section === 'receipt' ? { category: summary.buckets[0]?.items[0]?.category } : {}), order: start + index } satisfies ReportEvidenceRecord))); onReportEvidenceChange([...reportEvidence, ...additions]); };
+  const update = (id: string, patch: Partial<ReportEvidenceRecord>) => onReportEvidenceChange(reportEvidence.map((item) => item.id === id ? { ...item, ...patch } : item));
+  const move = (section: ReportEvidenceSection, index: number, direction: -1 | 1) => { const ordered = inSection(section); const target = index + direction; if (target < 0 || target >= ordered.length) return; const left = ordered[index]; const right = ordered[target]; onReportEvidenceChange(reportEvidence.map((item) => item.id === left.id ? { ...item, order: right.order } : item.id === right.id ? { ...item, order: left.order } : item)); };
+  const remove = (item: Evidence) => { if (item.url) { URL.revokeObjectURL(item.url); urls.current.delete(item.url); } raster.current.delete(item.id); onReportEvidenceChange(reportEvidence.filter((record) => record.id !== item.id)); void removeStoredEvidence(item.stored).catch(() => undefined); };
+  const rasterize = async (item: Evidence, profile: ExportProfile, onPage: () => void) => { const key = `${item.id}:${profile.id}`; const cached = raster.current.get(key); if (cached) return cached; const output = item.kind === 'pdf' ? await renderPdf(item.file, profile.pdfDpi ?? 150, profile.quality, onPage, () => cancelled.current) : await compressImage(item.file, profile.maxEdge, profile.quality); raster.current.set(key, output); return output; };
+  const addImages = async (pdf: any, images: RasterImage[]) => { for (const source of images) { const image = await pdf.embedJpg(source.bytes); const page = pdf.addPage(A4); page.drawImage(image, fitImageInsidePage(source.width, source.height, A4[0], A4[1], 36)); } };
+  const exportPdf = async (qualityComparison = false) => { if (!items.length) return; const sourcePages = items.reduce((sum, item) => sum + (item.pages ?? 1), 0); const categories = [...new Set(inSection('receipt').map((item) => item.category).filter(Boolean))] as string[]; const total = Math.max(1, sourcePages + categories.length + 1); cancelled.current = false; setExporting(true); setProgress({ current: 0, total, stage: qualityComparison ? '압축 품질 비교를 준비하고 있습니다' : '제출 파일을 준비하고 있습니다', attempt: 1 }); setMessage(null); try { const { PDFDocument } = await import('pdf-lib'); let bytes: Uint8Array<ArrayBufferLike> = new Uint8Array(); const comparisonResults: string[] = []; for (const [attempt, profile] of PROFILES.entries()) { const pdf = await PDFDocument.create(); let done = 0; const status = (stage: string) => setProgress({ current: done, total, stage, attempt: attempt + 1 }); await addImages(pdf, [await pageImage(summary, profile.quality)]); done += 1; status('지원금 사용 요약을 만들고 있습니다'); for (const section of ['statement', 'transactionProof'] as const) for (const item of inSection(section)) { if (cancelled.current) throw new ExportCancelled(); const stage = profile.pdfDpi ? `용량을 최적화하고 있습니다 · ${attempt + 1}차` : `${LABEL[section]}을 추가하고 있습니다`; if (item.kind === 'pdf' && !profile.pdfDpi) { const source = await PDFDocument.load(await item.file.arrayBuffer()); const pages = await pdf.copyPages(source, source.getPageIndices()); pages.forEach((page: any) => pdf.addPage(page)); done += pages.length; status(stage); } else { const images = await rasterize(item, profile, () => { done += 1; status(stage); }); await addImages(pdf, images); if (item.kind === 'image') { done += 1; status(stage); } } } for (const category of categories) { if (cancelled.current) throw new ExportCancelled(); const label = summary.buckets.flatMap((bucket) => bucket.items).find((item) => item.category === category)?.label ?? '미분류'; await addImages(pdf, [await divider(label, profile.quality)]); done += 1; status('세부 항목별 영수증을 정리하고 있습니다'); for (const item of inSection('receipt').filter((candidate) => candidate.category === category)) { const images = await rasterize(item, profile, () => { done += 1; status('영수증을 최적화하고 있습니다'); }); await addImages(pdf, images); if (item.kind === 'image') { done += 1; status('영수증을 정리하고 있습니다'); } } } bytes = await pdf.save({ useObjectStreams: true }); if (qualityComparison) { await saveFile(`shinhanhae_report_quality-${profile.id}.pdf`, bytes, 'application/pdf'); comparisonResults.push(`${profile.id} ${Math.round(bytes.byteLength / 1024)}KB`); setResultPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })); }); continue; } if (bytes.byteLength <= TARGET_BYTES) break; } if (qualityComparison) { setMessage(`압축 품질 비교 PDF 3개를 Downloads에 저장했습니다. ${comparisonResults.join(' · ')}`); return; } if (bytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 5MB 이하로 만들 수 없습니다. 원본이 너무 큰 경우 불필요한 페이지를 줄인 뒤 다시 생성해 주세요.'); setProgress((current) => current ? { ...current, stage: 'Downloads에 저장하고 있습니다' } : current); const result = await saveFile('shinhanhae_report_evidence.pdf', bytes, 'application/pdf'); setResultPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' })); }); setMessage(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`); } catch (error) { setMessage(error instanceof ExportCancelled ? 'PDF 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.' : error instanceof Error ? error.message : 'PDF를 만들지 못했습니다.'); } finally { setExporting(false); setProgress(null); } };
+  const runBenchmark = async (kind: 'legacy' | 'current') => { const receipts = inSection('receipt').filter((item) => item.kind === 'image'); if (!receipts.length) { setMessage('알고리즘 비교에는 JPG·PNG·WEBP 영수증을 한 장 이상 추가해 주세요.'); return; } setExporting(true); setMessage(null); const started = performance.now(); try { const { PDFDocument } = await import('pdf-lib'); const profiles = kind === 'legacy' ? [{ id: 'legacy', maxEdge: 1800, quality: .82 }] : PROFILES; let bytes: Uint8Array<ArrayBufferLike> = new Uint8Array(); let attempts = 0; for (const profile of profiles) { attempts += 1; setProgress({ current: attempts, total: profiles.length, stage: kind === 'legacy' ? '과거 고화질 방식 측정 중' : `현재 단계형 방식 측정 중 · ${attempts}차`, attempt: attempts }); const pdf = await PDFDocument.create(); for (const receipt of receipts) await addImages(pdf, await compressImage(receipt.file, profile.maxEdge, profile.quality)); bytes = await pdf.save({ useObjectStreams: true }); if (kind === 'legacy' || bytes.byteLength <= TARGET_BYTES) break; } setBenchmarks((current) => ({ ...current, [kind]: { label: kind === 'legacy' ? '과거 고화질 방식' : '현재 단계형 방식', elapsedMs: performance.now() - started, outputBytes: bytes.byteLength, attempts, imageCount: receipts.length } })); } catch (error) { setMessage(error instanceof Error ? error.message : '알고리즘 측정에 실패했습니다.'); } finally { setExporting(false); setProgress(null); } };
+  const totalBytes = useMemo(() => items.reduce((sum, item) => sum + item.file.size, 0), [items]); const pages = items.reduce((sum, item) => sum + (item.pages ?? 1), 0); const expected = duration(Math.max(15, Math.round(8 + pages * .7))); const percent = progress ? Math.min(100, Math.round(progress.current / Math.max(1, progress.total) * 100)) : 0; const categories = summary.buckets.flatMap((bucket) => bucket.items);
+  const section = (name: ReportEvidenceSection, text: string) => { const listed = inSection(name); return <section className="evidence-group"><h3>{LABEL[name]} <span>{listed.length}개</span></h3><p>{text}</p><label className="file-picker">{LABEL[name]} 파일 추가<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple onChange={(event) => { void addFiles(name, event.target.files); event.currentTarget.value = ''; }} /></label><div className="evidence-list">{listed.map((item, index) => <article key={item.id}>{item.url ? <img src={item.url} alt={`${LABEL[name]} ${index + 1}`} /> : <div className="evidence-pdf-preview" aria-label={`${LABEL[name]} PDF`}>PDF</div>}<div className="evidence-content"><span>{item.file.name}</span>{name === 'receipt' && <label className="evidence-link">세부 항목<select aria-label={`영수증 ${index + 1} 세부 항목`} value={item.category ?? ''} onChange={(event) => update(item.id, { category: event.target.value })}>{categories.map((category) => <option key={category.category} value={category.category}>{category.label}</option>)}</select></label>}</div><div className="evidence-order"><button type="button" disabled={index === 0} onClick={() => move(name, index, -1)}>위로</button><button type="button" disabled={index === listed.length - 1} onClick={() => move(name, index, 1)}>아래로</button><button type="button" onClick={() => remove(item)}>삭제</button></div></article>)}</div></section>; };
+  const improvement = benchmarks.legacy && benchmarks.current ? Math.max(0, Math.round((1 - benchmarks.current.elapsedMs / benchmarks.legacy.elapsedMs) * 100)) : null;
+  return <section className="evidence-export"><p>지원금 사용 요약을 첫 장에 만들고, 이후 입출금내역·거래증빙·세부 항목별 영수증 순서로 정리합니다. 영수증과 결제 내역은 1:1로 연결하지 않습니다.</p>{items.length > 0 && <section className="evidence-summary"><strong>제출 전 요약</strong><span>첨부 {items.length}개 · 원본 {Math.ceil(totalBytes / 1024 / 1024 * 10) / 10}MB</span><small>첫 장 요약 + 원본 {pages}장 · 예상 소요 시간 {expected}</small><small>컬러를 유지하며 5MB 이하로 최적화합니다.</small></section>}{section('statement', '은행 또는 카드사에서 받은 입출금·이용내역을 먼저 넣어 주세요. CSV 지원은 거래내역 가져오기 개선과 함께 추가할 예정입니다.')}{section('transactionProof', '계좌이체 확인서 등 거래를 보완하는 자료가 있다면 선택하세요.')}{section('receipt', '영수증은 세부 항목별로만 묶습니다. 특정 결제와 연결하지 않아도 됩니다.')}{progress && <section className="evidence-progress" role="status"><strong>{progress.stage}</strong><span>{progress.current} / {progress.total}장 처리 완료 · {percent}%</span><i aria-hidden="true"><b style={{ width: `${percent}%` }} /></i><small>{progress.attempt > 1 ? '추가 최적화 중입니다. 약 30초~1분 더 걸릴 수 있어요.' : `예상 완료 ${expected}`}</small><button type="button" onClick={() => { cancelled.current = true; }}>생성 취소</button></section>}{message && <p className="evidence-message">{message}</p>}{resultPreviewUrl && <details className="evidence-result-preview" open><summary>생성 결과 미리보기</summary><object data={resultPreviewUrl} type="application/pdf"><a href={resultPreviewUrl} target="_blank" rel="noreferrer">PDF 미리보기 열기</a></object></details>}{import.meta.env.MODE === 'internal' && <section className="evidence-benchmark"><strong>압축·알고리즘 검증 (내부 테스트)</strong><p>동일한 영수증 이미지로 과거 고화질 방식과 현재 단계형 방식을 각각 측정합니다.</p><button className="sheet-action" disabled={exporting || !items.length} onClick={() => void exportPdf(true)}>{exporting ? 'PDF 생성 중…' : '압축 품질 비교 생성'}</button><button className="sheet-action secondary-action" disabled={exporting} onClick={() => void runBenchmark('legacy')}>과거 방식 시간 측정</button><button className="sheet-action secondary-action" disabled={exporting} onClick={() => void runBenchmark('current')}>현재 방식 시간 측정</button>{(['legacy', 'current'] as const).map((kind) => benchmarks[kind] && <small key={kind}>{benchmarks[kind].label}: {benchmarks[kind].imageCount}장 · {(benchmarks[kind].elapsedMs / 1000).toFixed(2)}초 · {Math.round(benchmarks[kind].outputBytes / 1024)}KB · {benchmarks[kind].attempts}회 처리</small>)}{improvement !== null && <p>고해상도 단일 방식 대비 단계형 압축은 이번 입력에서 {improvement}% 단축되었습니다. 고화질 중심 초안을 제출 가능한 식별성·5MB 제한·모바일 안정성 기준으로 재정의해, 재시도 범위를 제한한 결과입니다.</p>}</section>}<button className="sheet-action" disabled={exporting || !items.length} onClick={() => void exportPdf()}>{exporting ? 'PDF 생성 중…' : 'PDF 생성'}</button></section>;
 }

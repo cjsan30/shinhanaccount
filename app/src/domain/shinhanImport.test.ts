@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
-import { isImportable, parseShinhanCardExport } from './shinhanImport';
+import { isImportable, parseShinhanCardExport, parseShinhanCardPdfText } from './shinhanImport';
 
 describe('Shinhan Card Excel import', () => {
   it('reads the fixed export headers, skips the summary row, and classifies Wellstory 5,000 won', async () => {
@@ -9,5 +9,12 @@ describe('Shinhan Card Excel import', () => {
     const [row] = await parseShinhanCardExport(data);
     expect(row).toMatchObject({ approvalNumber: '47806999', amount: 5000, classification: { status: 'classified', bucket: 'studySpace', category: 'generalCafe' } });
     expect(isImportable(row)).toBe(true);
+  });
+});
+
+describe('Shinhan Card PDF import', () => {
+  it('extracts native-text payment rows into the same import shape', () => {
+    const [row] = parseShinhanCardPdfText('본인374*\n2026.09.14 13:20 5,000원 테스트카페 2026.09.15');
+    expect(row).toMatchObject({ cardMasked: '374*', occurredAt: '2026-09-14T13:20:00+09:00', amount: 5000 });
   });
 });

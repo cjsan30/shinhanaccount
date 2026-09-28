@@ -4,7 +4,7 @@ import { initializeAppState, persistAppState } from './appStateStore';
 import type { PersistedAppState } from './encryptedStore';
 
 const policyBook = { versions: [{ periodKey: '2026-08', confirmedAt: '2026-08-10T00:00:00.000Z', sourceText: 'saved', plans: { housing: 1, food: 2, education: 0, transport: 3, studyCafe: 0, cafe: 4, readingRoom: 0 } }] };
-const state: PersistedAppState = { ledger: { ...createEmptyLedger(), alertThresholds: [55, 85] }, policyBook, merchantRules: [] };
+const state: PersistedAppState = { ledger: { ...createEmptyLedger(), alertThresholds: [55, 85] }, policyBook, merchantRules: [], reportEvidence: [] };
 const migratedState: PersistedAppState = {
   ...state,
   policyBook: {

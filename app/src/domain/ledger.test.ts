@@ -85,6 +85,13 @@ describe('expense ledger', () => {
     const excelLedger = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741').ledger;
     expect(applyPayment(excelLedger, wellstory5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
   });
+  it('does not store imported transactions outside the selected policy period', () => {
+    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '374*', merchant: 'Samsung Wellstory', approvalNumber: '00459879', amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment('Samsung Wellstory', 5000) };
+    const result = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741', '2026-09');
+    expect(result.imported).toBe(0);
+    expect(result.ledger.entries).toHaveLength(0);
+    expect(result.replacedDemo).toBe(false);
+  });
   it('round-trips the ledger through local storage', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };

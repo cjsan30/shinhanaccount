@@ -16,6 +16,7 @@ export function normalizeAppState(state: PersistedAppState): NormalizedStateRows
       ['schema-version', '2'],
       ['state-present', '1'],
       ['alert-thresholds', stringify(state.ledger.alertThresholds)],
+      ...(state.reportEvidence ? [['report-evidence', stringify(state.reportEvidence)] as [string, string]] : []),
     ]),
     ledgerEntries: state.ledger.entries.map((entry, position) => ({ id: entry.id, value: stringify(entry), position })),
     policyVersions: state.policyBook.versions.map((version, position) => ({ id: `${version.periodKey}|${version.confirmedAt}|${position}`, value: stringify(version), position })),
@@ -30,6 +31,7 @@ export function denormalizeAppState(rows: NormalizedStateRows): PersistedAppStat
     ledger: { entries: ordered(rows.ledgerEntries).map((row) => JSON.parse(row.value)), alertThresholds: thresholds },
     policyBook: { versions: ordered(rows.policyVersions).map((row) => JSON.parse(row.value)) },
     merchantRules: ordered(rows.merchantRules).map((row) => JSON.parse(row.value)),
+    ...(rows.settings.has('report-evidence') ? { reportEvidence: JSON.parse(rows.settings.get('report-evidence') ?? '[]') } : {}),
   };
 }
 

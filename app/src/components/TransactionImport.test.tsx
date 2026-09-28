@@ -1,20 +1,23 @@
-import { render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TransactionImport } from './TransactionImport';
 
 describe('transaction import', () => {
-  it('offers only the supported Shinhan Card Excel formats', () => {
-    const { container } = render(<TransactionImport cardLast4="1111" onImport={vi.fn()} notify={vi.fn()} />);
+  it('switches accepted formats without changing the configured notification card', () => {
+    const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
 
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
     expect(input).toHaveAttribute('accept', expect.stringContaining('.xls'));
-    expect(input?.getAttribute('accept')).not.toContain('.pdf');
-    expect(container.textContent).not.toContain('PDF');
+    expect(input?.getAttribute('accept')).toContain('.pdf');
+    expect(container.textContent).toContain('PDF');
     expect(container.textContent).toContain('신한카드 앱 열기');
     const video = container.querySelector('video');
     expect(video).toHaveAttribute('loop');
     expect(video?.muted).toBe(true);
     expect(video?.querySelector('source')).toHaveAttribute('src', '/onboarding-shinhan-solpay-excel-guide.mp4');
+    act(() => { fireEvent.click(getByLabelText('계좌번호')); });
+    expect(input).toHaveAttribute('accept', expect.stringContaining('.csv'));
+    expect(getByLabelText('계좌 끝 4자리')).toHaveValue('');
   });
 });

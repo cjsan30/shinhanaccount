@@ -3,9 +3,10 @@ import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
 import type { MerchantRule } from '../domain/merchantRules';
+import type { ReportEvidenceRecord } from '../domain/reportEvidence';
 import { changedRows, denormalizeAppState, normalizeAppState, type NormalizedStateRows, type StoredRow } from './normalizedState';
 
-export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[] };
+export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; reportEvidence?: ReportEvidenceRecord[] };
 const DATABASE = 'shinhanhae';
 const LEGACY_STATE_KEY = 'app-state-v1';
 let connection: Awaited<ReturnType<SQLiteConnection['createConnection']>> | null = null;
