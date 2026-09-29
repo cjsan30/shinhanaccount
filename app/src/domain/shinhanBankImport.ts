@@ -1,4 +1,5 @@
 import { classifyPayment, type PaymentClassification } from './sms';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 export type ImportedBankTransaction = {
   source: 'bankCsv';
@@ -77,4 +78,57 @@ export function parseShinhanBankCsv(data: ArrayBuffer): ImportedBankTransaction[
 export function getMaskedAccountLast4(value: string | undefined) {
   const digits = (value ?? '').replace(/\D/g, '');
   return digits.length >= 4 ? digits.slice(-4) : null;
+}
+
+export function parseShinhanBankPdfText(text: string): ImportedBankTransaction[] {
+  const lines = text.replace(/\r/g, '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const accountMasked = lines.find((line) => /(계좌|번호)/.test(line) && /\d[\d*-]{3,}/.test(line))?.match(/[\d*-]{4,}/)?.[0] ?? '';
+  const rows = lines.flatMap((line, index) => {
+    const date = line.match(/(20\d{2})[./-](\d{2})[./-](\d{2})/); const time = line.match(/(\d{2}:\d{2}(?::\d{2})?)/); const directionText = line.match(/(출금|입금)/)?.[1];
+    const detail = directionText ? line.slice(line.indexOf(directionText) + directionText.length) : ''; const amounts = [...detail.matchAll(/([\d,]+)원?/g)].map((match) => parseAmount(match[1])).filter((value) => value > 0);
+    if (!date || !time || !directionText || !amounts.length) return [];
+    const direction: ImportedBankTransaction['direction'] = directionText === '출금' ? 'withdrawal' : 'deposit';
+    const merchant = detail.replace(/[\d,]+원?/g, '').replace(/\s+/g, ' ').trim() || `${directionText} 내역`;
+    const occurredAt = `${date[1]}-${date[2]}-${date[3]}T${time[1].padEnd(8, ':00')}+09:00`;
+    const value = amounts[0];
+    return [{ source: 'bankCsv' as const, occurredAt, accountMasked, merchant, amount: value, transactionId: `${occurredAt}|${merchant}|${value}|${index}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' as const } : classifyPayment(merchant, value) }];
+  });
+  if (!rows.length) throw new Error('신한은행 PDF에서 입출금 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
+  return rows;
+}
+
+type PdfCell = { text: string; x: number; y: number };
+
+// Shinhan Bank's statement is a real table, not a prose PDF. Values on one
+// visual row are separate PDF text items, so rebuild them by their y position
+// and then read the fixed column bands.
+export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransaction[] {
+  const accountMasked = cells.find((cell) => /\d{10,}/.test(cell.text))?.text ?? '';
+  const grouped = new Map<number, PdfCell[]>();
+  for (const cell of cells) { const key = Math.round(cell.y); grouped.set(key, [...(grouped.get(key) ?? []), cell]); }
+  const rows: ImportedBankTransaction[] = [];
+  for (const [, row] of grouped) {
+    const sorted = [...row].sort((left, right) => left.x - right.x); const date = sorted.find((cell) => /^20\d{6}$/.test(cell.text))?.text; const time = sorted.find((cell) => /^\d{2}:\d{2}:\d{2}$/.test(cell.text))?.text;
+    if (!date || !time) continue;
+    const inBand = (from: number, to: number) => sorted.filter((cell) => cell.x >= from && cell.x < to).map((cell) => cell.text).join(' ').trim();
+    const description = inBand(149, 245); const withdrawal = parseAmount(inBand(245, 335)); const deposit = parseAmount(inBand(335, 350)); const merchant = inBand(350, 420) || description || '입출금 내역';
+    const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
+    if (!amount) continue;
+    const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
+    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
+  }
+  if (!rows.length) throw new Error('신한은행 PDF에서 입출금 표 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
+  return rows;
+}
+
+export async function parseShinhanBankPdfExport(data: ArrayBuffer, password?: string): Promise<ImportedBankTransaction[]> {
+  const pdfjs = await import('pdfjs-dist'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const task = pdfjs.getDocument({ data: new Uint8Array(data), password: password || undefined }); const source = await task.promise;
+  try {
+    const pages = await Promise.all(Array.from({ length: source.numPages }, async (_, index) => {
+      const content = await (await source.getPage(index + 1)).getTextContent();
+      return content.items.flatMap((item) => 'str' in item && item.str ? [{ text: item.str, x: Number(item.transform[4]), y: Number(item.transform[5]) }] : []);
+    }));
+    return parseShinhanBankPdfTable(pages.flat());
+  } finally { await task.destroy(); }
 }
