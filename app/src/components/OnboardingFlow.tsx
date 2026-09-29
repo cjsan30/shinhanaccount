@@ -7,7 +7,7 @@ import type { SupportPolicy } from '../domain/policy';
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
 type ApplicantStatus = 'applicant' | 'not-applicant';
-type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy; cardLast4?: string };
+type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy };
 const PROGRESS_KEY = 'shinhanhae-onboarding-progress-v1';
 function loadProgress(): SavedProgress | null { try { const saved = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) || 'null') as SavedProgress | null; return saved?.step ? saved : null; } catch { return null; } }
 
@@ -23,14 +23,17 @@ type CompletePayload = {
 export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompletePayload) => void }) {
   const [progress] = useState(loadProgress);
   const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'history'>(progress?.step ?? 'applicant');
-  const [cardLast4, setCardLast4] = useState(progress?.cardLast4 ?? '');
+  const [cardLast4, setCardLast4] = useState('');
   const [policy, setPolicy] = useState<SupportPolicy | null>(progress?.policy ?? null);
   const [pendingApprovals, setPendingApprovals] = useState<NativeApproval[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (step === 'applicant') { window.localStorage.removeItem(PROGRESS_KEY); return; }
-    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined, cardLast4: cardLast4 || undefined }));
-  }, [cardLast4, policy, step]);
+    // Onboarding can resume the non-sensitive policy step, but a card suffix
+    // must be entered again after an interruption instead of being kept in
+    // browser storage.
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined }));
+  }, [policy, step]);
 
   const skipToDashboard = (messageOverride?: string) => {
     window.localStorage.removeItem(PROGRESS_KEY);
