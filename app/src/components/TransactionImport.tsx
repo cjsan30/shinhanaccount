@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { filterTransactionsForConfiguredCard } from '../domain/cardImportSafety';
 import { filterImportToPolicyPeriod } from '../domain/importPolicy';
 import { parseShinhanBankPdfExport, getMaskedAccountLast4, type ImportedBankTransaction } from '../domain/shinhanBankImport';
-import { parseShinhanCardExport, parseShinhanCardPdfExport, type ImportedCardTransaction } from '../domain/shinhanImport';
+import { parseShinhanCardExport, type ImportedCardTransaction } from '../domain/shinhanImport';
 import { openShinhanSolPay } from '../native/externalApp';
 import { readSelectedFile } from '../native/fileRead';
 
@@ -10,6 +10,24 @@ export type TransactionImportPayload = { source: 'card' | 'account'; identifierL
 type Props = { cardLast4: string; periodKey: string; onImport: (payload: TransactionImportPayload) => void; notify: (message: string) => void; };
 type ImportKind = 'card' | 'account';
 const identifierWarning = '파일 안에서 4자리를 확인할 수 없습니다. 선택한 카드·계좌의 내역인지 확인해 주세요.';
+const CARD_FILE_EXTENSIONS = ['csv', 'xls', 'xlsx'];
+const ACCOUNT_FILE_EXTENSIONS = ['pdf'];
+const MAX_CARD_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_ACCOUNT_FILE_BYTES = 20 * 1024 * 1024;
+
+function getFileExtension(fileName: string) {
+  return fileName.trim().split('.').pop()?.toLowerCase() ?? '';
+}
+
+function validateSelectedImportFile(file: File, kind: ImportKind) {
+  const extension = getFileExtension(file.name);
+  const allowedExtensions = kind === 'card' ? CARD_FILE_EXTENSIONS : ACCOUNT_FILE_EXTENSIONS;
+  const sizeLimit = kind === 'card' ? MAX_CARD_FILE_BYTES : MAX_ACCOUNT_FILE_BYTES;
+  const sourceName = kind === 'card' ? '신한카드 CSV 또는 Excel' : '신한은행 입출금내역 PDF';
+  if (!allowedExtensions.includes(extension)) throw new Error(`${sourceName} 파일만 읽을 수 있습니다.`);
+  if (!file.size) throw new Error('빈 파일은 읽을 수 없습니다. 다시 내려받은 파일을 선택해 주세요.');
+  if (file.size > sizeLimit) throw new Error(`${sourceName} 파일은 ${Math.floor(sizeLimit / 1024 / 1024)}MB 이하만 읽을 수 있습니다.`);
+}
 
 export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Props) {
   const [kind, setKind] = useState<ImportKind>('card'); const [identifier, setIdentifier] = useState(cardLast4); const [pdfPassword, setPdfPassword] = useState('');
@@ -22,6 +40,7 @@ export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Pr
     if (!file || !/^\d{4}$/.test(identifier)) { setMessage(`${kind === 'card' ? '카드' : '계좌'} 끝 4자리를 입력해 주세요.`); return; }
     setReading(true); setMessage('파일을 읽고 있습니다…'); setPayload(null); setNeedsConfirmation(false);
     try {
+      validateSelectedImportFile(file, kind);
       const data = await readSelectedFile(file);
       if (kind === 'account') {
         const parsed = await parseShinhanBankPdfExport(data, pdfPassword); const candidates = parsed.filter((row) => row.direction === 'withdrawal');
@@ -32,7 +51,7 @@ export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Pr
         setNeedsConfirmation(!fileLast4); setMessage(`${period.included.length}건의 기간 내 출금 내역을 확인했습니다.${period.excludedOutsidePeriod ? ` 기간 외 ${period.excludedOutsidePeriod}건은 가져오지 않습니다.` : ''}`);
         return;
       }
-      const parsed = /\.pdf$/i.test(file.name) || file.type === 'application/pdf' ? await parseShinhanCardPdfExport(data) : await parseShinhanCardExport(data);
+      const parsed = await parseShinhanCardExport(data);
       const safety = filterTransactionsForConfiguredCard(parsed, identifier);
       const matching = safety.status === 'ready' ? safety.transactions : parsed.filter((transaction) => !transaction.cardMasked);
       if (safety.status === 'rejected' && matching.length === 0 && parsed.some((transaction) => transaction.cardMasked)) throw new Error('선택한 카드와 일치하는 결제 내역을 찾지 못했습니다.');

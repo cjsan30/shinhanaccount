@@ -1,22 +1,23 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransactionImport } from './TransactionImport';
 
 const mocks = vi.hoisted(() => ({
   readSelectedFile: vi.fn(async () => new ArrayBuffer(8)),
   parseCard: vi.fn(),
-  parseCardPdf: vi.fn(),
   parseBankPdf: vi.fn(),
   filterCard: vi.fn(),
 }));
 
 vi.mock('../native/fileRead', () => ({ readSelectedFile: mocks.readSelectedFile }));
 vi.mock('../native/externalApp', () => ({ openShinhanSolPay: vi.fn() }));
-vi.mock('../domain/shinhanImport', () => ({ parseShinhanCardExport: mocks.parseCard, parseShinhanCardPdfExport: mocks.parseCardPdf }));
+vi.mock('../domain/shinhanImport', () => ({ parseShinhanCardExport: mocks.parseCard }));
 vi.mock('../domain/shinhanBankImport', () => ({ parseShinhanBankPdfExport: mocks.parseBankPdf, getMaskedAccountLast4: (value?: string) => value?.slice(-4) }));
 vi.mock('../domain/cardImportSafety', () => ({ filterTransactionsForConfiguredCard: mocks.filterCard }));
 
 describe('transaction import', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
   it('imports only current-period card CSV rows and reports excluded rows', async () => {
     const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' } };
     const outside = { ...current, occurredAt: '2026-09-13T12:00:00+09:00', approvalNumber: '0002' };
@@ -107,5 +108,25 @@ describe('transaction import', () => {
     fireEvent.click(getByLabelText('카드번호'));
     fireEvent.click(getByLabelText('계좌번호'));
     expect(getByLabelText('PDF 비밀번호')).toHaveValue('');
+  });
+
+  it('blocks an unexpected file type before it reaches the parser', async () => {
+    const notify = vi.fn(); const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={notify} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'card.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/신한카드 CSV 또는 Excel 파일만 읽을 수 있습니다/)).toBeInTheDocument();
+    expect(mocks.parseCard).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('신한카드 CSV 또는 Excel 파일만 읽을 수 있습니다'));
+  });
+
+  it('blocks an oversized import before reading it into memory', async () => {
+    const oversized = new File(['csv'], 'card.csv', { type: 'text/csv' });
+    Object.defineProperty(oversized, 'size', { value: 10 * 1024 * 1024 + 1 });
+    const notify = vi.fn(); const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={notify} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [oversized] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/10MB 이하만 읽을 수 있습니다/)).toBeInTheDocument();
+    expect(mocks.readSelectedFile).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('10MB 이하만 읽을 수 있습니다'));
   });
 });
