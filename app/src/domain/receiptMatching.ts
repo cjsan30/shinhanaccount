@@ -13,7 +13,10 @@ export function findReceiptCandidates(receipt: ReceiptDetails, payments: Receipt
     const paymentDay = koreanDate(payment.occurredAt); const difference = Math.abs(new Date(`${receiptDay}T12:00:00+09:00`).getTime() - new Date(`${paymentDay}T12:00:00+09:00`).getTime()) / 86_400_000;
     const nearMidnight = difference === 1 && Math.abs(new Date(payment.occurredAt).getTime() - new Date(`${receipt.date}T00:00:00+09:00`).getTime()) <= midnightBoundaryHours * 3_600_000;
     if (difference !== 0 && !nearMidnight) return [];
-    const merchantMatches = Boolean(receipt.merchant && normalized(payment.merchant).includes(normalized(receipt.merchant)));
+    const receiptMerchant = normalized(receipt.merchant);
+    // A punctuation-only OCR result normalizes to an empty string. `includes('')`
+    // is always true, so require an actual merchant token before boosting a match.
+    const merchantMatches = receiptMerchant.length > 0 && normalized(payment.merchant).includes(receiptMerchant);
     return [{ payment, score: (difference === 0 ? 8 : 4) + (merchantMatches ? 2 : 0), reason: `${difference === 0 ? '같은 날짜' : '자정 경계 날짜'} · 금액 일치${merchantMatches ? ' · 결제처 유사' : ''}` }];
   }).sort((left, right) => right.score - left.score || right.payment.occurredAt.localeCompare(left.payment.occurredAt));
 }
