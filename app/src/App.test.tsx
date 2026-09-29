@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
-  smsBridge: { addListener: vi.fn(), configure: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
+  smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
@@ -134,6 +134,24 @@ describe('app entry flows', () => {
     expect(screen.getByRole('button', { name: '결제 알림 수신 설정' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '예산 경고 알림 설정' })).toBeInTheDocument();
     expect(screen.queryByText('개발 테스트')).not.toBeInTheDocument();
+  });
+  it('clears the native card setting while a configured card number is being replaced', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '3741' });
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
+    const cardInput = screen.getByLabelText('카드 끝 4자리');
+    await waitFor(() => expect(cardInput).toHaveValue('3741'));
+    fireEvent.change(cardInput, { target: { value: '374' } });
+    expect(smsBridge.clearConfiguration).toHaveBeenCalledOnce();
+    expect(screen.getByText(/카드 4자리를 모두 입력하면/)).toBeInTheDocument();
+    fireEvent.change(cardInput, { target: { value: '1234' } });
+    expect(smsBridge.configure).toHaveBeenLastCalledWith({ cardLast4: '1234' });
   });
   it('provides the privacy disclosure inside settings', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));

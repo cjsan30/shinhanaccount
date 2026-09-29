@@ -25,6 +25,7 @@ export type SmsDiagnosticEvent = {
 type SmsBridgePlugin = {
   addListener(eventName: 'approvalReceived', listener: () => void): Promise<{ remove: () => Promise<void> }>;
   configure(options: { cardLast4: string }): Promise<void>;
+  clearConfiguration(): Promise<void>;
   getConfiguration(): Promise<{ cardLast4: string }>;
   syncBudgetState(state: NativeBudgetState): Promise<void>;
   injectTestApproval(approval: NativeApproval): Promise<void>;
