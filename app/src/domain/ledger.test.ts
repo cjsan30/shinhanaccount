@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 import { POLICY_MAX_LIMITS } from './budget';
 
@@ -121,6 +121,14 @@ describe('expense ledger', () => {
     expect(reverted.entries[0]).toMatchObject({ status: 'undecided', bucket: undefined, category: undefined });
     expect(getSummary(reverted, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(0);
     expect(reverted.entries[0]).toMatchObject({ merchant: wellstory5000.merchant, amount: wellstory5000.amount });
+  });
+  it('excludes only selected undecided expenses while retaining a reversible history record', () => {
+    const first = saveAsUndecided({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'exclude-me' });
+    const second = saveAsUndecided(first.ledger, { ...wellstory5000, id: 'keep-me', merchant: '사업 결제' });
+    const excluded = excludeUndecided(second.ledger, ['exclude-me']);
+    expect(excluded.entries.find((entry) => entry.id === 'exclude-me')).toMatchObject({ status: 'excluded', bucket: undefined, category: undefined });
+    expect(excluded.entries.find((entry) => entry.id === 'keep-me')).toMatchObject({ status: 'undecided' });
+    expect(getHistoryEntries(excluded).map((entry) => entry.id)).toContain('exclude-me');
   });
   it('moves an undecided expense into a user-selected support item', () => {
     const saved = saveAsUndecided(createInitialLedger(), wellstory5000);

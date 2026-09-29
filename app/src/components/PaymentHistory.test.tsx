@@ -47,4 +47,10 @@ describe('payment history', () => {
     fireEvent.change(screen.getByLabelText('결제 내역 정렬'), { target: { value: 'amount-asc' } });
     expect(screen.getAllByRole('button').find((button) => button.textContent?.includes('식당'))).toBeTruthy();
   });
+
+  it('keeps excluded payments visible with their exclusion status so they can be restored', () => {
+    const excluded = [{ ...entries[0], id: 'excluded', merchant: '개인 지출', status: 'excluded' as const, bucket: undefined, category: undefined }];
+    render(<PaymentHistory entries={excluded} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
+    expect(screen.getByText('사업 무관 제외')).toBeInTheDocument();
+  });
 });
