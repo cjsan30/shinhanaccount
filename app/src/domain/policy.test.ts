@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirmPolicyForPeriod, createPolicyBook, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, parsePolicyText, validatePolicyAgainstProfile } from './policy';
+import { POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, confirmPolicyForPeriod, createPolicyBook, getAlertTargets, getCategoryLabel, getCategoryLimit, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyItems, getPolicyLimit, getPolicyVersion, loadPolicy, loadPolicyBook, parsePolicyText, savePolicy, savePolicyBook, validatePolicyAgainstProfile } from './policy';
 
 describe('policy text import', () => {
   it('keeps the current policy stable and schedules a confirmed policy for the next period', () => {
@@ -61,5 +61,42 @@ describe('policy text import', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const emptyVersion = { ...parsePolicyText(''), periodKey: '2026-08', confirmedAt: now.toISOString() };
     expect(getEffectivePolicy({ versions: [emptyVersion] }, now).confirmed).toBe(false);
+  });
+
+  it('uses enabled fixed items as default alert targets and preserves explicit choices', () => {
+    const policy = { ...parsePolicyText(''), plans: { housing: 0, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    expect(getAlertTargets(policy)).toEqual(['food', 'transport', 'cafe']);
+    expect(getAlertTargets({ ...policy, alertTargets: ['food'] })).toEqual(['food']);
+  });
+
+  it('exposes custom categories in limits and labels without affecting fixed definitions', () => {
+    const policy = { ...parsePolicyText(''), customItems: [{ id: 'equipment', label: '장비 대여', bucket: 'resident' as const, amount: 50_000 }] };
+    expect(getPolicyItems(policy)).toContainEqual(expect.objectContaining({ key: 'equipment', ledgerCategories: ['custom:equipment'] }));
+    expect(getCategoryLimit(policy, 'custom:equipment')).toBe(50_000);
+    expect(getCategoryLabel('custom:equipment', policy)).toBe('장비 대여');
+    expect(getCategoryLabel('food', policy)).toBe('식비');
+  });
+
+  it('loads and saves resilient policy snapshots', () => {
+    const policy = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    localStorage.clear();
+    savePolicy(localStorage, policy);
+    expect(loadPolicy(localStorage)).toMatchObject({ plans: policy.plans, profileId: 'shinhanhae-70', alertTargets: [] });
+    localStorage.setItem(POLICY_STORAGE_KEY, '{bad json');
+    expect(loadPolicy(localStorage)).toBeNull();
+    const book = createPolicyBook(policy, new Date('2026-08-01T12:00:00+09:00'));
+    savePolicyBook(localStorage, book);
+    expect(loadPolicyBook(localStorage)).toMatchObject({ versions: [{ periodKey: '2026-07', plans: policy.plans, profileId: 'shinhanhae-70', alertTargets: [] }] });
+    localStorage.setItem(POLICY_BOOK_STORAGE_KEY, '{bad json');
+    expect(loadPolicyBook(localStorage)).toEqual({ versions: [] });
+  });
+
+  it('uses the special non-applicant mode and leaves an unconfirmed fallback visible', () => {
+    const now = new Date('2026-09-20T12:00:00+09:00');
+    expect(getEffectivePolicy({ versions: [], mode: 'not-applicant' }, now)).toMatchObject({ confirmed: true, periodKey: '2026-09' });
+    const prior = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 }, periodKey: '2026-08', confirmedAt: now.toISOString() };
+    const fallback = getEffectivePolicy({ versions: [prior] }, now);
+    expect(fallback).toMatchObject({ confirmed: false, policy: { plans: prior.plans } });
+    expect(getPolicyVersion({ versions: [prior] }, '2026-08')).toBe(prior);
   });
 });
