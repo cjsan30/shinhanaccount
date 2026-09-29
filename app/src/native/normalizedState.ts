@@ -16,6 +16,7 @@ export function normalizeAppState(state: PersistedAppState): NormalizedStateRows
       ['schema-version', '2'],
       ['state-present', '1'],
       ['alert-thresholds', stringify(state.ledger.alertThresholds)],
+      ...(state.policyBook.mode ? [['policy-mode', state.policyBook.mode] as [string, string]] : []),
       ...(state.reportEvidence ? [['report-evidence', stringify(state.reportEvidence)] as [string, string]] : []),
     ]),
     ledgerEntries: state.ledger.entries.map((entry, position) => ({ id: entry.id, value: stringify(entry), position })),
@@ -29,7 +30,10 @@ export function denormalizeAppState(rows: NormalizedStateRows): PersistedAppStat
   const ordered = (items: StoredRow[]) => [...items].sort((left, right) => left.position - right.position);
   return {
     ledger: { entries: ordered(rows.ledgerEntries).map((row) => JSON.parse(row.value)), alertThresholds: thresholds },
-    policyBook: { versions: ordered(rows.policyVersions).map((row) => JSON.parse(row.value)) },
+    policyBook: {
+      versions: ordered(rows.policyVersions).map((row) => JSON.parse(row.value)),
+      ...(rows.settings.get('policy-mode') === 'not-applicant' ? { mode: 'not-applicant' as const } : {}),
+    },
     merchantRules: ordered(rows.merchantRules).map((row) => JSON.parse(row.value)),
     ...(rows.settings.has('report-evidence') ? { reportEvidence: JSON.parse(rows.settings.get('report-evidence') ?? '[]') } : {}),
   };
