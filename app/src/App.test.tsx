@@ -194,6 +194,24 @@ describe('app entry flows', () => {
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
   });
 
+  it('acknowledges but does not store an approval outside the confirmed policy period', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
+      id: 'policy-gap-approval', cardLast4: '3741', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '기간 밖 결제', source: 'notification',
+    }] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['policy-gap-approval'] }));
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
+    expect(screen.getByText('저장된 결제 내역이 없습니다.')).toBeInTheDocument();
+  });
+
   it('returns a classified payment to the undecided panel from its detail screen', async () => {
     const occurredAt = new Date().toISOString();
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
