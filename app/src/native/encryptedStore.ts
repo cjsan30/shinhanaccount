@@ -4,9 +4,10 @@ import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
 import type { MerchantRule } from '../domain/merchantRules';
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
+import type { VerificationState } from '../domain/verification';
 import { changedRows, denormalizeAppState, normalizeAppState, type NormalizedStateRows, type StoredRow } from './normalizedState';
 
-export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; reportEvidence?: ReportEvidenceRecord[] };
+export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; reportEvidence?: ReportEvidenceRecord[]; verification?: VerificationState };
 const DATABASE = 'shinhanhae';
 const LEGACY_STATE_KEY = 'app-state-v1';
 let connection: Awaited<ReturnType<SQLiteConnection['createConnection']>> | null = null;

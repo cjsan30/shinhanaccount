@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyLedger } from '../domain/ledger';
+import { createVerificationState } from '../domain/verification';
 import type { PersistedAppState } from './encryptedStore';
 import { changedRows, denormalizeAppState, normalizeAppState } from './normalizedState';
 
@@ -20,6 +21,14 @@ describe('normalized encrypted state', () => {
       policyBook: { versions: [], mode: 'not-applicant' },
     };
     expect(denormalizeAppState(normalizeAppState(nonApplicant))).toEqual(nonApplicant);
+  });
+
+  it('persists internal verification decisions without changing existing state rows', () => {
+    const verification = {
+      ...createVerificationState(),
+      decisions: { 'widget-visual': { status: 'passed' as const, decidedAt: '2026-09-30T00:00:00.000Z' } },
+    };
+    expect(denormalizeAppState(normalizeAppState({ ...state, verification }))).toEqual({ ...state, verification });
   });
 
   it('updates only changed rows and identifies removed rows', () => {

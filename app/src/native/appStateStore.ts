@@ -3,6 +3,7 @@ import { createEmptyLedger, LEDGER_STORAGE_KEY, loadLedger, saveLedger, type Led
 import { loadMerchantRules, MERCHANT_RULES_STORAGE_KEY, saveMerchantRules, type MerchantRule } from '../domain/merchantRules';
 import { loadPolicyBook, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, savePolicyBook, type PolicyBook } from '../domain/policy';
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
+import { createVerificationState } from '../domain/verification';
 import { loadEncryptedAppState, saveEncryptedAppState, type PersistedAppState } from './encryptedStore';
 
 export type StateStoreDependencies = {
@@ -92,7 +93,7 @@ function loadReportEvidence(storage: Pick<Storage, 'getItem'>): ReportEvidenceRe
 }
 
 export function createEmptyAppState(): PersistedAppState {
-  return { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [], reportEvidence: [] };
+  return { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [], reportEvidence: [], verification: createVerificationState() };
 }
 
 export type { Ledger, PolicyBook, MerchantRule };
