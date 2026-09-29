@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 import { POLICY_MAX_LIMITS } from './budget';
 
@@ -114,7 +114,15 @@ describe('expense ledger', () => {
     const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: '수정 카페', amount: 7000, occurredAt: '2026-07-25T12:00:00+09:00', bucket: 'studySpace', category: 'generalCafe' });
     expect(updated.entries[0]).toMatchObject({ merchant: '수정 카페', amount: 7000, source: 'manual' });
     expect(removeLedgerEntry(updated, applied.entry.id).entries).toHaveLength(0);
-  });  it('moves an undecided expense into a user-selected support item', () => {
+  });
+  it('moves an automatically classified payment back to undecided without changing its total history', () => {
+    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS);
+    const reverted = markAsUndecided(applied.ledger, applied.entry.id);
+    expect(reverted.entries[0]).toMatchObject({ status: 'undecided', bucket: undefined, category: undefined });
+    expect(getSummary(reverted, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(0);
+    expect(reverted.entries[0]).toMatchObject({ merchant: wellstory5000.merchant, amount: wellstory5000.amount });
+  });
+  it('moves an undecided expense into a user-selected support item', () => {
     const saved = saveAsUndecided(createInitialLedger(), wellstory5000);
     const result = reclassifyUndecided(saved.ledger, saved.entry.id, { bucket: 'resident', category: 'transport' }, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });
