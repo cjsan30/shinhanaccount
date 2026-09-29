@@ -14,4 +14,7 @@ describe('receipt matching', () => {
   it('does not suggest a match when date or amount is unknown', () => {
     expect(findReceiptCandidates({ date: '2026-09-29' }, [payment])).toEqual([]);
   });
+  it('does not treat an empty normalized OCR merchant as a merchant match', () => {
+    expect(findReceiptCandidates({ date: '2026-09-29', amount: 5000, merchant: '㈜() *' }, [payment])[0]).toMatchObject({ score: 8, reason: '같은 날짜 · 금액 일치' });
+  });
 });
