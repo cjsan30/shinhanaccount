@@ -6,6 +6,9 @@ export type ImportedBankTransaction = {
   occurredAt: string;
   accountMasked?: string;
   merchant: string;
+  summary?: string;
+  balance?: number;
+  branch?: string;
   amount: number;
   transactionId: string;
   direction: 'withdrawal' | 'deposit';
@@ -111,11 +114,11 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
     const sorted = [...row].sort((left, right) => left.x - right.x); const date = sorted.find((cell) => /^20\d{6}$/.test(cell.text))?.text; const time = sorted.find((cell) => /^\d{2}:\d{2}:\d{2}$/.test(cell.text))?.text;
     if (!date || !time) continue;
     const inBand = (from: number, to: number) => sorted.filter((cell) => cell.x >= from && cell.x < to).map((cell) => cell.text).join(' ').trim();
-    const description = inBand(149, 245); const withdrawal = parseAmount(inBand(245, 335)); const deposit = parseAmount(inBand(335, 350)); const merchant = inBand(350, 420) || description || '입출금 내역';
+    const description = inBand(149, 245); const withdrawal = parseAmount(inBand(245, 335)); const deposit = parseAmount(inBand(335, 350)); const merchant = inBand(350, 420) || description || '입출금 내역'; const balance = parseAmount(inBand(420, 505)); const branch = inBand(505, Number.POSITIVE_INFINITY);
     const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
     if (!amount) continue;
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
-    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
+    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, summary: description, ...(balance ? { balance } : {}), ...(branch ? { branch } : {}), amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
   }
   if (!rows.length) throw new Error('신한은행 PDF에서 입출금 표 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
   return rows;
