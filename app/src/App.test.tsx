@@ -194,6 +194,25 @@ describe('app entry flows', () => {
     expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
   });
 
+  it('returns a classified payment to the undecided panel from its detail screen', async () => {
+    const occurredAt = new Date().toISOString();
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
+      ...createEmptyLedger(),
+      entries: [{ id: 'classified-1', cardLast4: '3741', occurredAt, amount: 8000, merchant: '되돌릴 결제', status: 'classified', bucket: 'resident', category: 'food' }],
+    }));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
+    fireEvent.click(screen.getByRole('button', { name: /되돌릴 결제/ }));
+    fireEvent.click(screen.getByRole('button', { name: '미정으로 되돌리기' }));
+    expect(await screen.findByRole('heading', { name: '미정 지출' })).toBeInTheDocument();
+    expect(screen.getByText('되돌릴 결제')).toBeInTheDocument();
+    expect(screen.getAllByText(/분류 전에는 예산과 경고에 반영되지 않습니다/)).not.toHaveLength(0);
+  });
+
   it('adds, edits, and deletes a contains-based merchant rule', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{

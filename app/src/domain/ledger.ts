@@ -128,6 +128,16 @@ export function updateLedgerEntry(ledger: Ledger, entryId: string, patch: Editab
     source: 'manual',
   } : candidate) };
 }
+export function markAsUndecided(ledger: Ledger, entryId: string): Ledger {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  if (!entry || entry.status === 'cancelled') return ledger;
+  return {
+    ...ledger,
+    entries: ledger.entries.map((candidate) => candidate.id === entryId
+      ? { ...candidate, status: 'undecided', bucket: undefined, category: undefined }
+      : candidate),
+  };
+}
 export function removeLedgerEntry(ledger: Ledger, entryId: string): Ledger {
   return { ...ledger, entries: ledger.entries.filter((entry) => entry.id !== entryId) };
 }
