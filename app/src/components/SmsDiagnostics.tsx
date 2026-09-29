@@ -21,6 +21,8 @@ const stageLabels: Record<string, string> = {
   NOTIFICATION_LISTENER_ENTERED: '승인 알림 수신',
   NOTIFICATION_BODY_EXTRACTED: '승인 알림 본문 확인',
   NOTIFICATION_NO_NEW_APPROVAL: '새 승인 결제 없음',
+  NOTIFICATION_SOURCE_UNSUPPORTED: '지원하지 않는 알림 출처',
+  NOTIFICATION_GROUP_SUMMARY_SKIPPED: '묶음 알림 요약 건너뜀',
 };
 
 const detailText = (event: SmsDiagnosticEvent) => [
