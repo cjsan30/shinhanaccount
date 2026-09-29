@@ -94,6 +94,7 @@ function App() {
   const [ledger, setLedger] = useState<Ledger>(initialState.ledger);
   const [reportEvidence, setReportEvidence] = useState<ReportEvidenceRecord[]>(initialState.reportEvidence ?? []);
   const ledgerRef = useRef(ledger);
+  const reportEvidenceRef = useRef(reportEvidence);
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -133,6 +134,7 @@ function App() {
     setBudgetAlertsEnabled(budget.granted);
   }, [nativePlatform]);
   useEffect(() => { ledgerRef.current = ledger; }, [ledger]);
+  useEffect(() => { reportEvidenceRef.current = reportEvidence; }, [reportEvidence]);
   useEffect(() => {
     let active = true;
     void initializeAppState(window.localStorage, now).then(({ state, migrated }) => {
@@ -303,7 +305,12 @@ function App() {
             autoCancelled.push(cancellation);
           } else reviewCancellations.push(cancellation);
         }
-        await persistAppState(window.localStorage, { ledger: nextLedger, policyBook, merchantRules: merchantRulesRef.current });
+        await persistAppState(window.localStorage, {
+          ledger: nextLedger,
+          policyBook,
+          merchantRules: merchantRulesRef.current,
+          reportEvidence: reportEvidenceRef.current,
+        });
         ledgerRef.current = nextLedger;
         setLedger(nextLedger);
         await acknowledgeApprovals(result.items);
@@ -365,7 +372,12 @@ function App() {
       for (const approval of payload.pendingApprovals) nextLedger = saveAsUndecided(nextLedger, approval).ledger;
     }
     try {
-      await persistAppState(window.localStorage, { ledger: nextLedger, policyBook: confirmed, merchantRules });
+      await persistAppState(window.localStorage, {
+        ledger: nextLedger,
+        policyBook: confirmed,
+        merchantRules,
+        reportEvidence: reportEvidenceRef.current,
+      });
       setCard(payload.cardLast4);
       setPolicyBook(confirmed);
       ledgerRef.current = nextLedger;
