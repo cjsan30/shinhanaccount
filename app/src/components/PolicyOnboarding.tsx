@@ -20,7 +20,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
   useEffect(() => {
     if (!draft || !scrollAfterRead.current) return;
     scrollAfterRead.current = false;
-    requestAnimationFrame(() => draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => draftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   }, [draft]);
   const profile = getSupportProfile(profileId);
   const applyProfile = (nextId: SupportProfileId) => { setProfileId(nextId); updateDraft((current) => current ? { ...current, profileId: nextId } : current); };

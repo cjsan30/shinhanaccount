@@ -1,0 +1,55 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { emptyPolicy } from '../domain/policy';
+import { OnboardingFlow } from './OnboardingFlow';
+
+const mocks = vi.hoisted(() => ({ configure: vi.fn(), consumePendingApprovals: vi.fn() }));
+
+vi.mock('./FirstRunPermission', () => ({
+  FirstRunPermission: ({ onComplete, onSkip }: { onComplete: (card: string) => void; onSkip: () => void }) => <section><button type="button" onClick={() => onComplete('3741')}>권한 완료</button><button type="button" onClick={onSkip}>권한 건너뛰기</button></section>,
+}));
+vi.mock('./PolicyOnboarding', () => ({
+  PolicyOnboarding: ({ onConfirm }: { onConfirm: (policy: typeof emptyPolicy) => void }) => <button type="button" onClick={() => onConfirm(emptyPolicy)}>정책 확정</button>,
+}));
+vi.mock('../native/smsBridge', () => ({ SmsBridge: { configure: mocks.configure, consumePendingApprovals: mocks.consumePendingApprovals } }));
+
+describe('onboarding flow', () => {
+  beforeEach(() => { localStorage.clear(); mocks.configure.mockResolvedValue(undefined); mocks.consumePendingApprovals.mockResolvedValue({ items: [] }); });
+
+  it('sends a non-applicant directly to the dashboard without configuring a card', () => {
+    const onComplete = vi.fn(); render(<OnboardingFlow onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole('button', { name: 'No' }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'not-applicant', cardLast4: '', nextAction: 'dashboard' }));
+    expect(mocks.configure).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a card suffix while a support-applicant onboarding is in progress', async () => {
+    render(<OnboardingFlow onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
+    await screen.findByRole('button', { name: '정책 확정' });
+    expect(mocks.configure).toHaveBeenCalledWith({ cardLast4: '3741' });
+    expect(localStorage.getItem('shinhanhae-onboarding-progress-v1')).not.toContain('3741');
+  });
+
+  it('completes the policy and routes prior-card users to transaction import', async () => {
+    const onComplete = vi.fn(); mocks.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '3741', occurredAt: '2026-09-20T12:00:00+09:00', amount: 5000, merchant: '카페' }] });
+    render(<OnboardingFlow onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
+    await screen.findByRole('button', { name: '정책 확정' });
+    fireEvent.click(screen.getByRole('button', { name: '정책 확정' }));
+    expect(await screen.findByText('정책 확정 전 승인 알림 1건')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /결제한 적이 있어요/ }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'applicant', cardLast4: '3741', nextAction: 'import', historyAction: 'keep-undecided' })));
+    expect(localStorage.getItem('shinhanhae-onboarding-progress-v1')).toBeNull();
+  });
+
+  it('lets a resumed applicant skip from policy setup and clears the saved progress', () => {
+    localStorage.setItem('shinhanhae-onboarding-progress-v1', JSON.stringify({ step: 'policy', policy: emptyPolicy }));
+    const onComplete = vi.fn(); render(<OnboardingFlow onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole('button', { name: '넘어가기' }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'not-applicant', nextAction: 'dashboard' }));
+    expect(localStorage.getItem('shinhanhae-onboarding-progress-v1')).toBeNull();
+  });
+});
