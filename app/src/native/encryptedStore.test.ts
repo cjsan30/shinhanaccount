@@ -26,11 +26,11 @@ function memoryDatabase() {
     const table = /(ledger_entries|policy_versions|merchant_rules|app_state)/.exec(sql)?.[1];
     if (!table) return {};
     const target = tables.get(table)!;
-    if (sql.startsWith('DELETE FROM')) { if (sql.includes('WHERE id')) target.delete(String(params[0])); else target.clear(); return {}; }
+    if (sql.startsWith('DELETE FROM')) { if (sql.includes('WHERE id') || sql.includes('WHERE key')) target.delete(String(params[0])); else target.clear(); return {}; }
     if (sql.includes('INSERT')) target.set(String(params[0]), { id: String(params[0]), value: String(params[1]), position: Number(params[2]) });
     return {};
   });
-  return { open: vi.fn(), execute: vi.fn(), query, run, beginTransaction: vi.fn(), commitTransaction: vi.fn(), rollbackTransaction: vi.fn(), tables, settings };
+  return { open: vi.fn(async () => undefined), execute: vi.fn(async () => undefined), query, run, beginTransaction: vi.fn(async () => undefined), commitTransaction: vi.fn(async () => undefined), rollbackTransaction: vi.fn(async () => undefined), tables, settings };
 }
 
 describe('encrypted app state', () => {
@@ -67,5 +67,33 @@ describe('encrypted app state', () => {
     await expect(loadEncryptedAppState()).resolves.toBeNull();
     await expect(saveEncryptedAppState(state)).resolves.toBe(false);
     expect(mocks.createConnection).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a failed write and lets the queued next write recover', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
+    const originalRun = db.run.getMockImplementation()!;
+    let failLedgerInsert = true;
+    db.run.mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (failLedgerInsert && sql.includes('INSERT INTO ledger_entries')) { failLedgerInsert = false; throw new Error('simulated storage failure'); }
+      return originalRun(sql, params);
+    });
+    const { saveEncryptedAppState } = await import('./encryptedStore');
+    const state = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '3741', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const }] }, policyBook: { versions: [] }, merchantRules: [] };
+
+    await expect(saveEncryptedAppState(state)).rejects.toThrow('simulated storage failure');
+    expect(db.rollbackTransaction).toHaveBeenCalledOnce();
+    await expect(saveEncryptedAppState(state)).resolves.toBe(true);
+    expect(db.commitTransaction).toHaveBeenCalledOnce();
+  });
+
+  it('migrates a legacy encrypted snapshot once and removes the legacy row', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db); mocks.isSecretStored.mockResolvedValue({ result: true });
+    const state = { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [], reportEvidence: [] };
+    db.tables.get('app_state')!.set('app-state-v1', { id: 'app-state-v1', value: JSON.stringify(state), position: 0 });
+    const { loadEncryptedAppState } = await import('./encryptedStore');
+
+    await expect(loadEncryptedAppState()).resolves.toEqual(state);
+    expect(db.tables.get('app_state')!.has('app-state-v1')).toBe(false);
+    expect(mocks.setEncryptionSecret).not.toHaveBeenCalled();
   });
 });
