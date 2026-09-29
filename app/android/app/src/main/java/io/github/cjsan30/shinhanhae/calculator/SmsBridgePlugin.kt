@@ -443,6 +443,12 @@ class SmsBridgePlugin : Plugin() {
     }
 
     @com.getcapacitor.PluginMethod
+    fun clearConfiguration(call: PluginCall) {
+        prefs.edit().remove(CARD_KEY).apply()
+        call.resolve()
+    }
+
+    @com.getcapacitor.PluginMethod
     fun getNotificationAccessStatus(call: PluginCall) {
         call.resolve(JSObject().put("granted", NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)))
     }
