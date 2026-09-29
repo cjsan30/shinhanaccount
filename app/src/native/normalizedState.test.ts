@@ -14,6 +14,14 @@ describe('normalized encrypted state', () => {
     expect(denormalizeAppState(normalizeAppState(state))).toEqual(state);
   });
 
+  it('keeps the non-applicant mode so onboarding does not repeat after restart', () => {
+    const nonApplicant: PersistedAppState = {
+      ...state,
+      policyBook: { versions: [], mode: 'not-applicant' },
+    };
+    expect(denormalizeAppState(normalizeAppState(nonApplicant))).toEqual(nonApplicant);
+  });
+
   it('updates only changed rows and identifies removed rows', () => {
     const previous = [{ id: 'one', value: '{"amount":1}', position: 0 }, { id: 'two', value: '{"amount":2}', position: 1 }];
     const next = [{ id: 'one', value: '{"amount":3}', position: 0 }];
