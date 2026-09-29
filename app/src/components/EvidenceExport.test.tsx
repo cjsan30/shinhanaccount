@@ -22,9 +22,9 @@ const summary = {
   buckets: [{ key: 'resident' as const, label: '정주비', budget: 500000, used: 10000, items: [{ category: 'food', label: '식비', budget: 200000, used: 10000 }] }, { key: 'studySpace' as const, label: '학습공간비', budget: 200000, used: 0, items: [] }],
 };
 
-function StatefulEvidenceExport() {
-  const [reportEvidence, setReportEvidence] = useState<ComponentProps<typeof EvidenceExport>['reportEvidence']>([]);
-  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={[]} />;
+function StatefulEvidenceExport({ initialEvidence = [], entries = [] }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries'] }) {
+  const [reportEvidence, setReportEvidence] = useState<ComponentProps<typeof EvidenceExport>['reportEvidence']>(initialEvidence);
+  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} />;
 }
 
 describe('EvidenceExport', () => {
@@ -96,6 +96,23 @@ describe('EvidenceExport', () => {
 
     await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument());
     expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), '950504');
+  });
+
+  it('connects additional proof only to eligible housing or transport payments', async () => {
+    const entries = [
+      { id: 'housing-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '주거 결제', amount: 50000, status: 'classified' as const, bucket: 'resident' as const, category: 'lodging' },
+      { id: 'food-1', cardLast4: '1234', occurredAt: '2026-09-20T11:00:00+09:00', merchant: '식비 결제', amount: 10000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' },
+      { id: 'transport-1', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '교통 결제', amount: 8000, status: 'classified' as const, bucket: 'resident' as const, category: 'transport' },
+    ];
+    render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'proof-1', stored: { id: 'stored-proof-1', fileName: 'transfer.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'transactionProof', order: 0 }]} />);
+
+    await screen.findByText('transfer.pdf');
+    const select = screen.getByLabelText('거래증빙 1 결제 연결');
+    expect(select).toHaveTextContent('주거 결제');
+    expect(select).toHaveTextContent('교통 결제');
+    expect(select).not.toHaveTextContent('식비 결제');
+    fireEvent.change(select, { target: { value: 'transport-1' } });
+    await waitFor(() => expect(screen.getByLabelText('거래증빙 1 결제 연결')).toHaveValue('transport-1'));
   });
 
   it('generates a masked statement submission instead of copying the original bank PDF', async () => {
