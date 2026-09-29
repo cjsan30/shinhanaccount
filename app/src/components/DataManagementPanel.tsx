@@ -46,7 +46,7 @@ export function DataManagementPanel(props: Props) {
   const policyDraftRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!props.policyDraft || !props.policyDraftFocusToken) return;
-    requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   }, [props.policyDraft, props.policyDraftFocusToken]);
   return <section className="data-sections">
     <details className="data-section">
