@@ -93,7 +93,12 @@ describe('app state persistence', () => {
   });
 
   it('persists every legacy state section in the web path', async () => {
-    const reportEvidence = [{ id: 'receipt-1', kind: 'receipt', name: 'receipt.jpg', mimeType: 'image/jpeg', base64: 'data:image/jpeg;base64,AA==' }];
+    const reportEvidence = [{
+      id: 'receipt-1',
+      stored: { id: 'stored-receipt-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 2, attachedAt: '2026-09-29T00:00:00+09:00' },
+      section: 'receipt' as const,
+      order: 0,
+    }];
     await persistAppState(localStorage, { ...state, reportEvidence }, { native: false, saveEncrypted: vi.fn() });
 
     expect(loadLegacyAppState(localStorage, new Date())).toMatchObject({
