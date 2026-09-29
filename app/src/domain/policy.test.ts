@@ -57,6 +57,21 @@ describe('policy text import', () => {
     expect(validatePolicyAgainstProfile(policy)).toEqual([]);
   });
 
+  it('does not let a malformed negative plan or custom item bypass a policy total', () => {
+    const policy = {
+      ...parsePolicyText(''),
+      plans: { housing: -50_000, food: 200_000, education: 0, transport: 350_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 },
+      customItems: [{ id: 'bad-item', label: '오류 항목', bucket: 'resident' as const, amount: -10_000 }],
+    };
+
+    expect(getPolicyLimit(policy, 'resident')).toBe(550_000);
+    expect(validatePolicyAgainstProfile(policy)).toEqual(expect.arrayContaining([
+      '주거비 항목은 0원 이상으로 설정해 주세요.',
+      '사용자 정의 항목의 이름과 금액을 확인해 주세요.',
+    ]));
+    expect(getPolicyItems(policy).map((item) => item.key)).not.toContain('bad-item');
+  });
+
   it('does not treat a persisted all-zero draft as a confirmed policy', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const emptyVersion = { ...parsePolicyText(''), periodKey: '2026-08', confirmedAt: now.toISOString() };
