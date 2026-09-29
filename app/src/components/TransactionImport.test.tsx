@@ -21,4 +21,13 @@ describe('transaction import', () => {
     expect(getByLabelText('계좌 끝 4자리')).toHaveValue('');
     expect(getByLabelText('PDF 비밀번호')).toHaveAttribute('type', 'password');
   });
+
+  it('clears the PDF password when the import type changes', () => {
+    const { getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
+    fireEvent.click(getByLabelText('계좌번호'));
+    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: 'temporary-password' } });
+    fireEvent.click(getByLabelText('카드번호'));
+    fireEvent.click(getByLabelText('계좌번호'));
+    expect(getByLabelText('PDF 비밀번호')).toHaveValue('');
+  });
 });
