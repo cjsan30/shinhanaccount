@@ -58,6 +58,29 @@ describe('transaction import', () => {
     expect(screen.getByRole('button', { name: '확인 후 계속 진행' })).toBeInTheDocument();
   });
 
+  it('passes a bank PDF password only to the selected-file parser', async () => {
+    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal-password', direction: 'withdrawal', classification: { status: 'undecided' } }]);
+    const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
+    fireEvent.click(getByLabelText('계좌번호'));
+    fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
+    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: '950504' } });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    await screen.findByText(/1건의 기간 내 출금 내역/);
+    expect(mocks.parseBankPdf).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), '950504');
+  });
+
+  it('rejects a bank PDF whose readable account suffix differs from the selected account', async () => {
+    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '다른 계좌 출금', amount: 5000, accountMasked: '0000', transactionId: 'wrong-account', direction: 'withdrawal', classification: { status: 'undecided' } }]);
+    const notify = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={notify} />);
+    fireEvent.click(getByLabelText('계좌번호'));
+    fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/선택한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다/)).toBeInTheDocument();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('선택한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다'));
+  });
+
   it('switches accepted formats without changing the configured notification card', () => {
     const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
 
