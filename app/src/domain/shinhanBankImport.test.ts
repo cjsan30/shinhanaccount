@@ -21,9 +21,9 @@ describe('Shinhan Bank PDF import', () => {
   });
   it('rebuilds separated PDF table cells by their visual row and columns', () => {
     const [row] = parseShinhanBankPdfTable([
-      { text: '110635330683', x: 200, y: 720 }, { text: '20260928', x: 37, y: 500 }, { text: '21:51:33', x: 107, y: 500 }, { text: '체크카드', x: 170, y: 500 }, { text: '10,000', x: 251, y: 500 }, { text: '0', x: 346, y: 500 }, { text: '주식회사 아성', x: 352, y: 500 }, { text: '325,481', x: 423, y: 500 },
+      { text: '110635330683', x: 200, y: 720 }, { text: '20260928', x: 37, y: 500 }, { text: '21:51:33', x: 107, y: 500 }, { text: '체크카드', x: 170, y: 500 }, { text: '10,000', x: 251, y: 500 }, { text: '0', x: 346, y: 500 }, { text: '주식회사 아성', x: 352, y: 500 }, { text: '325,481', x: 423, y: 500 }, { text: '원신한', x: 506, y: 500 },
     ]);
-    expect(row).toMatchObject({ direction: 'withdrawal', amount: 10000, merchant: '주식회사 아성', occurredAt: '2026-09-28T21:51:33+09:00' });
+    expect(row).toMatchObject({ direction: 'withdrawal', amount: 10000, merchant: '주식회사 아성', summary: '체크카드', balance: 325481, branch: '원신한', occurredAt: '2026-09-28T21:51:33+09:00' });
   });
   it('fails closed when a document has no recognizable transaction table', () => {
     expect(() => parseShinhanBankPdfTable([{ text: '거래내역조회', x: 10, y: 10 }])).toThrow('입출금 표 행');
