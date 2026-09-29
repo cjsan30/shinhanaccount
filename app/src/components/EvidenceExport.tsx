@@ -21,6 +21,8 @@ export type ReportSummary = { periodLabel: string; totalBudget: number; totalUse
 
 const A4: [number, number] = [595.28, 841.89];
 const TARGET_BYTES = Math.floor(4.7 * 1024 * 1024);
+const MAX_EVIDENCE_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_EVIDENCE_TOTAL_BYTES = 120 * 1024 * 1024;
 const PROFILES: ExportProfile[] = [{ id: 'default', maxEdge: 1024, quality: .58, pdfDpi: null }, { id: 'compact', maxEdge: 920, quality: .5, pdfDpi: 150 }, { id: 'minimum', maxEdge: 800, quality: .42, pdfDpi: 120 }];
 const LABEL: Record<ReportEvidenceSection, string> = { statement: '입출금내역', transactionProof: '거래증빙', receipt: '영수증' };
 class ExportCancelled extends Error {}
@@ -102,7 +104,29 @@ export function EvidenceExport({ reportEvidence, onReportEvidenceChange, summary
   useEffect(() => { let disposed = false; void Promise.all(reportEvidence.map(async (record) => { try { const file = await loadEvidence(record.stored); const kind = kindOf(file); const url = kind === 'image' ? URL.createObjectURL(file) : undefined; if (url) urls.current.add(url); return { ...record, file, kind, url, pages: kind === 'image' ? 1 : undefined } as Evidence; } catch { return null; } })).then((loaded) => { if (!disposed) setItems(loaded.filter((item): item is Evidence => item !== null)); }); return () => { disposed = true; }; }, [reportEvidence]);
   useEffect(() => { let disposed = false; const pending = items.filter((item) => item.kind === 'pdf' && !item.pages); void Promise.all(pending.map(async (item) => { let pages = 1; try { pages = await pdfPages(item.file); } catch { /* export will give a readable error */ } if (!disposed) setItems((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, pages } : candidate)); })); return () => { disposed = true; }; }, [items]);
   const inSection = (section: ReportEvidenceSection) => items.filter((item) => item.section === section).sort((a, b) => a.order - b.order);
-  const addFiles = async (section: ReportEvidenceSection, files: FileList | null) => { if (!files) return; const valid = [...files].filter(supported); if (valid.length !== files.length) setMessage('JPG, PNG, WEBP, PDF 파일만 추가할 수 있습니다.'); const additions = await Promise.all(valid.map(async (file) => { const base = { id: crypto.randomUUID(), stored: await storeEvidence(file), section, ...(section === 'receipt' ? { category: summary.buckets[0]?.items[0]?.category } : {}) } satisfies Omit<ReportEvidenceRecord, 'order'>; if (section !== 'statement' || kindOf(file) !== 'pdf') return base; try { return { ...base, statementRows: toStatementRows(await parseShinhanBankPdfExport(await file.arrayBuffer())), excludedStatementRowIds: [], statementParseFailed: false }; } catch { setMessage('입출금내역 표를 읽지 못했습니다. 원본 PDF는 제출서류에 포함하지 않으므로 비밀번호를 입력해 다시 읽어 주세요.'); return { ...base, statementParseFailed: true }; } })); onReportEvidenceChange((current) => { const start = current.filter((item) => item.section === section).length; return [...current, ...additions.map((item, index) => ({ ...item, order: start + index }))]; }); };
+  const addFiles = async (section: ReportEvidenceSection, files: FileList | null) => {
+    if (!files) return;
+    const selected = [...files];
+    const supportedFiles = selected.filter(supported);
+    const individuallySafe = supportedFiles.filter((file) => file.size > 0 && file.size <= MAX_EVIDENCE_FILE_BYTES);
+    const usedBytes = reportEvidence.reduce((sum, item) => sum + item.stored.size, 0);
+    let remainingBytes = Math.max(0, MAX_EVIDENCE_TOTAL_BYTES - usedBytes);
+    const valid = individuallySafe.filter((file) => {
+      if (file.size > remainingBytes) return false;
+      remainingBytes -= file.size;
+      return true;
+    });
+    if (!valid.length) {
+      setMessage('추가할 수 있는 제출 파일이 없습니다. JPG, PNG, WEBP, PDF 형식과 파일 크기를 확인해 주세요.');
+      return;
+    }
+    const rejectedType = supportedFiles.length !== selected.length;
+    const rejectedSize = individuallySafe.length !== supportedFiles.length;
+    const rejectedTotal = valid.length !== individuallySafe.length;
+    if (rejectedType || rejectedSize || rejectedTotal) setMessage(`일부 파일을 제외했습니다.${rejectedType ? ' JPG, PNG, WEBP, PDF 형식만 지원합니다.' : ''}${rejectedSize ? ' 파일 하나는 20MB 이하만 추가할 수 있습니다.' : ''}${rejectedTotal ? ' 제출 원본은 합계 120MB 이하만 추가할 수 있습니다.' : ''}`);
+    const additions = await Promise.all(valid.map(async (file) => { const base = { id: crypto.randomUUID(), stored: await storeEvidence(file), section, ...(section === 'receipt' ? { category: summary.buckets[0]?.items[0]?.category } : {}) } satisfies Omit<ReportEvidenceRecord, 'order'>; if (section !== 'statement' || kindOf(file) !== 'pdf') return base; try { return { ...base, statementRows: toStatementRows(await parseShinhanBankPdfExport(await file.arrayBuffer())), excludedStatementRowIds: [], statementParseFailed: false }; } catch { setMessage('입출금내역 표를 읽지 못했습니다. 원본 PDF는 제출서류에 포함하지 않으므로 비밀번호를 입력해 다시 읽어 주세요.'); return { ...base, statementParseFailed: true }; } }));
+    onReportEvidenceChange((current) => { const start = current.filter((item) => item.section === section).length; return [...current, ...additions.map((item, index) => ({ ...item, order: start + index }))]; });
+  };
   const update = (id: string, patch: Partial<ReportEvidenceRecord>) => onReportEvidenceChange((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   const readiness = getReportReadiness(entries, reportEvidence, periodKey);
   const payments = readiness.payments;

@@ -59,6 +59,16 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/PDF 생성 전에 영수증을 추가하고 연결/)).toBeInTheDocument();
   });
 
+  it('rejects an oversized evidence file before storing or parsing it', async () => {
+    const oversized = new File(['receipt'], 'oversized.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(oversized, 'size', { value: 20 * 1024 * 1024 + 1 });
+    const { container } = render(<StatefulEvidenceExport />);
+    const receiptInput = container.querySelectorAll('input[type="file"]')[2] as HTMLInputElement;
+    fireEvent.change(receiptInput, { target: { files: [oversized] } });
+    expect(await screen.findByText(/파일 크기를 확인해 주세요/)).toBeInTheDocument();
+    expect(screen.queryByText('oversized.jpg')).not.toBeInTheDocument();
+  });
+
   it('blocks a normal PDF export until each payment has a linked receipt', async () => {
     render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
     await screen.findByText('receipt.jpg');
