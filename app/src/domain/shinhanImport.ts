@@ -5,9 +5,21 @@ export type ImportedCardTransaction = { occurredAt: string; cardMasked: string; 
 const requiredHeaders = ['거래일', '이용카드', '가맹점명', '승인번호', '금액', '매입구분', '취소상태'];
 export async function parseShinhanCardExport(data: ArrayBuffer): Promise<ImportedCardTransaction[]> {
   const XLSX = await import('xlsx');
-  const book = XLSX.read(data, { type: 'array' }); const sheet = book.Sheets[book.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-  if (!sheet || !requiredHeaders.every((header) => Object.hasOwn(rows[0] ?? {}, header))) throw new Error('신한카드 이용내역 양식이 아닙니다.');
+  const readRows = (book: ReturnType<typeof XLSX.read>) => {
+    const sheet = book.Sheets[book.SheetNames[0]];
+    return { sheet, rows: sheet ? XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' }) : [] };
+  };
+  let { sheet, rows } = readRows(XLSX.read(data, { type: 'array' }));
+  const hasHeaders = () => Boolean(sheet) && requiredHeaders.every((header) => Object.hasOwn(rows[0] ?? {}, header));
+  // XLSX treats ArrayBuffer CSV content as legacy binary. Retry known Korean CSV encodings as text.
+  if (!hasHeaders()) {
+    for (const encoding of ['utf-8', 'euc-kr'] as const) {
+      const text = new TextDecoder(encoding).decode(data).replace(/^\uFEFF/, '');
+      ({ sheet, rows } = readRows(XLSX.read(text, { type: 'string' })));
+      if (hasHeaders()) break;
+    }
+  }
+  if (!hasHeaders()) throw new Error('신한카드 이용내역 양식이 아닙니다.');
   return rows.filter((row) => /^\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}$/.test(String(row['거래일']))).map((row) => {
     const [date, time] = String(row['거래일']).split(' '); const [year, month, day] = date.split('.');
     const amount = Number(String(row['금액']).replaceAll(',', ''));
@@ -46,4 +58,9 @@ export async function parseShinhanCardPdfExport(data: ArrayBuffer): Promise<Impo
     return transactions;
   } finally { await task.destroy(); }
 }
-export function isImportable(transaction: ImportedCardTransaction) { return (transaction.paymentStatus === '승인' || transaction.paymentStatus === '결제확정') && !transaction.cancellationStatus; }
+export function isImportable(transaction: ImportedCardTransaction) {
+  return (transaction.paymentStatus === '승인' || transaction.paymentStatus === '결제확정')
+    && !transaction.cancellationStatus
+    && Number.isFinite(transaction.amount)
+    && transaction.amount > 0;
+}
