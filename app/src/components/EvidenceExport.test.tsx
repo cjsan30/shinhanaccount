@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 
@@ -9,6 +9,9 @@ vi.mock('../native/evidenceVault', () => ({
   removeStoredEvidence: vi.fn(),
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
+const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn() }));
+vi.mock('../native/fileExport', () => ({ saveFile: exportMocks.saveFile }));
+vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
 vi.mock('../domain/shinhanBankImport', () => ({
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal', classification: { status: 'undecided' } }]),
 }));
@@ -24,6 +27,23 @@ function StatefulEvidenceExport() {
 }
 
 describe('EvidenceExport', () => {
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const canvasContext = { fillStyle: '', font: '', strokeStyle: '', fillRect: vi.fn(), fillText: vi.fn(), strokeRect: vi.fn(), drawImage: vi.fn() } as unknown as CanvasRenderingContext2D;
+
+  beforeEach(() => {
+    exportMocks.saveFile.mockReset(); exportMocks.create.mockReset(); exportMocks.load.mockReset();
+    exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(async () => new Uint8Array([1, 2, 3])) });
+    exportMocks.load.mockResolvedValue({ getPageCount: () => 1, getPageIndices: () => [], copyPages: vi.fn(async () => []) });
+    exportMocks.saveFile.mockResolvedValue({ fileName: 'shinhanhae_report_evidence.pdf', relativePath: 'Downloads' });
+    canvasContext.fillRect = vi.fn(); canvasContext.fillText = vi.fn(); canvasContext.strokeRect = vi.fn(); canvasContext.drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })));
+    URL.createObjectURL = vi.fn(() => 'blob:submission-preview');
+    URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); });
+
   it('invalidates a statement raster cache after redaction or re-reading its rows', () => {
     const base = { id: 'statement-1', section: 'statement' as const, statementRows: [{ id: 'row-1', date: '2026-09-20', time: '12:00:00', summary: '체크카드', withdrawal: 12000, deposit: 0, merchant: '개인 결제처' }] };
     const original = evidenceRasterCacheKey(base, 'default');
@@ -61,5 +81,19 @@ describe('EvidenceExport', () => {
     await screen.findByText('statement.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
     expect(await screen.findByText(/원본 개인정보 보호를 위해 비밀번호 입력 후 다시 읽어/)).toBeInTheDocument();
+  });
+
+  it('generates a masked statement submission instead of copying the original bank PDF', async () => {
+    render(<EvidenceExport reportEvidence={[{ id: 'statement-1', stored: { id: 'stored-1', fileName: 'statement.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'statement', order: 0, excludedStatementRowIds: ['row-private'], statementRows: [
+      { id: 'row-keep', date: '2026-09-20', time: '10:00:00', summary: '체크카드', withdrawal: 12000, deposit: 0, merchant: '사업 결제처', balance: 688000 },
+      { id: 'row-private', date: '2026-09-20', time: '12:00:00', summary: '개인 이체', withdrawal: 3000, deposit: 0, merchant: '개인 결제처', balance: 685000 },
+    ] }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+
+    await screen.findByText('statement.pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+
+    await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalledWith('shinhanhae_report_evidence.pdf', expect.any(Uint8Array), 'application/pdf'));
+    expect(canvasContext.fillText).toHaveBeenCalledWith('████████', expect.any(Number), expect.any(Number));
+    expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
   });
 });
