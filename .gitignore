@@ -19,6 +19,7 @@ app/android/.gradle-cache*/
 
 # Local test artifacts and disposable work files
 app/.gradle-user/
+app/.gradle-user-home/
 app/tmp/
 tmp/
 output/
