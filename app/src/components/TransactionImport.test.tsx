@@ -1,8 +1,63 @@
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TransactionImport } from './TransactionImport';
 
+const mocks = vi.hoisted(() => ({
+  readSelectedFile: vi.fn(async () => new ArrayBuffer(8)),
+  parseCard: vi.fn(),
+  parseCardPdf: vi.fn(),
+  parseBankPdf: vi.fn(),
+  filterCard: vi.fn(),
+}));
+
+vi.mock('../native/fileRead', () => ({ readSelectedFile: mocks.readSelectedFile }));
+vi.mock('../native/externalApp', () => ({ openShinhanSolPay: vi.fn() }));
+vi.mock('../domain/shinhanImport', () => ({ parseShinhanCardExport: mocks.parseCard, parseShinhanCardPdfExport: mocks.parseCardPdf }));
+vi.mock('../domain/shinhanBankImport', () => ({ parseShinhanBankPdfExport: mocks.parseBankPdf, getMaskedAccountLast4: (value?: string) => value?.slice(-4) }));
+vi.mock('../domain/cardImportSafety', () => ({ filterTransactionsForConfiguredCard: mocks.filterCard }));
+
 describe('transaction import', () => {
+  it('imports only current-period card CSV rows and reports excluded rows', async () => {
+    const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' } };
+    const outside = { ...current, occurredAt: '2026-09-13T12:00:00+09:00', approvalNumber: '0002' };
+    mocks.parseCard.mockResolvedValue([current, outside]);
+    mocks.filterCard.mockReturnValue({ status: 'ready', transactions: [current, outside], hasMaskedCardWarning: false });
+    const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['csv'], 'card.csv', { type: 'text/csv' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/1건의 기간 내 신한카드 내역/)).toBeInTheDocument();
+    expect(screen.getByText(/기간 외 1건은 가져오지 않습니다/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
+    expect(onImport).toHaveBeenCalledWith(expect.objectContaining({ source: 'card', identifierLast4: '1111', cardTransactions: [current], excludedOutsidePeriod: 1 }));
+  });
+
+  it('imports only withdrawals from a current-period bank PDF as undecided candidates', async () => {
+    mocks.parseBankPdf.mockResolvedValue([
+      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal', direction: 'withdrawal', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'deposit', direction: 'deposit', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal', classification: { status: 'undecided' } },
+    ]);
+    const onImport = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
+    fireEvent.click(getByLabelText('계좌번호'));
+    fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/1건의 기간 내 출금 내역/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
+    expect(onImport).toHaveBeenCalledWith(expect.objectContaining({ source: 'account', identifierLast4: '6789', excludedOutsidePeriod: 1, bankTransactions: [expect.objectContaining({ merchant: '현재 출금', direction: 'withdrawal' })] }));
+  });
+
+  it('requires an explicit continue action when the selected file has no readable identifier', async () => {
+    const transaction = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '식당', amount: 8000, approvalNumber: '0003', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' } };
+    mocks.parseCard.mockResolvedValue([transaction]);
+    mocks.filterCard.mockReturnValue({ status: 'warning', transactions: [transaction], hasMaskedCardWarning: true });
+    const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['csv'], 'card.csv', { type: 'text/csv' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText(/파일 안에서 4자리를 확인할 수 없습니다/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '확인 후 계속 진행' })).toBeInTheDocument();
+  });
+
   it('switches accepted formats without changing the configured notification card', () => {
     const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
 
