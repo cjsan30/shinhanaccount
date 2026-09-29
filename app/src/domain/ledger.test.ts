@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyCancellation, applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 import { POLICY_MAX_LIMITS } from './budget';
 
@@ -167,6 +167,13 @@ describe('expense ledger', () => {
     const cancelled = cancelPayment(applied.ledger, applied.entry.id, '2026-07-25T10:00:00+09:00');
     expect(cancelled.entries.find((entry) => entry.id === applied.entry.id)).toMatchObject({ status: 'cancelled', cancelledAt: '2026-07-25T10:00:00+09:00' });
     expect(getSummary(cancelled, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(77700);
+  });
+  it('reduces budget spending by only the cancelled amount for a partial cancellation', () => {
+    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, amount: 10000 }, POLICY_MAX_LIMITS);
+    const partial = applyCancellation(applied.ledger, applied.entry.id, 3000, '2026-07-25T10:00:00+09:00');
+    expect(partial.entries[0]).toMatchObject({ status: 'classified', amount: 10000, cancelledAmount: 3000 });
+    expect(getSummary(partial, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(7000);
+    expect(getAutoCancellationMatch(applied.ledger, { ...wellstory5000, amount: 3000, occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
   });
 });
 

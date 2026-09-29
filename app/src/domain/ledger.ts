@@ -7,7 +7,7 @@ import type { StoredEvidence } from '../native/evidenceVault';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; memo?: string; evidence?: StoredEvidence[] };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; memo?: string; evidence?: StoredEvidence[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -25,9 +25,10 @@ export function createInitialLedger(): Ledger { return { entries: initialEntries
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return getPolicyPeriodKey(new Date(entry.occurredAt)); }
 export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string) { return getEntryPeriodKey(entry) === periodKey && isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey); }
-export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + entry.amount, 0); }
+export function getRemainingPaymentAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount'>) { return Math.max(0, entry.amount - (entry.cancelledAmount ?? 0)); }
+export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
 export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
-export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + entry.amount, 0); }
+export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -156,6 +157,18 @@ export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: stri
   if (!entry || entry.status === 'cancelled') return ledger;
   return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, status: 'cancelled', cancelledAt } : candidate) };
 }
+export function applyCancellation(ledger: Ledger, entryId: string, cancellationAmount: number, cancelledAt: string): Ledger {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  const remaining = entry ? getRemainingPaymentAmount(entry) : 0;
+  if (!entry || entry.status === 'cancelled' || !Number.isFinite(cancellationAmount) || cancellationAmount <= 0 || cancellationAmount > remaining) return ledger;
+  if (cancellationAmount === remaining) return cancelPayment(ledger, entryId, cancelledAt);
+  return {
+    ...ledger,
+    entries: ledger.entries.map((candidate) => candidate.id === entryId
+      ? { ...candidate, cancelledAmount: (candidate.cancelledAmount ?? 0) + cancellationAmount, cancelledAt }
+      : candidate),
+  };
+}
 export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
@@ -170,16 +183,16 @@ export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Le
 }
 export function saveLedger(storage: Pick<Storage, 'setItem'>, ledger: Ledger) { storage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(ledger)); }
 export type CancellationNotice = NativeApproval;
-export type CancellationMatch = { entry: LedgerEntry; score: number };
+export type CancellationMatch = { entry: LedgerEntry; score: number; isFullCancellation: boolean };
 function normalizedMerchant(value: string) { return value.toLowerCase().replace(/[\s().,]/g, ''); }
 export function findCancellationCandidates(ledger: Ledger, notice: CancellationNotice): CancellationMatch[] {
   const merchant = normalizedMerchant(notice.merchant);
   return ledger.entries
-    .filter((entry) => (entry.status === 'classified' || entry.status === 'undecided') && entry.amount === notice.amount && entry.occurredAt <= notice.occurredAt)
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'undecided') && notice.amount <= getRemainingPaymentAmount(entry) && entry.occurredAt <= notice.occurredAt)
     .map((entry) => {
       const sameMerchant = normalizedMerchant(entry.merchant) === merchant;
       const sameCard = Boolean(notice.cardLast4) && Boolean(entry.cardLast4) && entry.cardLast4 === notice.cardLast4;
-      return { entry, score: 3 + (sameMerchant ? 4 : 0) + (sameCard ? 2 : 0) };
+      return { entry, score: 3 + (sameMerchant ? 4 : 0) + (sameCard ? 2 : 0), isFullCancellation: notice.amount === getRemainingPaymentAmount(entry) };
     })
     .filter((candidate) => candidate.score >= 7)
     .sort((a, b) => b.score - a.score || b.entry.occurredAt.localeCompare(a.entry.occurredAt));
@@ -188,7 +201,7 @@ export function getAutoCancellationMatch(ledger: Ledger, notice: CancellationNot
   const candidates = findCancellationCandidates(ledger, notice);
   // Auto-cancellation is deliberately limited to an exact card, amount, and
   // merchant match. Multiple identical prior payments are left for the user.
-  return candidates.length === 1 && candidates[0].score >= 9 ? candidates[0].entry : null;
+  return candidates.length === 1 && candidates[0].isFullCancellation && candidates[0].score >= 9 ? candidates[0].entry : null;
 }
 
 export type SuspectedDuplicate = { entry: LedgerEntry; minutesApart: number };
