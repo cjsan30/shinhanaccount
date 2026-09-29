@@ -52,4 +52,26 @@ describe('onboarding flow', () => {
     expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'not-applicant', nextAction: 'dashboard' }));
     expect(localStorage.getItem('shinhanhae-onboarding-progress-v1')).toBeNull();
   });
+
+  it('keeps the user on permissions when native card configuration fails', async () => {
+    mocks.configure.mockRejectedValue(new Error('native configuration failed'));
+    render(<OnboardingFlow onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('카드 설정을 완료할 수 없습니다. 권한을 다시 확인해 주세요.');
+    expect(screen.queryByRole('button', { name: '정책 확정' })).not.toBeInTheDocument();
+  });
+
+  it('continues safely with no pending approvals when the native queue cannot be read', async () => {
+    mocks.consumePendingApprovals.mockRejectedValue(new Error('queue unavailable'));
+    const onComplete = vi.fn(); render(<OnboardingFlow onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
+    fireEvent.click(await screen.findByRole('button', { name: '정책 확정' }));
+    expect(await screen.findByRole('button', { name: /아직 사용 전이에요/ })).toBeInTheDocument();
+    expect(screen.queryByText(/정책 확정 전 승인 알림/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /아직 사용 전이에요/ }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ nextAction: 'dashboard', pendingApprovals: [] }));
+  });
 });

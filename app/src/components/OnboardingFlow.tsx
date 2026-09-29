@@ -101,12 +101,15 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
 
   if (step === 'permissions') {
     return (
-      <FirstRunPermission
-        onComplete={(card) => {
-          void continueAfterPermissions(card);
-        }}
-        onSkip={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}
-      />
+      <>
+        <FirstRunPermission
+          onComplete={(card) => {
+            void continueAfterPermissions(card);
+          }}
+          onSkip={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}
+        />
+        {message && <p className="onboarding-error" role="alert">{message}</p>}
+      </>
     );
   }
 
