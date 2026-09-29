@@ -3,6 +3,7 @@ import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
+import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
 
 vi.mock('../native/evidenceVault', () => ({
   loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
@@ -81,6 +82,20 @@ describe('EvidenceExport', () => {
     await screen.findByText('statement.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
     expect(await screen.findByText(/원본 개인정보 보호를 위해 비밀번호 입력 후 다시 읽어/)).toBeInTheDocument();
+  });
+
+  it('allows a password retry after a protected bank statement could not be read', async () => {
+    vi.mocked(parseShinhanBankPdfExport).mockRejectedValueOnce(new Error('password required'));
+    const { container } = render(<StatefulEvidenceExport />);
+    const statementInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(statementInput, { target: { files: [new File(['protected'], 'protected.pdf', { type: 'application/pdf' })] } });
+
+    expect(await screen.findByText('표를 읽지 못했습니다')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: '950504' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 다시 읽기' }));
+
+    await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument());
+    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), '950504');
   });
 
   it('generates a masked statement submission instead of copying the original bank PDF', async () => {
