@@ -32,6 +32,31 @@ describe('Shinhan Card Excel import', () => {
     const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '내역');
     await expect(parseShinhanCardExport(XLSX.write(book, { type: 'array', bookType: 'xls' }))).rejects.toThrow('신한카드 이용내역 양식');
   });
+
+  it('reads a UTF-8 card CSV export with the same headers as the spreadsheet export', async () => {
+    const csv = [
+      '거래일,이용카드,가맹점명,승인번호,금액,매입구분,취소상태',
+      '2026.09.21 09:45,본인374*,테스트카페,5678,"4,500",승인,',
+    ].join('\n');
+
+    const [row] = await parseShinhanCardExport(new TextEncoder().encode(csv).buffer);
+
+    expect(row).toMatchObject({ occurredAt: '2026-09-21T09:45:00+09:00', cardMasked: '본인374*', approvalNumber: '00005678', amount: 4500, paymentStatus: '승인' });
+    expect(isImportable(row)).toBe(true);
+  });
+
+  it('does not mark malformed or zero-value rows as importable payments', async () => {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['거래일', '이용카드', '가맹점명', '승인번호', '금액', '매입구분', '취소상태'],
+      ['2026.09.21 09:45', '본인374*', '오류 금액', '7777', '확인필요', '승인', ''],
+      ['2026.09.21 09:46', '본인374*', '0원 결제', '7778', 0, '승인', ''],
+    ]);
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '카드이용내역');
+    const rows = await parseShinhanCardExport(XLSX.write(book, { type: 'array', bookType: 'xls' }));
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => !isImportable(row))).toBe(true);
+  });
 });
 
 describe('Shinhan Card PDF import', () => {
