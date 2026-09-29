@@ -205,4 +205,52 @@ describe('app entry flows', () => {
     expect(screen.getByText('저장된 자동 분류 규칙이 없습니다.')).toBeInTheDocument();
     confirm.mockRestore();
   });
+
+  it('holds an incomplete approval for confirmation and acknowledges it only after registration', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
+      id: 'review-1', cardLast4: '3741', occurredAt: new Date().toISOString(), merchant: '확인 필요 결제', source: 'notification',
+    }] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    expect(await screen.findByRole('heading', { name: '결제 정보 확인' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('확인 필요 결제')).toBeInTheDocument();
+    expect(smsBridge.acknowledgePendingApprovalReviews).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('금액'), { target: { value: '12300' } });
+    fireEvent.change(screen.getByLabelText('지출 분류'), { target: { value: 'food' } });
+    fireEvent.click(screen.getByRole('button', { name: '확인 후 등록' }));
+
+    await waitFor(() => expect(smsBridge.acknowledgePendingApprovalReviews).toHaveBeenCalledWith({ ids: ['review-1'] }));
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
+    expect(screen.getByText('확인 필요 결제')).toBeInTheDocument();
+  });
+
+  it('automatically applies and acknowledges one unambiguous cancellation notice', async () => {
+    const occurredAt = new Date().toISOString();
+    const ledger = {
+      ...createEmptyLedger(),
+      entries: [{ id: 'paid-1', cardLast4: '3741', occurredAt, amount: 12300, merchant: '취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+    };
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(ledger));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
+      id: 'cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 12300, merchant: '취소 대상', source: 'notification',
+    }] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    await waitFor(() => expect(smsBridge.acknowledgePendingCancellations).toHaveBeenCalledWith({ ids: ['cancel-1'] }));
+    fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
+    expect(screen.getByText('취소됨')).toBeInTheDocument();
+  });
 });

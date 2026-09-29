@@ -588,6 +588,10 @@ function App() {
       message = `${item.label}로 저장했습니다.`;
     }
     setLedger(result.ledger);
+    if (approvalReview) {
+      void SmsBridge.acknowledgePendingApprovalReviews({ ids: [approvalReview.id] });
+      setApprovalReview(null);
+    }
     if (result.alerts.length) void sendBudgetAlerts(result.alerts, result.entry.bucket ?? 'resident', result.entry.category);
     const alert = result.alerts.length ? ` · ${result.alerts.map((threshold) => `${threshold}% 경고`).join(', ')}` : '';
     close(); show(`${message}${alert}`);
