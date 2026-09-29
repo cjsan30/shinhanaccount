@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EvidenceExport } from './EvidenceExport';
 
 vi.mock('../native/evidenceVault', () => ({
-  loadEvidence: vi.fn(async () => new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' })),
+  loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
   removeStoredEvidence: vi.fn(),
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
@@ -43,7 +43,15 @@ describe('EvidenceExport', () => {
     fireEvent.change(statementInput, { target: { files: [new File(['pdf'], 'statement.pdf', { type: 'application/pdf' })] } });
     expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/입출금 1행/));
+    expect(screen.getByText(/체크카드/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
     await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 1행/)).toBeInTheDocument());
+  });
+
+  it('blocks export when a bank PDF could not be converted into a maskable table', async () => {
+    render(<EvidenceExport reportEvidence={[{ id: 'statement-1', stored: { id: 'stored-1', fileName: 'statement.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'statement', statementParseFailed: true, order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await screen.findByText('statement.pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    expect(await screen.findByText(/원본 개인정보 보호를 위해 비밀번호 입력 후 다시 읽어/)).toBeInTheDocument();
   });
 });

@@ -14,5 +14,7 @@ export type ReportEvidenceRecord = {
   receiptMerchant?: string;
   statementRows?: StatementRow[];
   excludedStatementRowIds?: string[];
+  /** 표를 읽지 못한 입출금 PDF는 원본 노출을 막기 위해 제출서류 생성에서 제외한다. */
+  statementParseFailed?: boolean;
   order: number;
 };
