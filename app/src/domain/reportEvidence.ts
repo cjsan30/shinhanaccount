@@ -1,4 +1,5 @@
 import type { StoredEvidence } from '../native/evidenceVault';
+import type { StatementRow } from './statementRedaction';
 
 export type ReportEvidenceSection = 'statement' | 'transactionProof' | 'receipt';
 
@@ -11,5 +12,7 @@ export type ReportEvidenceRecord = {
   receiptDate?: string;
   receiptAmount?: number;
   receiptMerchant?: string;
+  statementRows?: StatementRow[];
+  excludedStatementRowIds?: string[];
   order: number;
 };
