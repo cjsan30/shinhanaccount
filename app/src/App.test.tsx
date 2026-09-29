@@ -308,4 +308,26 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     expect(screen.getByText('취소됨')).toBeInTheDocument();
   });
+
+  it('holds a partial cancellation for the user and labels its exact cancellation amount', async () => {
+    const occurredAt = new Date().toISOString();
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
+      ...createEmptyLedger(),
+      entries: [{ id: 'paid-partial', cardLast4: '3741', occurredAt, amount: 12300, merchant: '부분 취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+    }));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
+      id: 'partial-cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 3000, merchant: '부분 취소 대상', source: 'notification',
+    }] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    expect(await screen.findByRole('heading', { name: '취소 결제 확인' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /부분 취소 3,000원/ })).toBeInTheDocument();
+    expect(smsBridge.acknowledgePendingCancellations).not.toHaveBeenCalled();
+  });
 });
