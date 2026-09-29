@@ -9,7 +9,7 @@ export type SmsDiagnosticEvent = {
   eventId: string;
   recordedAt: number;
   stage: string;
-  status: 'info' | 'success' | 'ignored' | 'blocked' | 'error';
+  status: 'info' | 'success' | 'ignored' | 'skipped' | 'blocked' | 'error';
   segmentCount?: number;
   bodyLength?: number;
   markerFound?: boolean;

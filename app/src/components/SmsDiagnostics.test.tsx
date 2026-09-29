@@ -57,4 +57,17 @@ describe('SMS diagnostics', () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith('결제 수신 진단 이력을 불러오지 못했습니다.'));
     expect(screen.getByRole('button', { name: '진단 로그 내보내기' })).toBeDisabled();
   });
+
+  it('uses readable labels for unsupported and grouped notification diagnostics', async () => {
+    smsBridge.getSmsDiagnostics.mockResolvedValueOnce({ items: [
+      { id: 'record-unsupported', eventId: 'event-unsupported', recordedAt: 1_787_100_000_000, stage: 'NOTIFICATION_SOURCE_UNSUPPORTED', status: 'skipped', sourceApp: 'com.example.other' },
+      { id: 'record-group', eventId: 'event-group', recordedAt: 1_787_100_000_001, stage: 'NOTIFICATION_GROUP_SUMMARY_SKIPPED', status: 'skipped', sourceApp: 'com.shcard.smartpay' },
+    ] });
+    render(<SmsDiagnostics notify={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '진단 이력 새로고침' }));
+
+    expect(await screen.findByText('지원하지 않는 알림 출처')).toBeInTheDocument();
+    expect(screen.getByText('묶음 알림 요약 건너뜀')).toBeInTheDocument();
+    expect(screen.queryByText('NOTIFICATION_SOURCE_UNSUPPORTED')).not.toBeInTheDocument();
+  });
 });
