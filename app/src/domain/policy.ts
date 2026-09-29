@@ -26,7 +26,7 @@ export function getSupportProfile(id: SupportProfileId | undefined) { return SHI
 export const emptyPolicy: SupportPolicy = { plans: { housing: 0, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 0, readingRoom: 0 }, sourceText: '', profileId: DEFAULT_SUPPORT_PROFILE_ID, alertTargets: [], customItems: [] };
 export type AnyPolicyItemDefinition = Omit<PolicyItemDefinition, 'key'> & { key: string };
 export function getPolicyItems(policy: Pick<SupportPolicy, 'customItems'>): AnyPolicyItemDefinition[] {
-  return [...POLICY_ITEMS, ...(policy.customItems ?? []).filter((item) => item.label.trim() && item.amount >= 0).map((item) => ({ key: item.id, label: item.label.trim(), bucket: item.bucket, ledgerCategories: [`custom:${item.id}`] }))];
+  return [...POLICY_ITEMS, ...(policy.customItems ?? []).filter((item) => item.id.trim() && item.label.trim() && Number.isFinite(item.amount) && item.amount >= 0).map((item) => ({ key: item.id, label: item.label.trim(), bucket: item.bucket, ledgerCategories: [`custom:${item.id}`] }))];
 }
 export function getAlertTargets(policy: SupportPolicy) { return policy.alertTargets ?? POLICY_ITEMS.filter((item) => policy.plans[item.key] > 0).map((item) => item.key); }
 export function validatePolicyAgainstProfile(policy: SupportPolicy) {
@@ -38,7 +38,14 @@ export function validatePolicyAgainstProfile(policy: SupportPolicy) {
   if (resident !== profile.bucketLimits.resident) issues.push(`정주비 합계를 ${profile.bucketLimits.resident.toLocaleString()}원으로 맞춰 주세요.`);
   if (study !== profile.bucketLimits.studySpace) issues.push(`학습공간비 합계를 ${profile.bucketLimits.studySpace.toLocaleString()}원으로 맞춰 주세요.`);
   if (total !== profile.totalLimit) issues.push(`전체 합계를 ${profile.totalLimit.toLocaleString()}원으로 맞춰 주세요.`);
-  for (const item of POLICY_ITEMS) if (policy.plans[item.key] > profile.itemCaps[item.key]) issues.push(`${item.label}는 최대 ${profile.itemCaps[item.key].toLocaleString()}원까지 설정할 수 있습니다.`);
+  for (const item of POLICY_ITEMS) {
+    const amount = policy.plans[item.key];
+    if (!Number.isFinite(amount) || amount < 0) issues.push(`${item.label} 항목은 0원 이상으로 설정해 주세요.`);
+    else if (amount > profile.itemCaps[item.key]) issues.push(`${item.label}는 최대 ${profile.itemCaps[item.key].toLocaleString()}원까지 설정할 수 있습니다.`);
+  }
+  for (const item of policy.customItems ?? []) {
+    if (!item.id.trim() || !item.label.trim() || !Number.isFinite(item.amount) || item.amount < 0) issues.push('사용자 정의 항목의 이름과 금액을 확인해 주세요.');
+  }
   return issues;
 }
 
@@ -145,7 +152,8 @@ export function parsePolicyText(text: string): SupportPolicy {
   return { plans, sourceText: text };
 }
 export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
-  return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + policy.plans[item.key], 0) + (policy.customItems ?? []).filter((item) => item.bucket === bucket).reduce((sum, item) => sum + item.amount, 0);
+  const validAmount = (amount: number) => Number.isFinite(amount) ? Math.max(0, amount) : 0;
+  return POLICY_ITEMS.filter((item) => item.bucket === bucket).reduce((sum, item) => sum + validAmount(policy.plans[item.key]), 0) + (policy.customItems ?? []).filter((item) => item.bucket === bucket && item.id.trim() && item.label.trim()).reduce((sum, item) => sum + validAmount(item.amount), 0);
 }
 export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
   try {
