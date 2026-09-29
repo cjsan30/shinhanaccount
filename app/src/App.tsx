@@ -290,9 +290,15 @@ function App() {
         ]);
         if (disposed) return;
         if (!result.items.length && !reviewResult.items.length && !cancellationResult.items.length) return;
+        // Imports already omit dates outside the confirmed policy period. Apply
+        // the same rule to queued notifications so a delayed old approval or a
+        // payment during the 11th–13th policy gap never reappears in the ledger.
+        const approvals = result.items.filter((approval) => isEntryInPolicyPeriod(approval, activePolicy.periodKey));
+        const reviews = reviewResult.items.filter((review) => !review.occurredAt || isEntryInPolicyPeriod({ occurredAt: review.occurredAt }, activePolicy.periodKey));
+        const skippedReviewIds = reviewResult.items.filter((review) => !reviews.includes(review)).map((review) => review.id);
         let nextLedger = ledgerRef.current;
         const crossed = [] as Array<{ alerts: number[]; bucket: BudgetKey; category?: string }>;
-        for (const approval of result.items) {
+        for (const approval of approvals) {
           const applied = applyPayment(nextLedger, approval, { resident: budgetLimits.resident, studySpace: budgetLimits.studySpace }, categoryLimits, (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRulesRef.current));
           nextLedger = applied.ledger;
           if (applied.alerts.length) crossed.push({ alerts: applied.alerts, bucket: applied.entry.bucket ?? 'resident', category: applied.entry.category });
@@ -315,9 +321,10 @@ function App() {
         ledgerRef.current = nextLedger;
         setLedger(nextLedger);
         await acknowledgeApprovals(result.items);
+        if (skippedReviewIds.length) await SmsBridge.acknowledgePendingApprovalReviews({ ids: skippedReviewIds });
         if (autoCancelled.length) await SmsBridge.acknowledgePendingCancellations({ ids: autoCancelled.map((item) => item.id ?? '') });
-        if (reviewResult.items.length) {
-          const review = reviewResult.items[0];
+        if (reviews.length) {
+          const review = reviews[0];
           setApprovalReview(review);
           setManualPayment({ occurredAt: review.occurredAt ? manualDateTimeValue(new Date(review.occurredAt)) : manualDateTimeValue(), merchant: review.merchant ?? '', amount: review.amount?.toString() ?? '' });
           setManualClassification('auto');
@@ -329,7 +336,7 @@ function App() {
           if (!reviewResult.items.length) setPanel('cancel-review');
         }
         crossed.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
-        if (result.items.length || autoCancelled.length) show(`${result.items.length}건의 승인 결제를 자동 반영했습니다.${autoCancelled.length ? ` 취소 ${autoCancelled.length}건도 반영했습니다.` : ''}`);
+        if (approvals.length || autoCancelled.length) show(`${approvals.length}건의 승인 결제를 자동 반영했습니다.${autoCancelled.length ? ` 취소 ${autoCancelled.length}건도 반영했습니다.` : ''}`);
       } catch { /* Android approval notification bridge is optional in browser preview. */ }
       finally { processingApprovalsRef.current = false; }
     };
