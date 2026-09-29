@@ -53,4 +53,11 @@ describe('payment history', () => {
     render(<PaymentHistory entries={excluded} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
     expect(screen.getByText('사업 무관 제외')).toBeInTheDocument();
   });
+
+  it('makes a partial cancellation visible without hiding the remaining payment', () => {
+    const partial = [{ ...entries[0], id: 'partial', merchant: '부분 취소 결제', amount: 10000, cancelledAmount: 3000 }];
+    render(<PaymentHistory entries={partial} categoryNames={{ food: '식비' }} filterOptions={[{ key: 'food', label: '식비' }]} isEntryInActivePeriod={() => true} onOpen={() => undefined} />);
+    expect(screen.getByText('부분 취소 · 3,000원 취소')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /부분 취소 결제/ })).toBeInTheDocument();
+  });
 });
