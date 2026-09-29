@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { EvidenceExport } from './EvidenceExport';
+import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 
 vi.mock('../native/evidenceVault', () => ({
   loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
@@ -23,6 +24,13 @@ function StatefulEvidenceExport() {
 }
 
 describe('EvidenceExport', () => {
+  it('invalidates a statement raster cache after redaction or re-reading its rows', () => {
+    const base = { id: 'statement-1', section: 'statement' as const, statementRows: [{ id: 'row-1', date: '2026-09-20', time: '12:00:00', summary: '체크카드', withdrawal: 12000, deposit: 0, merchant: '개인 결제처' }] };
+    const original = evidenceRasterCacheKey(base, 'default');
+    expect(evidenceRasterCacheKey({ ...base, excludedStatementRowIds: ['row-1'] }, 'default')).not.toBe(original);
+    expect(evidenceRasterCacheKey({ ...base, statementRows: [{ ...base.statementRows[0], merchant: '다른 결제처' }] }, 'default')).not.toBe(original);
+  });
+
   it('shows receipt coverage before a submission is generated', () => {
     render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
     expect(screen.getByText('영수증 연결 확인')).toBeInTheDocument();
