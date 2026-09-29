@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { applyPayment, cancelPayment, createInitialLedger, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
 import { POLICY_MAX_LIMITS } from './budget';
 
@@ -91,6 +91,16 @@ describe('expense ledger', () => {
     expect(result.imported).toBe(0);
     expect(result.ledger.entries).toHaveLength(0);
     expect(result.replacedDemo).toBe(false);
+  });
+  it('imports only policy-period withdrawals from a bank statement as undecided expenses', () => {
+    const transactions = [
+      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', accountMasked: '6789', merchant: '카페', amount: 5000, transactionId: 'withdrawal', direction: 'withdrawal' as const, classification: { status: 'undecided' as const } },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:10:00+09:00', accountMasked: '6789', merchant: '지원금 입금', amount: 700000, transactionId: 'deposit', direction: 'deposit' as const, classification: { status: 'undecided' as const } },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-13T12:00:00+09:00', accountMasked: '6789', merchant: '기간 외 지출', amount: 5000, transactionId: 'outside', direction: 'withdrawal' as const, classification: { status: 'undecided' as const } },
+    ];
+    const result = importBankTransactions({ ...createInitialLedger(), entries: [] }, transactions, '6789', '2026-09');
+    expect(result).toMatchObject({ imported: 1, undecided: 1, skipped: 2 });
+    expect(result.ledger.entries).toEqual([expect.objectContaining({ merchant: '카페', status: 'undecided', cardLast4: '6789' })]);
   });
   it('round-trips the ledger through local storage', () => {
     const values = new Map<string, string>();
