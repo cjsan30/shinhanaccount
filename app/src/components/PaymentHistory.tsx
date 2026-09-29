@@ -45,7 +45,7 @@ export function PaymentHistory({ entries, categoryNames, filterOptions, isEntryI
         const date = localDateKey(entry.occurredAt);
         const showDate = date !== previousDate;
         previousDate = date;
-        const subtitle = entry.status === 'cancelled' ? '취소됨' : categoryNames[entry.category ?? ''] || '분류 없음';
+        const subtitle = entry.status === 'cancelled' ? '취소됨' : entry.status === 'excluded' ? '사업 무관 제외' : categoryNames[entry.category ?? ''] || '분류 없음';
         const outsidePeriod = !isEntryInActivePeriod(entry);
         return <div key={entry.id}>{showDate && <h3 className="payment-date">{displayDate(entry.occurredAt)}</h3>}<button className="payment-row" type="button" onClick={() => onOpen(entry)}><span className="payment-row__main"><strong>{displayMerchant(entry)}</strong><time>{displayTime(entry.occurredAt)}</time><b>{won(entry.amount)}</b></span><small>{subtitle}{outsidePeriod && <em>기간 외</em>}{isSuspectedDuplicate(entry) && <em className="duplicate-badge">중복 의심</em>}</small><CaretRight size={21} /></button></div>;
       })}

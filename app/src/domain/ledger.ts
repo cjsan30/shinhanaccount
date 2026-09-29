@@ -138,6 +138,16 @@ export function markAsUndecided(ledger: Ledger, entryId: string): Ledger {
       : candidate),
   };
 }
+export function excludeUndecided(ledger: Ledger, entryIds: string[]): Ledger {
+  const ids = new Set(entryIds);
+  if (!ids.size) return ledger;
+  return {
+    ...ledger,
+    entries: ledger.entries.map((entry) => ids.has(entry.id) && entry.status === 'undecided'
+      ? { ...entry, status: 'excluded', bucket: undefined, category: undefined }
+      : entry),
+  };
+}
 export function removeLedgerEntry(ledger: Ledger, entryId: string): Ledger {
   return { ...ledger, entries: ledger.entries.filter((entry) => entry.id !== entryId) };
 }
@@ -195,7 +205,7 @@ export function findSuspectedDuplicates(ledger: Ledger, payment: Pick<NativeAppr
 
 export function getHistoryEntries(ledger: Ledger, through?: Date) {
   return ledger.entries
-    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled' || entry.status === 'excluded') && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
     .slice()
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
 }
