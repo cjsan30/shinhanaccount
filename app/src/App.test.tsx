@@ -286,6 +286,23 @@ describe('app entry flows', () => {
     expect(screen.getByText('확인 필요 결제')).toBeInTheDocument();
   });
 
+  it('discards an incomplete approval review outside the confirmed period without showing a form', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
+      id: 'period-gap-review', cardLast4: '3741', occurredAt: '2026-10-12T12:00:00+09:00', merchant: '기간 밖 확인 결제', source: 'notification',
+    }] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    await waitFor(() => expect(smsBridge.acknowledgePendingApprovalReviews).toHaveBeenCalledWith({ ids: ['period-gap-review'] }));
+    expect(screen.queryByRole('heading', { name: '결제 정보 확인' })).not.toBeInTheDocument();
+  });
+
   it('automatically applies and acknowledges one unambiguous cancellation notice', async () => {
     const occurredAt = new Date().toISOString();
     const ledger = {
