@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { openLatestSavedFile, saveFile } from '../native/fileExport';
+import { bytesToBase64, openLatestSavedFile, saveFile } from '../native/fileExport';
 import { fitImageInsidePage } from '../features/evidence/imageLayout';
 import { loadEvidence, removeStoredEvidence, storeEvidence } from '../native/evidenceVault';
 import type { ReportEvidenceRecord, ReportEvidenceSection } from '../domain/reportEvidence';
@@ -11,6 +11,8 @@ import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
 import { formatStatementAmount, redactStatementRows, type StatementRow } from '../domain/statementRedaction';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 import { isDateInPolicyPeriod } from '../domain/budget';
+import { ReceiptOcr } from '../native/receiptOcr';
+import { findAutomaticReceiptMatch, parseReceiptOcr } from '../domain/receiptOcr';
 
 type EvidenceKind = 'image' | 'pdf';
 type Evidence = ReportEvidenceRecord & { file: File; kind: EvidenceKind; url?: string; pages?: number };
@@ -52,6 +54,17 @@ function toStatementRows(transactions: Awaited<ReturnType<typeof parseShinhanBan
 async function jpeg(canvas: HTMLCanvasElement, quality: number) {
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));
   return new Uint8Array(await blob.arrayBuffer());
+}
+async function recognizeReceiptDetails(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const maxEdge = 1600; const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  try {
+    const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('영수증 이미지를 준비하지 못했습니다.');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const bytes = await jpeg(canvas, .8); const result = await ReceiptOcr.recognize({ base64Data: bytesToBase64(bytes) });
+    return parseReceiptOcr(result.text);
+  } finally { bitmap.close(); canvas.width = 1; canvas.height = 1; }
 }
 async function compressImage(file: File, maxEdge: number, quality: number): Promise<RasterImage[]> {
   const bitmap = await createImageBitmap(file); const width = Math.min(bitmap.width, maxEdge); const result: RasterImage[] = [];
@@ -126,7 +139,7 @@ export function EvidenceExport({ reportEvidence, onReportEvidenceChange, summary
     const rejectedSize = individuallySafe.length !== supportedFiles.length;
     const rejectedTotal = valid.length !== individuallySafe.length;
     if (rejectedType || rejectedSize || rejectedTotal) setMessage(`일부 파일을 제외했습니다.${rejectedType ? ' JPG, PNG, WEBP, PDF 형식만 지원합니다.' : ''}${rejectedSize ? ' 파일 하나는 20MB 이하만 추가할 수 있습니다.' : ''}${rejectedTotal ? ' 제출 원본은 합계 120MB 이하만 추가할 수 있습니다.' : ''}`);
-    const additions = await Promise.all(valid.map(async (file) => { const base = { id: crypto.randomUUID(), stored: await storeEvidence(file), section, ...(section === 'receipt' ? { category: summary.buckets[0]?.items[0]?.category } : {}) } satisfies Omit<ReportEvidenceRecord, 'order'>; if (section !== 'statement' || kindOf(file) !== 'pdf') return base; try { return { ...base, statementRows: toStatementRows(await parseShinhanBankPdfExport(await file.arrayBuffer())), excludedStatementRowIds: [], statementParseFailed: false }; } catch { setMessage('입출금내역 표를 읽지 못했습니다. 원본 PDF는 제출서류에 포함하지 않으므로 비밀번호를 입력해 다시 읽어 주세요.'); return { ...base, statementParseFailed: true }; } }));
+const additions = await Promise.all(valid.map(async (file) => { const base = { id: crypto.randomUUID(), stored: await storeEvidence(file), section, ...(section === 'receipt' ? { category: summary.buckets[0]?.items[0]?.category } : {}) } satisfies Omit<ReportEvidenceRecord, 'order'>; if (section === 'receipt' && kindOf(file) === 'image') { try { const details = await recognizeReceiptDetails(file); const automatic = findAutomaticReceiptMatch(details, payments); return { ...base, ...details, ...(automatic ? { linkedEntryId: automatic.id, category: payments.find((payment) => payment.id === automatic.id)?.category } : {}) }; } catch { return base; } } if (section !== 'statement' || kindOf(file) !== 'pdf') return base; try { return { ...base, statementRows: toStatementRows(await parseShinhanBankPdfExport(await file.arrayBuffer())), excludedStatementRowIds: [], statementParseFailed: false }; } catch { setMessage('입출금내역 표를 읽지 못했습니다. 원본 PDF는 제출서류에 포함하지 않으므로 비밀번호를 입력해 다시 읽어 주세요.'); return { ...base, statementParseFailed: true }; } }));
     onReportEvidenceChange((current) => { const start = current.filter((item) => item.section === section).length; return [...current, ...additions.map((item, index) => ({ ...item, order: start + index }))]; });
   };
   const update = (id: string, patch: Partial<ReportEvidenceRecord>) => onReportEvidenceChange((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
