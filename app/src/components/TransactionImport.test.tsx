@@ -89,16 +89,15 @@ describe('transaction import', () => {
     expect(input).not.toBeNull();
     expect(input).toHaveAttribute('accept', expect.stringContaining('.xls'));
     expect(input?.getAttribute('accept')).toContain('.csv');
+    expect(container.textContent).toContain('신한카드 이용내역');
     expect(container.textContent).toContain('CSV');
     expect(container.textContent).toContain('신한카드 앱 열기');
-    const video = container.querySelector('video');
-    expect(video).toHaveAttribute('loop');
-    expect(video?.muted).toBe(true);
-    expect(video?.querySelector('source')).toHaveAttribute('src', '/onboarding-shinhan-solpay-excel-guide.mp4');
+    expect(container.querySelector('video')).toBeNull();
     act(() => { fireEvent.click(getByLabelText('계좌번호')); });
     expect(input).toHaveAttribute('accept', expect.stringContaining('.pdf'));
     expect(getByLabelText('계좌 끝 4자리')).toHaveValue('');
     expect(getByLabelText('PDF 비밀번호')).toHaveAttribute('type', 'password');
+    expect(container.textContent).toContain('신한은행 입출금내역');
   });
 
   it('clears the PDF password when the import type changes', () => {

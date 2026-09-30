@@ -44,9 +44,11 @@ export function DataIntegrityPanel({ ledger, periodKey, canUndoImport, onUndoImp
       <summary><strong>데이터 초기화</strong><span>선택한 범위만 삭제</span></summary>
       <div className="data-section__body data-integrity">
         <p>초기화 전에 암호화 백업을 권장합니다. 카드사·은행의 원본 내역과 기기 알림 권한은 지우지 않습니다.</p>
-        <label><input type="checkbox" checked={selected.includes('ledger')} onChange={() => toggle('ledger')} /> 결제 내역과 미정 지출</label>
-        <label><input type="checkbox" checked={selected.includes('rules')} onChange={() => toggle('rules')} /> 저장된 분류 규칙</label>
-        <label><input type="checkbox" checked={selected.includes('policy')} onChange={() => toggle('policy')} /> 확정·예약 정책</label>
+        <div className="data-reset-options">
+          <label><input aria-label="결제 내역과 미정 지출" type="checkbox" checked={selected.includes('ledger')} onChange={() => toggle('ledger')} /><span><strong>결제 내역과 미정 지출</strong><small>가져온 내역, 직접 등록한 지출, 분류 상태를 지웁니다.</small></span></label>
+          <label><input aria-label="저장된 분류 규칙" type="checkbox" checked={selected.includes('rules')} onChange={() => toggle('rules')} /><span><strong>저장된 분류 규칙</strong><small>상호명 자동 분류 규칙만 지웁니다.</small></span></label>
+          <label><input aria-label="확정·예약 정책" type="checkbox" checked={selected.includes('policy')} onChange={() => toggle('policy')} /><span><strong>확정·예약 정책</strong><small>현재와 다음 기간의 예산 정책을 지웁니다.</small></span></label>
+        </div>
         <button className="sheet-action danger-action" type="button" disabled={!selected.length} onClick={reset}>선택한 데이터 초기화</button>
       </div>
     </details>
