@@ -12,11 +12,11 @@ describe('expense ledger', () => {
     }, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'food' });
   });
-  it('separates spending by the policy period beginning on the 14th', () => {
+  it('separates spending by the policy period beginning on the 15th', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
     const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     const gap = applyPayment(first.ledger, { ...wellstory5000, occurredAt: '2026-08-11T12:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
-    const second = applyPayment(gap.ledger, { ...wellstory5000, occurredAt: '2026-08-14T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const second = applyPayment(gap.ledger, { ...wellstory5000, occurredAt: '2026-08-15T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
     expect(getRecentEntries(second.ledger, '2026-07').map((entry) => entry.occurredAt)).toEqual(['2026-08-10T23:59:00+09:00']);
@@ -180,9 +180,9 @@ describe('expense ledger', () => {
 it('shows recent payments by occurrence time instead of insertion order', () => {
   const ledger = createInitialLedger();
   ledger.entries = [
-    { id: 'older', cardLast4: '3741', occurredAt: '2026-08-14T12:00:00+09:00', amount: 1, merchant: 'older', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'older', cardLast4: '3741', occurredAt: '2026-08-15T12:00:00+09:00', amount: 1, merchant: 'older', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
     { id: 'newer', cardLast4: '3741', occurredAt: '2026-08-18T12:00:00+09:00', amount: 1, merchant: 'newer', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
-    { id: 'middle', cardLast4: '3741', occurredAt: '2026-08-15T12:00:00+09:00', amount: 1, merchant: 'middle', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'middle', cardLast4: '3741', occurredAt: '2026-08-16T12:00:00+09:00', amount: 1, merchant: 'middle', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
   ];
   expect(getRecentEntries(ledger, '2026-08').map((entry) => entry.id)).toEqual(['newer', 'middle', 'older']);
 });
