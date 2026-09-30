@@ -1,6 +1,7 @@
 package io.github.cjsan30.shinhanhae.calculator;
 
 import android.content.ContentValues;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
@@ -53,6 +54,26 @@ public class FileExportPlugin extends Plugin {
         } catch (Exception error) {
             if (uri != null) getContext().getContentResolver().delete(uri, null, null);
             call.reject("파일을 저장하지 못했습니다.", error);
+        }
+    }
+
+    @com.getcapacitor.PluginMethod
+    public void open(PluginCall call) {
+        String uriValue = call.getString("uri");
+        String mimeType = call.getString("mimeType", "application/octet-stream");
+        if (uriValue == null) {
+            call.reject("열 파일 정보가 없습니다.");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(Uri.parse(uriValue), mimeType)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(Intent.createChooser(intent, "파일 미리보기"));
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("PDF를 열 수 있는 앱을 찾지 못했습니다.", error);
         }
     }
 }

@@ -2,9 +2,11 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 type FileExportPlugin = {
   save(options: { fileName: string; base64Data: string; mimeType: string }): Promise<{ uri: string; fileName: string; relativePath: string }>;
+  open(options: { uri: string; mimeType: string }): Promise<void>;
 };
 
 const FileExport = registerPlugin<FileExportPlugin>('FileExport');
+let latestNativeUri: string | null = null;
 
 export function bytesToBase64(bytes: Uint8Array) {
   let value = '';
@@ -32,5 +34,19 @@ export async function saveFile(fileName: string, bytes: Uint8Array, mimeType: st
     return { location: 'download' as const, fileName: uniqueName, relativePath: 'Downloads' };
   }
   const result = await FileExport.save({ fileName: uniqueName, base64Data: bytesToBase64(bytes), mimeType });
+  latestNativeUri = result.uri;
   return { location: 'downloads' as const, ...result };
+}
+
+export async function openSavedFile(uri: string, mimeType: string) {
+  if (!Capacitor.isNativePlatform()) {
+    window.open(uri, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  await FileExport.open({ uri, mimeType });
+}
+
+/** Opens the last file saved during this app session; browser builds use its Blob URL fallback. */
+export function openLatestSavedFile(browserFallbackUrl: string, mimeType: string) {
+  return openSavedFile(Capacitor.isNativePlatform() && latestNativeUri ? latestNativeUri : browserFallbackUrl, mimeType);
 }

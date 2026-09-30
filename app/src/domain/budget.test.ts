@@ -9,16 +9,17 @@ import {
 } from './budget';
 
 describe('policy period', () => {
-  it('runs from the 14th through the 10th of the next month in Korea time', () => {
-    expect(getPolicyPeriodKey(new Date('2026-08-13T14:59:59.000Z'))).toBe('2026-07');
-    expect(getPolicyPeriodKey(new Date('2026-08-13T15:00:00.000Z'))).toBe('2026-08');
+  it('runs from the 15th through the 10th of the next month in Korea time', () => {
+    expect(getPolicyPeriodKey(new Date('2026-08-14T14:59:59.000Z'))).toBe('2026-07');
+    expect(getPolicyPeriodKey(new Date('2026-08-14T15:00:00.000Z'))).toBe('2026-08');
     expect(isDateInPolicyPeriod(new Date('2026-09-10T14:59:59.000Z'), '2026-08')).toBe(true);
     expect(isDateInPolicyPeriod(new Date('2026-09-10T15:00:00.000Z'), '2026-08')).toBe(false);
   });
 
-  it('keeps the 11th through the 13th outside every policy period', () => {
+  it('keeps the 11th through the 14th outside every policy period', () => {
     expect(isDateInPolicyPeriod(new Date('2026-08-11T12:00:00+09:00'))).toBe(false);
     expect(isDateInPolicyPeriod(new Date('2026-08-13T23:59:59+09:00'))).toBe(false);
+    expect(isDateInPolicyPeriod(new Date('2026-08-14T23:59:59+09:00'))).toBe(false);
   });
 
   it('uses December of the previous year before January 10th', () => {
