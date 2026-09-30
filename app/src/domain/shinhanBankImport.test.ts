@@ -36,4 +36,11 @@ describe('Shinhan Bank PDF import', () => {
     ]);
     expect(row).toMatchObject({ direction: 'deposit', amount: 3900 });
   });
+  it('does not concatenate adjacent amount cells into a false large withdrawal', () => {
+    const [row] = parseShinhanBankPdfTable([
+      { text: '20260916', x: 37, y: 500 }, { text: '11:33:03', x: 107, y: 501 }, { text: '신한카드', x: 170, y: 500 },
+      { text: '0', x: 251, y: 500 }, { text: '640', x: 346, y: 500 }, { text: '신한할인캐쉬백', x: 361, y: 500 }, { text: '698,540', x: 466, y: 500 },
+    ]);
+    expect(row).toMatchObject({ direction: 'deposit', amount: 640, merchant: '신한할인캐쉬백', balance: 698540 });
+  });
 });
