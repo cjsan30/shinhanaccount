@@ -107,14 +107,24 @@ type PdfCell = { text: string; x: number; y: number };
 // and then read the fixed column bands.
 export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransaction[] {
   const accountMasked = cells.find((cell) => /\d{10,}/.test(cell.text))?.text ?? '';
-  const grouped = new Map<number, PdfCell[]>();
-  for (const cell of cells) { const key = Math.round(cell.y); grouped.set(key, [...(grouped.get(key) ?? []), cell]); }
+  // PDF text items in one visual row can differ by one or two pixels. Cluster
+  // them with a tolerance instead of concatenating nearby table rows.
+  const grouped: Array<{ y: number; cells: PdfCell[] }> = [];
+  for (const cell of [...cells].sort((left, right) => right.y - left.y)) {
+    const group = grouped.find((candidate) => Math.abs(candidate.y - cell.y) <= 2);
+    if (group) group.cells.push(cell); else grouped.push({ y: cell.y, cells: [cell] });
+  }
   const rows: ImportedBankTransaction[] = [];
-  for (const [, row] of grouped) {
-    const sorted = [...row].sort((left, right) => left.x - right.x); const date = sorted.find((cell) => /^20\d{6}$/.test(cell.text))?.text; const time = sorted.find((cell) => /^\d{2}:\d{2}:\d{2}$/.test(cell.text))?.text;
+  for (const group of grouped) {
+    const sorted = [...group.cells].sort((left, right) => left.x - right.x); const date = sorted.find((cell) => /^20\d{6}$/.test(cell.text))?.text; const time = sorted.find((cell) => /^\d{2}:\d{2}:\d{2}$/.test(cell.text))?.text;
     if (!date || !time) continue;
     const inBand = (from: number, to: number) => sorted.filter((cell) => cell.x >= from && cell.x < to).map((cell) => cell.text).join(' ').trim();
-    const description = inBand(149, 245); const withdrawal = parseAmount(inBand(245, 335)); const deposit = parseAmount(inBand(335, 350)); const merchant = inBand(350, 420) || description || '입출금 내역'; const balance = parseAmount(inBand(420, 505)); const branch = inBand(505, Number.POSITIVE_INFINITY);
+    const amountAt = (from: number, to: number, target: number) => sorted
+      .filter((cell) => cell.x >= from && cell.x < to)
+      .map((cell) => ({ value: parseAmount(cell.text), distance: Math.abs(cell.x - target) }))
+      .filter((cell) => Number.isFinite(cell.value))
+      .sort((left, right) => left.distance - right.distance)[0]?.value ?? 0;
+    const description = inBand(149, 245); const withdrawal = amountAt(245, 335, 270); const deposit = amountAt(335, 360, 346); const merchant = inBand(360, 420) || description || '입출금 내역'; const balance = amountAt(420, 505, 466); const branch = inBand(505, Number.POSITIVE_INFINITY);
     const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
     if (!amount) continue;
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
