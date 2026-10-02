@@ -1,5 +1,5 @@
 import { classifyPayment, type PaymentClassification } from './sms';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 export type ImportedCardTransaction = { occurredAt: string; cardMasked: string; cardIdentity?: string; merchant: string; approvalNumber: string; amount: number; paymentStatus: string; cancellationStatus: string; classification: PaymentClassification };
 const requiredHeaders = ['거래일', '이용카드', '가맹점명', '승인번호', '금액', '매입구분', '취소상태'];
@@ -46,7 +46,7 @@ export function parseShinhanCardPdfText(text: string): ImportedCardTransaction[]
 }
 
 export async function parseShinhanCardPdfExport(data: ArrayBuffer): Promise<ImportedCardTransaction[]> {
-  const pdfjs = await import('pdfjs-dist'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const task = pdfjs.getDocument({ data: new Uint8Array(data) }); const source = await task.promise;
   try {
     const pages = await Promise.all(Array.from({ length: source.numPages }, async (_, index) => {
