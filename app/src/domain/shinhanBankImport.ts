@@ -12,6 +12,9 @@ export type ImportedBankTransaction = {
   amount: number;
   transactionId: string;
   direction: 'withdrawal' | 'deposit';
+  /** 원본 PDF를 유지한 채 제출용으로 가릴 수 있게 하는 원본 좌표다. */
+  sourcePage?: number;
+  sourceY?: number;
   classification: PaymentClassification;
 };
 
@@ -123,13 +126,16 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
     const amountAt = (from: number, to: number, target: number) => sorted
       .filter((cell) => cell.x >= from && cell.x < to)
       .map((cell) => ({ value: parseAmount(cell.text), distance: Math.abs(cell.x - target) }))
-      .filter((cell) => Number.isFinite(cell.value))
+      .filter((cell) => Number.isFinite(cell.value) && cell.value > 0)
       .sort((left, right) => left.distance - right.distance)[0]?.value ?? 0;
-    const description = inBand(149, 245); const withdrawal = amountAt(245, 335, 270); const deposit = amountAt(335, 360, 346); const merchant = inBand(360, 420) || description || '입출금 내역'; const balance = amountAt(420, 505, 466); const branch = inBand(505, Number.POSITIVE_INFINITY);
+    // Amounts are right-aligned: a large deposit can start near x=313 while
+    // withdrawals stay left of x=300. Keeping the bands disjoint prevents a
+    // deposit (e.g. support payment) from becoming a false withdrawal.
+    const description = inBand(149, 245); const withdrawal = amountAt(245, 300, 270); const deposit = amountAt(300, 360, 340); const merchant = inBand(360, 420) || description || '입출금 내역'; const balance = amountAt(420, 505, 466); const branch = inBand(505, Number.POSITIVE_INFINITY);
     const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
     if (!amount) continue;
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
-    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, summary: description, ...(balance ? { balance } : {}), ...(branch ? { branch } : {}), amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
+    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, summary: description, ...(balance ? { balance } : {}), ...(branch ? { branch } : {}), amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, sourcePage: group.page, sourceY: group.y, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
   }
   if (!rows.length) throw new Error('신한은행 PDF에서 입출금 표 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
   return rows;
@@ -143,6 +149,6 @@ export async function parseShinhanBankPdfExport(data: ArrayBuffer, password?: st
       const content = await (await source.getPage(index + 1)).getTextContent();
       return content.items.flatMap((item) => 'str' in item && item.str ? [{ text: item.str, x: Number(item.transform[4]), y: Number(item.transform[5]), page: index }] : []);
     }));
-    return parseShinhanBankPdfTable(pages.flat());
+    return parseShinhanBankPdfTable(pages.flat()).sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
   } finally { await task.destroy(); }
 }

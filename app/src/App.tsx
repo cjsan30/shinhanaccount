@@ -110,6 +110,7 @@ function App() {
   const [undoImportLedger, setUndoImportLedger] = useState<Ledger | null>(null);
   const [importSafety, setImportSafety] = useState<ReturnType<typeof filterTransactionsForConfiguredCard> | null>(null);
   const [policyBook, setPolicyBook] = useState(initialState.policyBook);
+  const policyBookRef = useRef(policyBook);
   const [storageReady, setStorageReady] = useState(!nativePlatform);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [forceStopRecovery, setForceStopRecovery] = useState(false);
@@ -142,6 +143,7 @@ function App() {
     setBudgetAlertsEnabled(budget.granted);
   }, [nativePlatform]);
   useEffect(() => { ledgerRef.current = ledger; }, [ledger]);
+  useEffect(() => { policyBookRef.current = policyBook; }, [policyBook]);
   useEffect(() => { reportEvidenceRef.current = reportEvidence; }, [reportEvidence]);
   useEffect(() => { verificationRef.current = verification; }, [verification]);
   useEffect(() => {
@@ -150,6 +152,7 @@ function App() {
       if (!active) return;
       ledgerRef.current = state.ledger;
       setLedger(state.ledger);
+      policyBookRef.current = state.policyBook;
       setPolicyBook(state.policyBook);
       setMerchantRules(state.merchantRules);
       setReportEvidence(state.reportEvidence ?? []);
@@ -323,7 +326,7 @@ function App() {
         }
         await persistAppState(window.localStorage, {
           ledger: nextLedger,
-          policyBook,
+          policyBook: policyBookRef.current,
           merchantRules: merchantRulesRef.current,
           reportEvidence: reportEvidenceRef.current,
           verification: verificationRef.current,
@@ -578,8 +581,11 @@ function App() {
     if (issues.length) { show(issues[0]); return; }
     const periodKey = applyTo === 'current' ? activePolicy.periodKey : getNextPolicyPeriodKey(now);
     const nextPolicyBook = confirmPolicyForPeriod(policyBook, policyDraft, periodKey);
+    // Notification handling can finish while this screen is open. Point every
+    // concurrent persistence path to the confirmed book before awaiting I/O.
+    policyBookRef.current = nextPolicyBook;
     try {
-      await persistAppState(window.localStorage, { ledger, policyBook: nextPolicyBook, merchantRules, reportEvidence: reportEvidenceRef.current, verification });
+      await persistAppState(window.localStorage, { ledger: ledgerRef.current, policyBook: nextPolicyBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
     } catch {
       show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
       return;
