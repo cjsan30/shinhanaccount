@@ -57,6 +57,11 @@ describe('policy text import', () => {
     expect(validatePolicyAgainstProfile(policy)).toEqual([]);
   });
 
+  it('reads space-separated plain text for both resident and study-space items', () => {
+    const policy = parsePolicyText('식비 200000원 교육비 160000원 교통비 140000원 카페 200000원');
+    expect(policy.plans).toMatchObject({ food: 200000, education: 160000, transport: 140000, cafe: 200000 });
+  });
+
   it('does not let a malformed negative plan or custom item bypass a policy total', () => {
     const policy = {
       ...parsePolicyText(''),

@@ -55,7 +55,7 @@ const fields: Array<[PolicyItem, RegExp]> = [
   ['education', /교육비[\s\S]{0,80}?([\d,]+)\s*원?/],
   ['transport', /교통비[\s\S]{0,80}?([\d,]+)\s*원?/],
   ['studyCafe', /스터디카페[\s\S]{0,80}?([\d,]+)\s*원?/],
-  ['cafe', /(?:^|\n)카페[\s\S]{0,80}?([\d,]+)\s*원?/m],
+  ['cafe', /(?:^|\s)카페[\s\S]{0,80}?([\d,]+)\s*원?/m],
   ['readingRoom', /독서실[\s\S]{0,80}?([\d,]+)\s*원?/],
 ];
 
