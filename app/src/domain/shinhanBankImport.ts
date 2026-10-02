@@ -1,5 +1,7 @@
 import { classifyPayment, type PaymentClassification } from './sms';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// Android System WebView can lag modern browsers. The legacy build ships the
+// Map.getOrInsertComputed polyfill required by protected Shinhan PDFs.
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 export type ImportedBankTransaction = {
   source: 'bankCsv';
@@ -142,7 +144,7 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
 }
 
 export async function parseShinhanBankPdfExport(data: ArrayBuffer, password?: string): Promise<ImportedBankTransaction[]> {
-  const pdfjs = await import('pdfjs-dist'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const task = pdfjs.getDocument({ data: new Uint8Array(data), password: password || undefined }); const source = await task.promise;
   try {
     const pages = await Promise.all(Array.from({ length: source.numPages }, async (_, index) => {
