@@ -43,6 +43,13 @@ describe('Shinhan Bank PDF import', () => {
     ]);
     expect(row).toMatchObject({ direction: 'deposit', amount: 640, merchant: '신한할인캐쉬백', balance: 698540 });
   });
+  it('does not let a nearer zero placeholder hide a valid withdrawal amount', () => {
+    const [row] = parseShinhanBankPdfTable([
+      { text: '20260927', x: 37, y: 500 }, { text: '17:42:18', x: 107, y: 500 }, { text: '체크카드', x: 170, y: 500 },
+      { text: '190,000', x: 245, y: 500 }, { text: ' ', x: 284, y: 500 }, { text: '0', x: 346, y: 500 }, { text: '네이버페이', x: 361, y: 500 },
+    ]);
+    expect(row).toMatchObject({ direction: 'withdrawal', amount: 190000, merchant: '네이버페이', sourcePage: 0, sourceY: 500 });
+  });
   it('keeps rows from separate PDF pages apart even when their y coordinates match', () => {
     const rows = parseShinhanBankPdfTable([
       { text: '20260916', x: 37, y: 765, page: 0 }, { text: '11:33:07', x: 107, y: 765, page: 0 }, { text: '체크카드', x: 170, y: 765, page: 0 }, { text: '2,100', x: 257, y: 765, page: 0 }, { text: '0', x: 346, y: 765, page: 0 }, { text: '코레일', x: 361, y: 765, page: 0 },

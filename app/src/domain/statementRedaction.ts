@@ -8,6 +8,8 @@ export type StatementRow = {
   merchant: string;
   balance?: number;
   branch?: string;
+  sourcePage?: number;
+  sourceY?: number;
 };
 
 export type RedactedStatementRow = StatementRow & {
