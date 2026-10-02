@@ -44,6 +44,10 @@ describe('transaction import', () => {
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
     fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
     expect(await screen.findByText(/1건의 기간 내 출금 내역/)).toBeInTheDocument();
+    expect(screen.getByText('파일에서 읽은 3건')).toBeInTheDocument();
+    expect(screen.getByText('정책 기간 내 1건')).toBeInTheDocument();
+    expect(screen.getByText('기간 외 제외 1건')).toBeInTheDocument();
+    expect(screen.getByText('입금 제외 1건')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
     expect(onImport).toHaveBeenCalledWith(expect.objectContaining({ source: 'account', identifierLast4: '6789', excludedOutsidePeriod: 1, bankTransactions: [expect.objectContaining({ merchant: '현재 출금', direction: 'withdrawal' })] }));
   });
@@ -80,6 +84,16 @@ describe('transaction import', () => {
     fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
     expect(await screen.findByText(/선택한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다/)).toBeInTheDocument();
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('선택한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다'));
+  });
+
+  it('shows a clear Korean message for a protected PDF without a password', async () => {
+    mocks.parseBankPdf.mockRejectedValue(new Error('No password given'));
+    const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
+    fireEvent.click(getByLabelText('계좌번호'));
+    fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText('암호화된 PDF입니다. 비밀번호를 입력한 뒤 다시 읽어 주세요.')).toBeInTheDocument();
   });
 
   it('switches accepted formats without changing the configured notification card', () => {

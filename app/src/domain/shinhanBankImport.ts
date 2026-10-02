@@ -100,7 +100,7 @@ export function parseShinhanBankPdfText(text: string): ImportedBankTransaction[]
   return rows;
 }
 
-type PdfCell = { text: string; x: number; y: number };
+type PdfCell = { text: string; x: number; y: number; page?: number };
 
 // Shinhan Bank's statement is a real table, not a prose PDF. Values on one
 // visual row are separate PDF text items, so rebuild them by their y position
@@ -109,10 +109,11 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
   const accountMasked = cells.find((cell) => /\d{10,}/.test(cell.text))?.text ?? '';
   // PDF text items in one visual row can differ by one or two pixels. Cluster
   // them with a tolerance instead of concatenating nearby table rows.
-  const grouped: Array<{ y: number; cells: PdfCell[] }> = [];
+  const grouped: Array<{ y: number; page: number; cells: PdfCell[] }> = [];
   for (const cell of [...cells].sort((left, right) => right.y - left.y)) {
-    const group = grouped.find((candidate) => Math.abs(candidate.y - cell.y) <= 2);
-    if (group) group.cells.push(cell); else grouped.push({ y: cell.y, cells: [cell] });
+    const page = cell.page ?? 0;
+    const group = grouped.find((candidate) => candidate.page === page && Math.abs(candidate.y - cell.y) <= 2);
+    if (group) group.cells.push(cell); else grouped.push({ y: cell.y, page, cells: [cell] });
   }
   const rows: ImportedBankTransaction[] = [];
   for (const group of grouped) {
@@ -140,7 +141,7 @@ export async function parseShinhanBankPdfExport(data: ArrayBuffer, password?: st
   try {
     const pages = await Promise.all(Array.from({ length: source.numPages }, async (_, index) => {
       const content = await (await source.getPage(index + 1)).getTextContent();
-      return content.items.flatMap((item) => 'str' in item && item.str ? [{ text: item.str, x: Number(item.transform[4]), y: Number(item.transform[5]) }] : []);
+      return content.items.flatMap((item) => 'str' in item && item.str ? [{ text: item.str, x: Number(item.transform[4]), y: Number(item.transform[5]), page: index }] : []);
     }));
     return parseShinhanBankPdfTable(pages.flat());
   } finally { await task.destroy(); }
