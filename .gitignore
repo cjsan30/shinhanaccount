@@ -21,6 +21,7 @@ app/android/.gradle-cache*/
 app/.gradle-user/
 app/android/.gradle-user/
 app/.gradle-user-home/
+app/.android-user-home*/
 app/tmp/
 tmp/
 output/

@@ -49,6 +49,7 @@ import { loadAccessibilityPreferences, saveAccessibilityPreferences, type Access
 import { AccessibilitySettings } from './components/AccessibilitySettings';
 import { createVerificationState, type VerificationState } from './domain/verification';
 import './App.css';
+import './AppFixes.css';
 import './AppOverrides.css';
 
 const EvidenceExport = lazy(() => import('./components/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
@@ -571,12 +572,19 @@ function App() {
   };
   const updatePolicyProfile = (profileId: SupportProfileId) => setPolicyDraft((current) => current ? { ...current, profileId } : current);
   const updatePolicyAlertTarget = (item: PolicyItem) => setPolicyDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
-  const confirmPolicy = (applyTo: 'current' | 'next') => {
+  const confirmPolicy = async (applyTo: 'current' | 'next') => {
     if (!policyDraft) return;
     const issues = validatePolicyAgainstProfile(policyDraft);
     if (issues.length) { show(issues[0]); return; }
     const periodKey = applyTo === 'current' ? activePolicy.periodKey : getNextPolicyPeriodKey(now);
-    setPolicyBook((current) => confirmPolicyForPeriod(current, policyDraft, periodKey));
+    const nextPolicyBook = confirmPolicyForPeriod(policyBook, policyDraft, periodKey);
+    try {
+      await persistAppState(window.localStorage, { ledger, policyBook: nextPolicyBook, merchantRules, reportEvidence: reportEvidenceRef.current, verification });
+    } catch {
+      show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
+      return;
+    }
+    setPolicyBook(nextPolicyBook);
     setPolicyDraft(null);
     setPolicyText('');
     show(applyTo === 'current'
