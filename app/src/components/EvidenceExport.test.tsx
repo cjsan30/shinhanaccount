@@ -76,6 +76,29 @@ describe('EvidenceExport', () => {
     expect(await screen.findByText(/영수증이 연결되지 않은 결제 1건/)).toBeInTheDocument();
   });
 
+  it('uses OCR date only to show same-day payments and requires one user click to link', async () => {
+    const entries = [
+      { id: 'same-day', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '같은 날 결제', amount: 10000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' },
+      { id: 'other-day', cardLast4: '1234', occurredAt: '2026-09-21T10:00:00+09:00', merchant: '다른 날 결제', amount: 10000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' },
+    ];
+    render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'receipt-date-only', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', receiptOcrStatus: 'ambiguous' }]} />);
+
+    expect(await screen.findByText(/2026-09-20 결제 1건/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /같은 날 결제/ })).toBeInTheDocument();
+    expect(screen.queryByText('다른 날 결제')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /같은 날 결제/ }));
+    expect(await screen.findByText('결제 연결 완료')).toBeInTheDocument();
+  });
+
+  it('opens a receipt image in a larger preview from its thumbnail', async () => {
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'receipt-preview', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, section: 'receipt', order: 0 }]} />);
+    const thumbnail = await screen.findByRole('button', { name: '영수증 1 크게 보기' });
+    fireEvent.click(thumbnail);
+    expect(screen.getByRole('dialog', { name: '영수증 크게 보기' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '영수증 미리보기 닫기' }));
+    expect(screen.queryByRole('dialog', { name: '영수증 크게 보기' })).not.toBeInTheDocument();
+  });
+
   it('turns a parsed bank statement into a selectable redaction table', async () => {
     const { container } = render(<StatefulEvidenceExport />);
     const statementInput = container.querySelector('input[type="file"]') as HTMLInputElement;

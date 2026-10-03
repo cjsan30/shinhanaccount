@@ -21,12 +21,14 @@ app/android/.gradle-cache*/
 app/.gradle-user/
 app/android/.gradle-user/
 app/.gradle-user-home/
+.gradle-user-home/
 app/.android-user-home*/
 app/tmp/
 tmp/
 output/
 audit/
 tmp-widget-*.png
+physical-*.png
 
 # Local review notes, source references, and generated app-template files
 app/README.md

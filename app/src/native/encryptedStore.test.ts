@@ -23,6 +23,7 @@ function memoryDatabase() {
   const run = vi.fn(async (sql: string, params: unknown[] = []) => {
     const settingInsert = /INSERT OR REPLACE INTO app_settings/.test(sql);
     if (settingInsert) { settings.set(String(params[0]), String(params[1])); return {}; }
+    if (/DELETE FROM app_settings WHERE key/.test(sql)) { settings.delete(String(params[0])); return {}; }
     const table = /(ledger_entries|policy_versions|merchant_rules|app_state)/.exec(sql)?.[1];
     if (!table) return {};
     const target = tables.get(table)!;
@@ -58,6 +59,17 @@ describe('encrypted app state', () => {
     expect(secondWrites).toHaveLength(1);
     expect(db.beginTransaction).toHaveBeenCalledTimes(2);
     expect(db.commitTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes obsolete non-applicant mode when a current-period plan is confirmed', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
+    const { saveEncryptedAppState, loadEncryptedAppState } = await import('./encryptedStore');
+    const base = { ledger: createEmptyLedger(), merchantRules: [], reportEvidence: [] };
+    await saveEncryptedAppState({ ...base, policyBook: { versions: [], mode: 'not-applicant' } });
+    await saveEncryptedAppState({ ...base, policyBook: { versions: [{ periodKey: '2026-10', confirmedAt: '2026-10-04T00:00:00.000Z', sourceText: '', plans: { housing: 500000, food: 0, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] } });
+
+    expect(db.settings.has('policy-mode')).toBe(false);
+    await expect(loadEncryptedAppState()).resolves.toMatchObject({ policyBook: { versions: [{ periodKey: '2026-10' }] } });
   });
 
   it('does not create a database or fall back to plaintext outside native platforms', async () => {
