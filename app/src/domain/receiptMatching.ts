@@ -3,6 +3,12 @@ export type ReceiptDetails = { date?: string; amount?: number; merchant?: string
 export type ReceiptCandidate = { payment: ReceiptMatchPayment; score: number; reason: string };
 
 const koreanDate = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
+
+/** The receipt-link screen intentionally narrows choices by calendar day only.
+ * It never selects a payment on the user's behalf. */
+export function paymentDateInKorea(payment: Pick<ReceiptMatchPayment, 'occurredAt'>) {
+  return koreanDate(payment.occurredAt);
+}
 const normalized = (value = '') => value.toLowerCase().replace(/[\s().,㈜*]/g, '');
 
 export function findReceiptCandidates(receipt: ReceiptDetails, payments: ReceiptMatchPayment[], midnightBoundaryHours = 3): ReceiptCandidate[] {

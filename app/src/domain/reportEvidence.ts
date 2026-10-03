@@ -12,9 +12,9 @@ export type ReportEvidenceRecord = {
   receiptDate?: string;
   receiptAmount?: number;
   receiptMerchant?: string;
-  /** OCR의 날짜·금액이 하나의 결제와만 일치해 자동 연결된 경우다. */
+  /** 이전 버전의 자동 연결 표식. 새 연결은 반드시 사용자가 결제를 선택한다. */
   receiptAutoLinked?: boolean;
-  /** 영수증을 추가했을 때의 자동 읽기 결과. 실패·중복 여부를 사용자가 바로 확인할 수 있다. */
+  /** 영수증에서 결제 날짜를 읽은 결과. 결제 연결은 항상 사용자가 확정한다. */
   receiptOcrStatus?: 'linked' | 'ambiguous' | 'needs-input' | 'failed';
   receiptOcrMessage?: string;
   statementRows?: StatementRow[];

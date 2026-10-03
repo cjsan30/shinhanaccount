@@ -70,6 +70,10 @@ async function writeRows(db: DatabaseConnection, next: NormalizedStateRows, prev
   try {
     // `run` starts its own transaction by default. All statements here must
     // opt out because writeRows already owns the atomic transaction.
+    // Settings are a complete snapshot. In particular, a user can move from
+    // non-applicant mode back to a confirmed plan; leaving the old
+    // `policy-mode` key behind makes the plan look empty after a restart.
+    if (previous) for (const key of previous.settings.keys()) if (!next.settings.has(key)) await db.run('DELETE FROM app_settings WHERE key = ?;', [key], false);
     for (const [key, value] of next.settings) await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?);', [key, value], false);
     if (previous) {
       await updateRows(db, 'ledger_entries', previous.ledgerEntries, next.ledgerEntries);
