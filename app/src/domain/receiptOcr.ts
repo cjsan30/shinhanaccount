@@ -2,10 +2,43 @@ import type { ReceiptDetails, ReceiptMatchPayment } from './receiptMatching';
 
 const cleanAmount = (value: string) => Number(value.replace(/[^0-9]/g, ''));
 
+export function isValidReceiptDate(value: string | undefined): value is string {
+  const match = value?.match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function formatDate(year: string | undefined, month: string, day: string, fallbackYear: number) {
+  const result = `${year ?? fallbackYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  return isValidReceiptDate(result) ? result : undefined;
+}
+
+function receiptDateFromText(text: string, fallbackYear: number) {
+  const candidates = [...text.matchAll(/(?<!\d)(20\d{2})\s*(?:[./-]|년)\s*(\d{1,2})\s*(?:[./-]|월)\s*(\d{1,2})(?:\s*일)?/g)]
+    .map((match) => {
+      const date = formatDate(match[1], match[2], match[3], fallbackYear);
+      const line = text.slice(text.lastIndexOf('\n', match.index) + 1, text.indexOf('\n', match.index) < 0 ? text.length : text.indexOf('\n', match.index));
+      const nearby = text.slice(Math.max(0, (match.index ?? 0) - 24), (match.index ?? 0) + match[0].length + 24);
+      const paymentLabel = /승\s*인\s*일\s*시|결\s*제\s*일\s*시|매\s*출\s*일|거\s*래\s*일\s*시|결\s*제\s*일/.test(nearby);
+      const nonPaymentDate = /쿠폰|유효|행사|적립|발행|만료|기간/.test(line);
+      return { date, score: paymentLabel ? 2 : nonPaymentDate ? -1 : 1 };
+    })
+    .filter((candidate): candidate is { date: string; score: number } => Boolean(candidate.date) && candidate.score >= 0)
+    .sort((left, right) => right.score - left.score);
+  if (candidates.length) return candidates[0].date;
+
+  // Some receipt printers omit the year, but accept the abbreviated form only
+  // when a payment-date label is present. This prevents barcode/order digits
+  // from becoming a fabricated date.
+  const labelledShort = text.match(/(?:승\s*인\s*일\s*시|결\s*제\s*일\s*시|매\s*출\s*일|거\s*래\s*일\s*시|결\s*제\s*일)[^\n\d]{0,12}(\d{1,2})\s*(?:[./-]|월|\s+)\s*(\d{1,2})(?:\s*일)?/);
+  return labelledShort ? formatDate(undefined, labelledShort[1], labelledShort[2], fallbackYear) : undefined;
+}
+
 export function parseReceiptOcr(text: string, year = new Date().getFullYear()): ReceiptDetails {
   const normalized = text.replace(/\r/g, '\n');
-  const dateMatch = normalized.match(/(?:(20\d{2})\s*(?:[./-]|년)\s*)?(\d{1,2})\s*(?:[./-]|월|\s+)\s*(\d{1,2})(?:\s*일)?/);
-  const date = dateMatch ? `${dateMatch[1] ?? year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : undefined;
+  const date = receiptDateFromText(normalized, year);
   // ML Kit can omit the trailing "원" and add spaces between Korean glyphs.
   // Semantic labels are stronger evidence than a bare number: a subtotal can
   // exceed the final payment amount on a receipt.

@@ -8,7 +8,7 @@ describe('receipt OCR extraction', () => {
 
   it('extracts Korean and space-separated receipt dates', () => {
     expect(parseReceiptOcr('2026년 9월 28일\n결제 합계 2,700원')).toEqual({ date: '2026-09-28', amount: 2700 });
-    expect(parseReceiptOcr('09 28\n승인 금액: 1,230원', 2026)).toEqual({ date: '2026-09-28', amount: 1230 });
+    expect(parseReceiptOcr('승인일시 09 28\n승인 금액: 1,230원', 2026)).toEqual({ date: '2026-09-28', amount: 1230 });
   });
 
   it('uses a final payment label even when the receipt has a larger subtotal', () => {
@@ -19,6 +19,11 @@ describe('receipt OCR extraction', () => {
   it('recovers an unlabeled total repeated in a scanned receipt', () => {
     const result = parseReceiptOcr('2026-09-24 01:14:46\n초과계금액 1,400\n승인금액 1,400\n부가세 127');
     expect(result).toMatchObject({ date: '2026-09-24', amount: 1400 });
+  });
+
+  it('does not fabricate a date from malformed OCR digits or an expiry period', () => {
+    expect(parseReceiptOcr('2026-42-74\n주문번호 482')).not.toHaveProperty('date');
+    expect(parseReceiptOcr('쿠폰 유효기간 2026-09-28 ~ 2026-10-11')).not.toHaveProperty('date');
   });
 
   it('only auto-links an unambiguous same-day same-amount payment', () => {
