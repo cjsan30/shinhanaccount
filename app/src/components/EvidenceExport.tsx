@@ -9,6 +9,7 @@ import type { LedgerEntry } from '../domain/ledger';
 import { getReportReadiness } from '../domain/reportReadiness';
 import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
 import { formatStatementAmount, redactStatementRows, type StatementRow } from '../domain/statementRedaction';
+import { groupStatementMaskBlocks } from '../domain/statementMasking';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 import { isDateInPolicyPeriod } from '../domain/budget';
 import { ReceiptOcr } from '../native/receiptOcr';
@@ -99,6 +100,8 @@ function solidMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: n
 function cleanRowMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, label: string) {
   const safeX = Math.max(0, Math.floor(x)); const safeY = Math.max(0, Math.floor(y));
   const safeWidth = Math.max(1, Math.min(ctx.canvas.width - safeX, Math.ceil(width))); const safeHeight = Math.max(1, Math.min(ctx.canvas.height - safeY, Math.ceil(height)));
+  // The source layout is a fixed Shinhan table. Draw from its outer grid line
+  // to outer grid line, rather than only covering the parsed text cells.
   ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.strokeStyle = '#26343f'; ctx.lineWidth = 1; ctx.strokeRect(safeX + .5, safeY + .5, safeWidth - 1, safeHeight - 1);
   ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, safeHeight * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, safeX + safeWidth / 2, safeY + safeHeight / 2); ctx.restore();
 }
@@ -119,13 +122,15 @@ async function renderMaskedStatementPdf(file: File, rows: StatementRow[], exclud
       // Pages containing no visible transaction are omitted. This saves output
       // size without reconstructing or changing the original table rows.
       if (pageRows.length > 0 && pageRows.every((row) => hiddenReasons.has(row.id))) { page.cleanup(); onPage(); continue; }
-      pageRows.forEach((row, rowIndex) => {
-        const label = hiddenReasons.get(row.id); if (!label) return;
-        const above = pageRows[rowIndex - 1]?.sourceY;
-        const below = pageRows[rowIndex + 1]?.sourceY;
-        const upper = above === undefined ? row.sourceY! + 8 : (above + row.sourceY!) / 2 - 1;
-        const lower = below === undefined ? row.sourceY! - 8 : (below + row.sourceY!) / 2 + 1;
-        cleanRowMask(ctx, 28 * scale, canvas.height - (upper * scale), Math.min(canvas.width - (28 * scale), 545 * scale), Math.max(8 * scale, (upper - lower) * scale), label);
+      groupStatementMaskBlocks(pageRows, hiddenReasons).forEach((block) => {
+        const first = pageRows[block.firstIndex]; const last = pageRows[block.lastIndex];
+        const above = pageRows[block.firstIndex - 1]?.sourceY;
+        const below = pageRows[block.lastIndex + 1]?.sourceY;
+        const upper = above === undefined ? first.sourceY! + 8 : (above + first.sourceY!) / 2 - 1;
+        const lower = below === undefined ? last.sourceY! - 8 : (last.sourceY! + below) / 2 + 1;
+        // 28pt and 545pt are the left/right outer table borders in Shinhan's
+        // transaction-export layout. Keeping them fixed preserves the grid.
+        cleanRowMask(ctx, 28 * scale, canvas.height - (upper * scale), Math.min(canvas.width - (28 * scale), 545 * scale), Math.max(8 * scale, (upper - lower) * scale), block.label);
       });
       const text = await page.getTextContent();
       for (const item of text.items) {
