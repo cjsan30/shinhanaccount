@@ -59,6 +59,19 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/PDF 생성 전에 영수증을 추가하고 연결/)).toBeInTheDocument();
   });
 
+  it('opens a concise swipeable PDF guide above the export panel', () => {
+    render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: '도움말' }));
+    const dialog = screen.getByRole('dialog', { name: 'PDF 생성 도움말' });
+    expect(screen.getByText('파일을 추가하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
+    const card = dialog.querySelector('.pdf-guide') as HTMLElement;
+    fireEvent.pointerDown(card, { clientX: 280 });
+    fireEvent.pointerUp(card, { clientX: 120 });
+    expect(screen.getByText('제외할 내역을 확인하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '도움말 닫기' }));
+    expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
+  });
+
   it('rejects an oversized evidence file before storing or parsing it', async () => {
     const oversized = new File(['receipt'], 'oversized.jpg', { type: 'image/jpeg' });
     Object.defineProperty(oversized, 'size', { value: 20 * 1024 * 1024 + 1 });
