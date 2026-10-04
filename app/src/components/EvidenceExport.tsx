@@ -105,6 +105,46 @@ function cleanRowMask(ctx: CanvasRenderingContext2D, x: number, y: number, width
   ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.strokeStyle = '#26343f'; ctx.lineWidth = 1; ctx.strokeRect(safeX + .5, safeY + .5, safeWidth - 1, safeHeight - 1);
   ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, safeHeight * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, safeX + safeWidth / 2, safeY + safeHeight / 2); ctx.restore();
 }
+type StatementTableGeometry = { left: number; right: number; horizontalLines: number[] };
+const middle = (values: number[]) => { const sorted = [...values].sort((left, right) => left - right); return sorted[Math.floor(sorted.length / 2)]; };
+
+/**
+ * Shinhan's PDF is vector-based, so the rendered table grid can be detected
+ * reliably. Snapping masks to those lines fixes both a right-edge overrun and
+ * taller deposit rows without reconstructing the original statement.
+ */
+function statementTableGeometry(ctx: CanvasRenderingContext2D, scale: number, rows: StatementRow[]): StatementTableGeometry | undefined {
+  const rowCenters = rows.map((row) => ctx.canvas.height - row.sourceY! * scale);
+  if (!rowCenters.length) return undefined;
+  const minY = Math.max(0, Math.floor(Math.min(...rowCenters) - 36 * scale)); const maxY = Math.min(ctx.canvas.height - 1, Math.ceil(Math.max(...rowCenters) + 36 * scale));
+  const expectedLeft = Math.max(0, Math.floor(18 * scale)); const expectedRight = Math.min(ctx.canvas.width - 1, Math.ceil(560 * scale));
+  let pixels: Uint8ClampedArray;
+  try { pixels = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data; } catch { return undefined; }
+  const darkAt = (x: number, y: number) => { const offset = (y * ctx.canvas.width + x) * 4; return pixels[offset] < 125 && pixels[offset + 1] < 125 && pixels[offset + 2] < 125; };
+  const lineCandidates: number[] = [];
+  for (let y = minY; y <= maxY; y += 1) {
+    let dark = 0;
+    for (let x = expectedLeft; x <= expectedRight; x += 1) if (darkAt(x, y)) dark += 1;
+    if (dark >= (expectedRight - expectedLeft) * .62) lineCandidates.push(y);
+  }
+  const horizontalLines: number[] = [];
+  for (const y of lineCandidates) {
+    const previous = horizontalLines[horizontalLines.length - 1];
+    if (previous === undefined || y - previous > 2) horizontalLines.push(y);
+  }
+  if (horizontalLines.length < 2) return undefined;
+  const leftEdges: number[] = []; const rightEdges: number[] = [];
+  for (const y of horizontalLines) {
+    let left = -1; let right = -1;
+    for (let x = expectedLeft; x <= expectedRight; x += 1) if (darkAt(x, y)) { left = x; break; }
+    for (let x = expectedRight; x >= expectedLeft; x -= 1) if (darkAt(x, y)) { right = x; break; }
+    if (left >= 0 && right > left) { leftEdges.push(left); rightEdges.push(right); }
+  }
+  if (!leftEdges.length) return undefined;
+  return { left: middle(leftEdges), right: middle(rightEdges), horizontalLines };
+}
+function gridLineBefore(lines: number[], y: number) { return [...lines].reverse().find((line) => line < y - 1); }
+function gridLineAfter(lines: number[], y: number) { return lines.find((line) => line > y + 1); }
 async function renderMaskedStatementPdf(file: File, rows: StatementRow[], excludedRowIds: string[], profile: ExportProfile, periodKey: string, onPage: () => void, cancelled: () => boolean, password?: string): Promise<RasterImage[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), ...(password ? { password } : {}) }); const source = await task.promise; const result: RasterImage[] = [];
@@ -119,6 +159,7 @@ async function renderMaskedStatementPdf(file: File, rows: StatementRow[], exclud
       const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('입출금내역 페이지를 준비하지 못했습니다.');
       await page.render({ canvas, canvasContext: ctx, viewport }).promise;
       const pageRows = rows.filter((row) => row.sourcePage === index && row.sourceY !== undefined).sort((left, right) => right.sourceY! - left.sourceY!);
+      const geometry = statementTableGeometry(ctx, scale, pageRows);
       // Pages containing no visible transaction are omitted. This saves output
       // size without reconstructing or changing the original table rows.
       if (pageRows.length > 0 && pageRows.every((row) => hiddenReasons.has(row.id))) { page.cleanup(); onPage(); continue; }
@@ -128,9 +169,12 @@ async function renderMaskedStatementPdf(file: File, rows: StatementRow[], exclud
         const below = pageRows[block.lastIndex + 1]?.sourceY;
         const upper = above === undefined ? first.sourceY! + 8 : (above + first.sourceY!) / 2 - 1;
         const lower = below === undefined ? last.sourceY! - 8 : (last.sourceY! + below) / 2 + 1;
-        // 28pt and 545pt are the left/right outer table borders in Shinhan's
-        // transaction-export layout. Keeping them fixed preserves the grid.
-        cleanRowMask(ctx, 28 * scale, canvas.height - (upper * scale), Math.min(canvas.width - (28 * scale), 545 * scale), Math.max(8 * scale, (upper - lower) * scale), block.label);
+        const fallbackTop = canvas.height - upper * scale; const fallbackBottom = canvas.height - lower * scale;
+        const firstCenter = canvas.height - first.sourceY! * scale; const lastCenter = canvas.height - last.sourceY! * scale;
+        const top = geometry ? gridLineBefore(geometry.horizontalLines, firstCenter) ?? fallbackTop : fallbackTop;
+        const bottom = geometry ? gridLineAfter(geometry.horizontalLines, lastCenter) ?? fallbackBottom : fallbackBottom;
+        const left = geometry?.left ?? 28 * scale; const right = geometry?.right ?? Math.min(canvas.width, 545 * scale);
+        cleanRowMask(ctx, left, top, right - left, Math.max(8 * scale, bottom - top), block.label);
       });
       const text = await page.getTextContent();
       for (const item of text.items) {
