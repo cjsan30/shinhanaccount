@@ -141,7 +141,21 @@ function statementTableGeometry(ctx: CanvasRenderingContext2D, scale: number, ro
     if (left >= 0 && right > left) { leftEdges.push(left); rightEdges.push(right); }
   }
   if (!leftEdges.length) return undefined;
-  return { left: middle(leftEdges), right: middle(rightEdges), horizontalLines };
+  // A horizontal rule can end a pixel inside an anti-aliased vertical border.
+  // Find that vertical border across the whole table height so the fill reaches
+  // the actual outer edge on both sides.
+  const strongestVertical = (from: number, to: number) => {
+    let best = -1; let bestScore = -1;
+    for (let x = Math.max(0, from); x <= Math.min(ctx.canvas.width - 1, to); x += 1) {
+      let score = 0;
+      for (let y = minY; y <= maxY; y += 1) if (darkAt(x, y)) score += 1;
+      if (score > bestScore) { best = x; bestScore = score; }
+    }
+    return bestScore > (maxY - minY) * .35 ? best : undefined;
+  };
+  const left = strongestVertical(Math.floor(20 * scale), Math.ceil(45 * scale)) ?? middle(leftEdges);
+  const right = strongestVertical(Math.floor(530 * scale), Math.ceil(560 * scale)) ?? middle(rightEdges);
+  return { left, right, horizontalLines };
 }
 function gridLineBefore(lines: number[], y: number) { return [...lines].reverse().find((line) => line < y - 1); }
 function gridLineAfter(lines: number[], y: number) { return lines.find((line) => line > y + 1); }
