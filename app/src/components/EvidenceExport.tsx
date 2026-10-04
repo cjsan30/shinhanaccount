@@ -153,8 +153,20 @@ function statementTableGeometry(ctx: CanvasRenderingContext2D, scale: number, ro
     }
     return bestScore > (maxY - minY) * .35 ? best : undefined;
   };
-  const left = strongestVertical(Math.floor(20 * scale), Math.ceil(45 * scale)) ?? middle(leftEdges);
-  const right = strongestVertical(Math.floor(530 * scale), Math.ceil(560 * scale)) ?? middle(rightEdges);
+  const outerVertical = (from: number, to: number, side: 'left' | 'right') => {
+    const candidates: number[] = [];
+    for (let x = Math.max(0, from); x <= Math.min(ctx.canvas.width - 1, to); x += 1) {
+      let score = 0;
+      for (let y = minY; y <= maxY; y += 1) if (darkAt(x, y)) score += 1;
+      // The outer border can be interrupted by a taller grouped deposit row,
+      // so it need only cover a meaningful part of the statement body.
+      if (score >= (maxY - minY) * .12) candidates.push(x);
+    }
+    if (!candidates.length) return undefined;
+    return side === 'left' ? Math.min(...candidates) : Math.max(...candidates);
+  };
+  const left = outerVertical(Math.floor(15 * scale), Math.ceil(60 * scale), 'left') ?? strongestVertical(Math.floor(20 * scale), Math.ceil(45 * scale)) ?? middle(leftEdges);
+  const right = outerVertical(Math.floor(500 * scale), Math.ceil(590 * scale), 'right') ?? strongestVertical(Math.floor(530 * scale), Math.ceil(560 * scale)) ?? middle(rightEdges);
   return { left, right, horizontalLines };
 }
 function gridLineBefore(lines: number[], y: number) { return [...lines].reverse().find((line) => line < y - 1); }
