@@ -12,7 +12,7 @@ import { formatStatementAmount, redactStatementRows, type StatementRow } from '.
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 import { isDateInPolicyPeriod } from '../domain/budget';
 import { ReceiptOcr } from '../native/receiptOcr';
-import { parseReceiptOcr } from '../domain/receiptOcr';
+import { isValidReceiptDate, parseReceiptOcr } from '../domain/receiptOcr';
 
 type EvidenceKind = 'image' | 'pdf';
 type Evidence = ReportEvidenceRecord & { file: File; kind: EvidenceKind; url?: string; pages?: number };
@@ -91,22 +91,25 @@ async function renderPdf(file: File, dpi: number, quality: number, onPage: () =>
   try { for (let index = 1; index <= source.numPages; index += 1) { if (cancelled()) throw new ExportCancelled(); const page = await source.getPage(index); const viewport = page.getViewport({ scale: dpi / 72 }); const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('PDF 페이지를 준비하지 못했습니다.'); await page.render({ canvas, canvasContext: ctx, viewport }).promise; result.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; page.cleanup(); onPage(); } } finally { await task.destroy(); }
   return result;
 }
-function mosaicArea(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, label?: string) {
+function solidMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
   const safeX = Math.max(0, Math.floor(x)); const safeY = Math.max(0, Math.floor(y));
   const safeWidth = Math.max(1, Math.min(ctx.canvas.width - safeX, Math.ceil(width))); const safeHeight = Math.max(1, Math.min(ctx.canvas.height - safeY, Math.ceil(height)));
-  const tiny = document.createElement('canvas'); tiny.width = Math.max(1, Math.floor(safeWidth / 26)); tiny.height = Math.max(1, Math.floor(safeHeight / 8));
-  const tinyContext = tiny.getContext('2d'); if (!tinyContext) return;
-  tinyContext.drawImage(ctx.canvas, safeX, safeY, safeWidth, safeHeight, 0, 0, tiny.width, tiny.height);
-  ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(tiny, 0, 0, tiny.width, tiny.height, safeX, safeY, safeWidth, safeHeight); ctx.fillStyle = '#e9eef1e8'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight);
-  if (label) { ctx.fillStyle = '#596a77'; ctx.font = '600 13px Pretendard, "Noto Sans KR", sans-serif'; ctx.fillText(label, safeX + 8, safeY + Math.min(safeHeight - 6, 18)); }
-  ctx.restore(); tiny.width = 1; tiny.height = 1;
+  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.restore();
+}
+function cleanRowMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, label: string) {
+  const safeX = Math.max(0, Math.floor(x)); const safeY = Math.max(0, Math.floor(y));
+  const safeWidth = Math.max(1, Math.min(ctx.canvas.width - safeX, Math.ceil(width))); const safeHeight = Math.max(1, Math.min(ctx.canvas.height - safeY, Math.ceil(height)));
+  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.strokeStyle = '#26343f'; ctx.lineWidth = 1; ctx.strokeRect(safeX + .5, safeY + .5, safeWidth - 1, safeHeight - 1);
+  ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, safeHeight * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, safeX + safeWidth / 2, safeY + safeHeight / 2); ctx.restore();
 }
 async function renderMaskedStatementPdf(file: File, rows: StatementRow[], excludedRowIds: string[], profile: ExportProfile, periodKey: string, onPage: () => void, cancelled: () => boolean, password?: string): Promise<RasterImage[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), ...(password ? { password } : {}) }); const source = await task.promise; const result: RasterImage[] = [];
   try {
-    const hiddenIds = new Set(rows.filter((row) => row.deposit > 0 || !isDateInPolicyPeriod(new Date(`${row.date}T${row.time || '00:00:00'}+09:00`), periodKey)).map((row) => row.id));
-    excludedRowIds.forEach((id) => hiddenIds.add(id));
+    const hiddenReasons = new Map<string, string>();
+    rows.filter((row) => row.deposit > 0).forEach((row) => hiddenReasons.set(row.id, '입금 내역 제외'));
+    rows.filter((row) => !isDateInPolicyPeriod(new Date(`${row.date}T${row.time || '00:00:00'}+09:00`), periodKey)).forEach((row) => hiddenReasons.set(row.id, '정책 기간 외 내역'));
+    excludedRowIds.forEach((id) => { if (!hiddenReasons.has(id)) hiddenReasons.set(id, '사업 무관 제외'); });
     for (let index = 0; index < source.numPages; index += 1) {
       if (cancelled()) throw new ExportCancelled();
       const page = await source.getPage(index + 1); const scale = (profile.pdfDpi ?? 150) / 72; const viewport = page.getViewport({ scale });
@@ -115,19 +118,19 @@ async function renderMaskedStatementPdf(file: File, rows: StatementRow[], exclud
       const pageRows = rows.filter((row) => row.sourcePage === index && row.sourceY !== undefined).sort((left, right) => right.sourceY! - left.sourceY!);
       // Pages containing no visible transaction are omitted. This saves output
       // size without reconstructing or changing the original table rows.
-      if (pageRows.length > 0 && pageRows.every((row) => hiddenIds.has(row.id))) { page.cleanup(); onPage(); continue; }
+      if (pageRows.length > 0 && pageRows.every((row) => hiddenReasons.has(row.id))) { page.cleanup(); onPage(); continue; }
       pageRows.forEach((row, rowIndex) => {
-        if (!hiddenIds.has(row.id)) return;
+        const label = hiddenReasons.get(row.id); if (!label) return;
         const above = pageRows[rowIndex - 1]?.sourceY;
         const below = pageRows[rowIndex + 1]?.sourceY;
         const upper = above === undefined ? row.sourceY! + 8 : (above + row.sourceY!) / 2 - 1;
         const lower = below === undefined ? row.sourceY! - 8 : (below + row.sourceY!) / 2 + 1;
-        mosaicArea(ctx, 28 * scale, canvas.height - (upper * scale), Math.min(canvas.width - (28 * scale), 545 * scale), Math.max(8 * scale, (upper - lower) * scale));
+        cleanRowMask(ctx, 28 * scale, canvas.height - (upper * scale), Math.min(canvas.width - (28 * scale), 545 * scale), Math.max(8 * scale, (upper - lower) * scale), label);
       });
       const text = await page.getTextContent();
       for (const item of text.items) {
         if (!('str' in item) || !/\d{10,}/.test(item.str)) continue;
-        mosaicArea(ctx, Number(item.transform[4]) * scale - 4, canvas.height - Number(item.transform[5]) * scale - 18 * scale, Math.max(95 * scale, item.str.length * 10 * scale), 22 * scale);
+        solidMask(ctx, Number(item.transform[4]) * scale - 4, canvas.height - Number(item.transform[5]) * scale - 18 * scale, Math.max(95 * scale, item.str.length * 10 * scale), 22 * scale);
       }
       result.push({ bytes: await jpeg(canvas, profile.quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; page.cleanup(); onPage();
     }
@@ -266,6 +269,7 @@ export function EvidenceExport({ reportEvidence, onReportEvidenceChange, summary
   const statementDetails = (item: Evidence) => item.statementRows?.length ? <><details className="statement-redaction"><summary>입출금 {item.statementRows.length}행 · 제외 {item.excludedStatementRowIds?.length ?? 0}행</summary><div className="statement-redaction__rows">{item.statementRows.map((row) => <label className="statement-redaction__row" key={row.id}><input type="checkbox" checked={item.excludedStatementRowIds?.includes(row.id) ?? false} onChange={() => toggleStatementRow(item.id, row.id)} /><span><b>{row.date} {row.time}</b><small>{row.summary} · {row.merchant}</small></span><em>{won(row.withdrawal || row.deposit)}</em></label>)}</div></details>{item.statementSourceRequiresPassword && <label className="statement-source-password">제출용 원본 PDF 비밀번호<input aria-label={`${item.file.name} 제출용 PDF 비밀번호`} type="password" value={statementPasswords[item.id] ?? ''} onChange={(event) => setStatementPasswords((current) => ({ ...current, [item.id]: event.target.value }))} /><small>원본 입출금내역 형식으로 모자이크해 생성할 때만 사용하며 저장하지 않습니다.</small></label>}{!item.statementRows.some((row) => row.sourcePage !== undefined && row.sourceY !== undefined) && <small className="statement-source-note">이전 형식으로 읽은 파일입니다. 원본 레이아웃 제출을 위해 파일을 다시 추가해 주세요.</small>}</> : null;
   const receiptStatus = (item: Evidence) => {
     if (item.linkedEntryId) return <div className="receipt-link-priority"><strong>결제 연결 완료</strong><small>날짜 변경 또는 결제 변경이 필요하면 아래에서 다시 선택해 주세요.</small></div>;
+    if (item.receiptDate && !isValidReceiptDate(item.receiptDate)) return <div className="receipt-link-priority"><small>읽은 날짜 형식이 올바르지 않습니다. 날짜를 직접 선택하거나 다시 읽어 주세요.</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
     if (item.receiptOcrStatus === 'failed' || item.receiptOcrStatus === 'needs-input') return <div className="receipt-link-priority"><small>{item.receiptOcrMessage ?? '결제 날짜를 읽지 못했습니다. 날짜를 선택해 주세요.'}</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
     return <div className="receipt-link-priority"><small>{item.receiptOcrMessage ?? '결제 날짜를 선택하면 해당 날짜의 결제를 보여드립니다.'}</small></div>;
   };
@@ -273,8 +277,9 @@ export function EvidenceExport({ reportEvidence, onReportEvidenceChange, summary
   const section = (name: ReportEvidenceSection, text: string) => {
     const listed = inSection(name);
     return <section className="evidence-group"><h3>{LABEL[name]} <span>{listed.length}개</span></h3><p>{text}</p>{name === 'receipt' && <section className="evidence-missing"><strong>영수증 연결 확인</strong><span>결제 {readiness.payments.length}건 · 연결 {readiness.linkedEntryIds.size}건 · 미연결 {readiness.missingReceipts.length}건</span>{readiness.missingReceipts.length > 0 && <small>미연결 결제는 PDF 생성 전에 영수증을 추가하고 연결해야 합니다.</small>}</section>}<label className="file-picker">{LABEL[name]} 파일 추가<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple onChange={(event) => { void addFiles(name, event.target.files); event.currentTarget.value = ''; }} /></label><div className="evidence-list">{listed.map((item, index) => {
-      const sameDayPayments = name === 'receipt' && item.receiptDate ? payments.filter((payment) => paymentDateInKorea(payment) === item.receiptDate && !reportEvidence.some((evidence) => evidence.section === 'receipt' && evidence.id !== item.id && evidence.linkedEntryId === payment.id)) : [];
-      return <article key={item.id}>{item.url ? <button type="button" className="receipt-thumbnail" onClick={() => setPreviewReceipt(item)} aria-label={`${LABEL[name]} ${index + 1} 크게 보기`}><img src={item.url} alt={`${LABEL[name]} ${index + 1}`} /></button> : <div className="evidence-pdf-preview" aria-label={`${LABEL[name]} PDF`}>PDF</div>}<div className="evidence-content"><span>{item.file.name}</span>{name === 'statement' ? statementDetails(item) : null}{name === 'statement' && item.statementParseFailed ? <div className="statement-unread"><strong>표를 읽지 못했습니다</strong><small>원본 PDF는 제출서류에 포함되지 않습니다.</small><label>PDF 비밀번호<input aria-label={`${item.file.name} PDF 비밀번호`} type="password" value={statementPasswords[item.id] ?? ''} onChange={(event) => setStatementPasswords((current) => ({ ...current, [item.id]: event.target.value }))} /></label><button type="button" onClick={() => void retryStatementParse(item)}>표 다시 읽기</button></div> : null}{name === 'transactionProof' && <label className="evidence-link">추가 증빙 결제 연결 (주거비·교통비)<select aria-label={`거래증빙 ${index + 1} 결제 연결`} value={item.linkedEntryId ?? ''} onChange={(event) => linkAdditionalProof(item.id, event.target.value)}><option value="">선택하지 않음</option>{additionalProofPayments.map((payment) => <option key={payment.id} value={payment.id}>{new Date(payment.occurredAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {payment.merchant} · {won(payment.amount)}</option>)}</select></label>}{name === 'receipt' && <>{receiptStatus(item)}<label className="evidence-link">영수증 결제 날짜<input key={`receipt-date-${item.receiptDate ?? ''}`} aria-label={`영수증 ${index + 1} 날짜`} type="date" defaultValue={item.receiptDate ?? ''} onBlur={(event) => update(item.id, { receiptDate: event.target.value || undefined, receiptAutoLinked: undefined })} /></label>{item.receiptDate && !item.linkedEntryId && <div className="receipt-link-priority"><strong>{item.receiptDate} 결제 {sameDayPayments.length}건</strong>{sameDayPayments.length ? sameDayPayments.map((payment) => <button type="button" key={payment.id} onClick={() => linkReceipt(item.id, payment.id)}>{payment.merchant} · {won(payment.amount)} <small>{new Date(payment.occurredAt).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 이 결제로 연결</small></button>) : <small>이 날짜에 연결 가능한 정책 기간 내 결제가 없습니다. 날짜를 바꾸거나 거래내역을 확인해 주세요.</small>}</div>}{item.linkedEntryId && <button type="button" className="receipt-unlink" onClick={() => linkReceipt(item.id, '')}>결제 연결 해제</button>}</>}</div><div className="evidence-order"><button type="button" disabled={index === 0} onClick={() => move(name, index, -1)}>위로</button><button type="button" disabled={index === listed.length - 1} onClick={() => move(name, index, 1)}>아래로</button><button type="button" onClick={() => remove(item)}>삭제</button></div></article>;
+      const receiptDate = name === 'receipt' && isValidReceiptDate(item.receiptDate) ? item.receiptDate : undefined;
+      const sameDayPayments = receiptDate ? payments.filter((payment) => paymentDateInKorea(payment) === receiptDate && !reportEvidence.some((evidence) => evidence.section === 'receipt' && evidence.id !== item.id && evidence.linkedEntryId === payment.id)) : [];
+      return <article key={item.id}>{item.url ? <button type="button" className="receipt-thumbnail" onClick={() => setPreviewReceipt(item)} aria-label={`${LABEL[name]} ${index + 1} 크게 보기`}><img src={item.url} alt={`${LABEL[name]} ${index + 1}`} /></button> : <div className="evidence-pdf-preview" aria-label={`${LABEL[name]} PDF`}>PDF</div>}<div className="evidence-content"><span>{item.file.name}</span>{name === 'statement' ? statementDetails(item) : null}{name === 'statement' && item.statementParseFailed ? <div className="statement-unread"><strong>표를 읽지 못했습니다</strong><small>원본 PDF는 제출서류에 포함되지 않습니다.</small><label>PDF 비밀번호<input aria-label={`${item.file.name} PDF 비밀번호`} type="password" value={statementPasswords[item.id] ?? ''} onChange={(event) => setStatementPasswords((current) => ({ ...current, [item.id]: event.target.value }))} /></label><button type="button" onClick={() => void retryStatementParse(item)}>표 다시 읽기</button></div> : null}{name === 'transactionProof' && <label className="evidence-link">추가 증빙 결제 연결 (주거비·교통비)<select aria-label={`거래증빙 ${index + 1} 결제 연결`} value={item.linkedEntryId ?? ''} onChange={(event) => linkAdditionalProof(item.id, event.target.value)}><option value="">선택하지 않음</option>{additionalProofPayments.map((payment) => <option key={payment.id} value={payment.id}>{new Date(payment.occurredAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {payment.merchant} · {won(payment.amount)}</option>)}</select></label>}{name === 'receipt' && <>{receiptStatus(item)}<label className="evidence-link">영수증 결제 날짜<input key={`receipt-date-${receiptDate ?? ''}`} aria-label={`영수증 ${index + 1} 날짜`} type="date" defaultValue={receiptDate ?? ''} onBlur={(event) => update(item.id, { receiptDate: event.target.value || undefined, receiptAutoLinked: undefined })} /></label>{receiptDate && !item.linkedEntryId && <div className="receipt-link-priority"><strong>{receiptDate} 결제 {sameDayPayments.length}건</strong>{sameDayPayments.length ? sameDayPayments.map((payment) => <button type="button" key={payment.id} onClick={() => linkReceipt(item.id, payment.id)}>{payment.merchant} · {won(payment.amount)} <small>{new Date(payment.occurredAt).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 이 결제로 연결</small></button>) : <small>이 날짜에 연결 가능한 정책 기간 내 결제가 없습니다. 날짜를 바꾸거나 거래내역을 확인해 주세요.</small>}</div>}{item.linkedEntryId && <button type="button" className="receipt-unlink" onClick={() => linkReceipt(item.id, '')}>결제 연결 해제</button>}</>}</div><div className="evidence-order"><button type="button" disabled={index === 0} onClick={() => move(name, index, -1)}>위로</button><button type="button" disabled={index === listed.length - 1} onClick={() => move(name, index, 1)}>아래로</button><button type="button" onClick={() => remove(item)}>삭제</button></div></article>;
     })}</div></section>;
   };
   const improvement = benchmarks.legacy && benchmarks.current ? Math.max(0, Math.round((1 - benchmarks.current.elapsedMs / benchmarks.legacy.elapsedMs) * 100)) : null;
