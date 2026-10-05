@@ -24,9 +24,9 @@ type BenchmarkResult = { label: string; elapsedMs: number; outputBytes: number; 
 export type ReportSummary = { periodLabel: string; totalBudget: number; totalUsed: number; buckets: Array<{ key: 'resident' | 'studySpace'; label: string; budget: number; used: number; items: Array<{ category: string; label: string; budget: number; used: number }> }> };
 const PDF_GUIDE_STEPS = [
   { title: '파일을 추가하세요', body: '입출금내역을 먼저 넣고, 필요하면 거래증빙과 영수증을 차례로 추가하세요.', note: '입출금내역은 제출서류의 첫 번째 증빙입니다.' },
-  { title: '제외할 내역을 확인하세요', body: '입출금내역 상세보기를 열어 사업과 무관한 거래를 선택하세요. 입금과 정책 기간 외 행은 자동으로 제외됩니다.', note: '선택한 행은 제출 PDF에서 회색으로 가려집니다.' },
-  { title: '영수증을 한 번 연결하세요', body: '영수증 날짜를 확인한 뒤 같은 날짜의 결제를 한 번 누르세요. 연결된 결제는 다른 영수증 후보에서 사라집니다.', note: '결제 한 건에는 영수증 한 장만 연결됩니다.' },
-  { title: '생성 후 미리보세요', body: '영수증 연결은 선택 사항입니다. 미연결 경고가 있어도 PDF를 생성할 수 있고, 연결하지 않은 영수증은 별도로 모아 포함됩니다.', note: '파일은 5MB 이하를 목표로 자동 최적화됩니다.' },
+  { title: '가릴 내역을 확인하세요', body: '입출금내역 상세보기를 열어 사업과 무관한 거래를 선택하세요. 입금과 정책 기간 외 행은 자동으로 가려집니다.', note: '선택한 행은 제출 PDF에서 회색으로 가려집니다.' },
+  { title: '필요하면 영수증을 연결하세요', body: '영수증 날짜를 확인한 뒤 같은 날짜의 결제를 누르면 연결됩니다. 연결은 선택 사항이며, 미연결 경고가 있어도 PDF를 생성할 수 있습니다.', note: '연결하지 않은 영수증도 별도로 모아 포함됩니다.' },
+  { title: '생성 후 미리보세요', body: 'PDF 생성을 누른 뒤 미리보기로 누락된 파일과 영수증의 글자 선명도를 확인하세요. 미리보기는 기기에 설치된 PDF 앱으로 열립니다.', note: '파일은 5MB 이하로 자동 최적화됩니다. 용량을 줄일 수 없으면 안내가 표시됩니다.' },
 ] as const;
 
 const A4: [number, number] = [595.28, 841.89];

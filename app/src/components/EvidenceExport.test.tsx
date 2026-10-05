@@ -67,7 +67,7 @@ describe('EvidenceExport', () => {
     const card = dialog.querySelector('.pdf-guide') as HTMLElement;
     fireEvent.pointerDown(card, { clientX: 280 });
     fireEvent.pointerUp(card, { clientX: 120 });
-    expect(screen.getByText('제외할 내역을 확인하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
+    expect(screen.getByText('가릴 내역을 확인하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
     fireEvent.click(screen.getByRole('button', { name: '도움말 닫기' }));
     expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
   });
