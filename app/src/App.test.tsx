@@ -46,6 +46,26 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it('opens optional app guidance without changing data and places PDF help in the sheet header', async () => {
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy', plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
+    await renderApp();
+    expect(screen.queryByRole('dialog', { name: '앱 사용 도움말' })).not.toBeInTheDocument();
+    const before = window.localStorage.getItem('shinhanhae-policy-book-v1');
+    fireEvent.click(await screen.findByRole('button', { name: '앱 사용 도움말' }));
+    expect(screen.getByText('계획표와 거래내역은 설정에서')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
+    expect(window.localStorage.getItem('shinhanhae-policy-book-v1')).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    const help = await screen.findByRole('button', { name: '도움말' });
+    expect(help.closest('header')).not.toBeNull();
+    fireEvent.click(help);
+    expect(await screen.findByRole('dialog', { name: 'PDF 생성 도움말' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
+  });
   it('routes Android back through nested sheets before leaving the dashboard', () => {
     expect(previousPanel('rules')).toBe('data');
     expect(previousPanel('data')).toBe('settings');

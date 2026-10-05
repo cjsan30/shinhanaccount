@@ -1,0 +1,35 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { SpotlightGuide } from './SpotlightGuide';
+import { APP_GUIDE_STEPS } from './appGuideSteps';
+
+describe('SpotlightGuide', () => {
+  it('scrolls to each target, supports previous, and completes without modifying targets', () => {
+    const scroll = vi.fn();
+    const close = vi.fn();
+    const target = document.createElement('button'); target.id = 'guide-target'; target.textContent = '실제 데이터'; target.scrollIntoView = scroll;
+    document.body.append(target);
+    const { unmount } = render(<SpotlightGuide title="안내" steps={[{ target: '#guide-target', title: '첫 단계', body: '설명' }, { target: '#guide-target', title: '둘째 단계', body: '설명' }]} onClose={close} />);
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+    expect(screen.getByRole('button', { name: '이전' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '다음' })); expect(screen.getByText('둘째 단계')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '이전' })); expect(screen.getByText('첫 단계')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '다음' })); fireEvent.click(screen.getByRole('button', { name: '완료' })); expect(close).toHaveBeenCalledOnce();
+    expect(target.textContent).toBe('실제 데이터'); unmount(); target.remove();
+  });
+  it('handles missing targets, escape, and keyboard focus containment', () => {
+    const close = vi.fn(); render(<SpotlightGuide title="안내" steps={APP_GUIDE_STEPS} onClose={close} />);
+    const dialog = screen.getByRole('dialog'); expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Tab' }); expect(screen.getByRole('button', { name: '건너뛰기' })).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' }); expect(close).toHaveBeenCalledOnce();
+  });
+  it('highlights a fallback target and closes on Android back without changing the screen', () => {
+    const target = document.createElement('button'); target.id = 'fallback'; target.scrollIntoView = vi.fn();
+    target.getBoundingClientRect = () => ({ left: 10, right: 110, top: 50, bottom: 100, width: 100, height: 50, x: 10, y: 50, toJSON: () => ({}) });
+    document.body.append(target);
+    const close = vi.fn(); const { unmount } = render(<SpotlightGuide title="안내" steps={[{ target: '#missing', fallbackTarget: '#fallback', title: '설명', body: '설명' }]} onClose={close} />);
+    expect(document.querySelector('.spotlight-highlight')).not.toBeNull();
+    fireEvent(window, new Event('close-help-guide')); expect(close).toHaveBeenCalledOnce();
+    unmount(); target.remove();
+  });
+});
