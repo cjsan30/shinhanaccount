@@ -59,16 +59,16 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/연결하지 않아도 PDF를 생성할 수 있습니다/)).toBeInTheDocument();
   });
 
-  it('opens a concise swipeable PDF guide above the export panel', () => {
-    render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: '도움말' }));
+  it('opens an anchored PDF guide from the header request and advances only with buttons', () => {
+    render(<EvidenceExport helpRequest={1} reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
     const dialog = screen.getByRole('dialog', { name: 'PDF 생성 도움말' });
-    expect(screen.getByText('파일을 추가하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
-    const card = dialog.querySelector('.pdf-guide') as HTMLElement;
-    fireEvent.pointerDown(card, { clientX: 280 });
-    fireEvent.pointerUp(card, { clientX: 120 });
-    expect(screen.getByText('가릴 내역을 확인하세요').closest('article')).toHaveAttribute('aria-hidden', 'false');
-    fireEvent.click(screen.getByRole('button', { name: '도움말 닫기' }));
+    expect(screen.getByText('입출금내역을 추가하세요')).toBeInTheDocument();
+    fireEvent.pointerDown(dialog, { clientX: 280 });
+    fireEvent.pointerUp(dialog, { clientX: 120 });
+    expect(screen.getByText('입출금내역을 추가하세요')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    expect(screen.getByText('가릴 내역을 확인하세요')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
   });
 
