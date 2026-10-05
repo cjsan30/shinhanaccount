@@ -43,7 +43,7 @@ describe('EvidenceExport', () => {
     URL.createObjectURL = vi.fn(() => 'blob:submission-preview');
     URL.revokeObjectURL = vi.fn();
   });
-  afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); });
+  afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   it('invalidates a statement raster cache after redaction or re-reading its rows', () => {
     const base = { id: 'statement-1', section: 'statement' as const, statementRows: [{ id: 'row-1', date: '2026-09-20', time: '12:00:00', summary: '체크카드', withdrawal: 12000, deposit: 0, merchant: '개인 결제처' }] };
@@ -56,7 +56,7 @@ describe('EvidenceExport', () => {
     render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
     expect(screen.getByText('영수증 연결 확인')).toBeInTheDocument();
     expect(screen.getByText(/결제 1건 · 연결 0건 · 미연결 1건/)).toBeInTheDocument();
-    expect(screen.getByText(/PDF 생성 전에 영수증을 추가하고 연결/)).toBeInTheDocument();
+    expect(screen.getByText(/연결하지 않아도 PDF를 생성할 수 있습니다/)).toBeInTheDocument();
   });
 
   it('opens a concise swipeable PDF guide above the export panel', () => {
@@ -82,11 +82,17 @@ describe('EvidenceExport', () => {
     expect(screen.queryByText('oversized.jpg')).not.toBeInTheDocument();
   });
 
-  it('blocks a normal PDF export until each payment has a linked receipt', async () => {
+  it('warns but exports an unlinked receipt, including its own divider and page', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
     render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
     await screen.findByText('receipt.jpg');
     fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
-    expect(await screen.findByText(/영수증이 연결되지 않은 결제 1건/)).toBeInTheDocument();
+    await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalledWith('shinhanhae_report_evidence.pdf', expect.any(Uint8Array), 'application/pdf'));
+    expect(screen.getAllByText(/영수증 미연결 결제 1건 · 결제 미연결 영수증 1장/).length).toBeGreaterThan(0);
+    expect(canvasContext.fillText).toHaveBeenCalledWith('미연결 영수증', expect.any(Number), expect.any(Number));
+    const pdf = await exportMocks.create.mock.results[0].value;
+    expect(pdf.addPage).toHaveBeenCalledTimes(3);
+    expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
   });
 
   it('uses OCR date only to show same-day payments and requires one user click to link', async () => {
