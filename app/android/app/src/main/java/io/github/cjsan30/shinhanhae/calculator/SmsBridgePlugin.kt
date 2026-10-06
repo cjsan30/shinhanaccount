@@ -45,12 +45,12 @@ private fun isDebugBuild(context: Context): Boolean =
 
 internal enum class EnqueueResult { ADDED, DUPLICATE, WRITE_FAILED }
 
-internal fun isApprovalInPolicyPeriod(occurredAt: String, periodKey: String): Boolean = try {
-    val date = OffsetDateTime.parse(occurredAt).toLocalDate()
-    if (date.dayOfMonth in 11..13) false else {
-        val startMonth = if (date.dayOfMonth >= 14) YearMonth.from(date) else YearMonth.from(date).minusMonths(1)
-        startMonth.toString() == periodKey
-    }
+internal fun isApprovalInPolicyPeriod(occurredAt: String, periodKey: String, periodStart: String = "", periodEnd: String = ""): Boolean = try {
+    val date = OffsetDateTime.parse(occurredAt).atZoneSameInstant(java.time.ZoneId.of("Asia/Seoul")).toLocalDate()
+    val month = YearMonth.parse(periodKey)
+    val start = if (periodStart.isNotEmpty()) java.time.LocalDate.parse(periodStart) else month.atDay(15)
+    val end = if (periodEnd.isNotEmpty()) java.time.LocalDate.parse(periodEnd) else month.plusMonths(1).atDay(10)
+    !end.isBefore(start) && !date.isBefore(start) && !date.isAfter(end)
 } catch (_: Exception) { false }
 
 private data class NativeClassification(val category: String, val label: String)
@@ -71,7 +71,7 @@ private fun classifyForBudget(merchant: String, amount: Int): NativeClassificati
 
 internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
     val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
-    if (!isApprovalInPolicyPeriod(approval.occurredAt, state.optString("periodKey"))) return null
+    if (!isApprovalInPolicyPeriod(approval.occurredAt, state.optString("periodKey"), state.optString("periodStart"), state.optString("periodEnd"))) return null
     val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
     val limits = state.optJSONObject("categoryLimits") ?: return null
     val alertCategories = state.optJSONArray("alertCategories") ?: return null
@@ -482,6 +482,8 @@ class SmsBridgePlugin : Plugin() {
             .put("alertCategories", alertCategories)
             .put("thresholds", thresholds)
             .put("periodKey", periodKey)
+            .put("periodStart", call.getString("periodStart") ?: "")
+            .put("periodEnd", call.getString("periodEnd") ?: "")
             .put("quickCategories", quickCategories)
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
         call.resolve()
