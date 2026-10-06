@@ -1,5 +1,5 @@
 import { normalizePolicyPeriod, getPolicyPeriodRange, getPolicyPeriodKey, type PolicyPeriod } from '../domain/budget';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
 import type { ImportedCardTransaction } from '../domain/shinhanImport';
@@ -9,6 +9,7 @@ import { BackupRestore } from './BackupRestore';
 import { DataIntegrityPanel } from './DataIntegrityPanel';
 
 type Props = {
+  budgetAdjustment?: ReactNode;
   importFile: File | null;
   importTransactions: ImportedCardTransaction[] | null;
   importResult: ImportResult | null;
@@ -70,6 +71,7 @@ export function DataManagementPanel(props: Props) {
     <details className="data-section">
       <summary><strong>계획표</strong><span>텍스트 또는 이미지로 수정</span></summary>
       <div className="data-section__body policy-card">
+        {props.budgetAdjustment}
         <p>정주비는 식비·교육비·교통비·주거비, 학습공간비는 카페·스터디카페·독서실입니다.</p><p>모바일 웹에서 계획표를 복사해 붙여넣으세요. 자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
         <textarea aria-label="계획표 내용" value={props.policyText} onChange={(event) => props.onPolicyTextChange(event.target.value)} placeholder="예: 식비 200000원 교육비 160000원 교통비 140000원 카페 200000원" />
         {props.onEditPolicy && <button className="sheet-action secondary-action" onClick={props.onEditPolicy}>저장된 계획·기간 수정</button>}
