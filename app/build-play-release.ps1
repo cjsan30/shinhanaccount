@@ -42,6 +42,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Lint failed with exit code $LASTEXITCODE" }
     npm.cmd run test:run
     if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE" }
+    npm.cmd run test:security
+    if ($LASTEXITCODE -ne 0) { throw "Security checks failed with exit code $LASTEXITCODE" }
     npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw "Web build failed with exit code $LASTEXITCODE" }
     node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor copy android
@@ -51,7 +53,9 @@ try {
     try {
         # Play release builds may introduce a newly declared dependency. Do not
         # force offline mode here: Gradle must be allowed to resolve it once.
-        .\gradlew.bat testDebugUnitTest bundleRelease assembleRelease
+        # Release validation must compile the complete Kotlin source set rather
+        # than reusing stale debug/release incremental symbols from older builds.
+        .\gradlew.bat testDebugUnitTest testReleaseUnitTest bundleRelease assembleRelease '-Pkotlin.incremental=false' --no-build-cache
         if ($LASTEXITCODE -ne 0) { throw "Android release build failed with exit code $LASTEXITCODE" }
     } finally {
         Pop-Location
