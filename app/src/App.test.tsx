@@ -55,6 +55,7 @@ describe('app entry flows', () => {
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: getPolicyPeriodKey(new Date()), confirmedAt: now, sourceText: 'saved policy', plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
     await renderApp();
     fireEvent.click(await screen.findByRole('button', { name: '미정 지출 1건' }));
+    expect(screen.getByText('현재 중복 확인 필요 1건')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem('shinhanhae-ledger-v1')!);
@@ -62,6 +63,7 @@ describe('app entry flows', () => {
       expect(stored.entries[0]).toMatchObject({ id: original.id, category: 'food', amount: 2700, status: 'classified' });
     });
     expect(screen.queryByText('같은 거래인가요?')).not.toBeInTheDocument();
+    expect(screen.queryByText(/현재 중복 확인 필요 [1-9]/)).not.toBeInTheDocument();
   });
   it('opens optional app guidance without changing data and places PDF help in the sheet header', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
