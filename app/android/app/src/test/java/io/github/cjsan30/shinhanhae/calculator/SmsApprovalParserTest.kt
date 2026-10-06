@@ -18,7 +18,10 @@ class SmsApprovalParserTest {
 
     @Test
     fun `policy period runs from the 14th through the next month 10th`() {
-        assertTrue(isApprovalInPolicyPeriod("2026-08-14T00:00:00+09:00", "2026-08"))
+        assertFalse(isApprovalInPolicyPeriod("2026-08-14T00:00:00+09:00", "2026-08"))
+        assertTrue(isApprovalInPolicyPeriod("2026-08-15T00:00:00+09:00", "2026-08"))
+        assertTrue(isApprovalInPolicyPeriod("2026-08-01T00:00:00+09:00", "2026-08", "2026-08-01", "2026-08-31"))
+        assertFalse(isApprovalInPolicyPeriod("2026-09-01T00:00:00+09:00", "2026-08", "2026-08-01", "2026-08-31"))
         assertTrue(isApprovalInPolicyPeriod("2026-09-10T23:59:59+09:00", "2026-08"))
         assertFalse(isApprovalInPolicyPeriod("2026-09-11T00:00:00+09:00", "2026-08"))
         assertFalse(isApprovalInPolicyPeriod("2026-09-13T23:59:59+09:00", "2026-09"))

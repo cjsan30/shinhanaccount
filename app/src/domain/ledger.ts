@@ -1,4 +1,4 @@
-import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, isDateInPolicyPeriod, type BudgetKey, type BudgetSummary } from './budget';
+import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, isDateInPolicyPeriod, type BudgetKey, type BudgetSummary, type PolicyPeriod } from './budget';
 import { classifyPayment, type PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
@@ -24,12 +24,12 @@ const initialEntries: LedgerEntry[] = [
 export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
-export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>) { return getPolicyPeriodKey(new Date(entry.occurredAt)); }
-export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string) { return getEntryPeriodKey(entry) === periodKey && isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey); }
+export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, period?: PolicyPeriod) { return getPolicyPeriodKey(new Date(entry.occurredAt), period); }
+export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, period); }
 export function getRemainingPaymentAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount'>) { return Math.max(0, entry.amount - (entry.cancelledAmount ?? 0)); }
-export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
-export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey)); }
-export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
+export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
+export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string, period?: PolicyPeriod): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey, period)); }
+export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -48,8 +48,8 @@ function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: str
   return { ...entry, id: `approval-${cardLast4}-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string): ImportResult {
-  const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod): ImportResult {
+  const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
@@ -57,8 +57,8 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   const added = result.entries.filter((entry) => !baseline.some((existing) => existing.id === entry.id));
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: added.filter((entry) => entry.status === 'excluded').length, undecided: added.filter((entry) => entry.status === 'undecided').length, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string): ImportResult {
-  const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
+export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string, period?: PolicyPeriod): ImportResult {
+  const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
@@ -69,7 +69,7 @@ export function importBankTransactions(ledger: Ledger, transactions: ImportedBan
   const result = reconcileImportedEntries(baseline, incoming);
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: 0, undecided: result.imported, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment, period?: PolicyPeriod): ApplyPaymentResult {
   const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {
     lodging: { status: 'classified', bucket: 'resident', category: 'lodging' }, food: { status: 'classified', bucket: 'resident', category: 'food' }, education: { status: 'classified', bucket: 'resident', category: 'education' }, transport: { status: 'classified', bucket: 'resident', category: 'transport' }, studyCafe: { status: 'classified', bucket: 'studySpace', category: 'studyCafe' }, generalCafe: { status: 'classified', bucket: 'studySpace', category: 'generalCafe' }, readingRoom: { status: 'classified', bucket: 'studySpace', category: 'readingRoom' },
   };
@@ -77,7 +77,7 @@ export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Re
   const classification: PaymentClassification = payment.quickCategory === 'undecided'
     ? { status: 'undecided' }
     : quick ?? classifier(payment.merchant, payment.amount);
-  const entry = toEntry(payment, classification);
+  const entry = { ...toEntry(payment, classification), periodKey: getPolicyPeriodKey(new Date(payment.occurredAt), period) };
   // Live notification/SMS approvals carry a source event ID. Two genuine payments
   // can otherwise have the same minute, merchant, and amount, so only that stable
   // source ID is authoritative for live duplicate prevention.
@@ -85,10 +85,10 @@ export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Re
     ? ledger.entries.some((existing) => existing.id === entry.id)
     : ledger.entries.some((existing) => existing.id === entry.id || isSameTransaction(existing, entry));
   if (isDuplicate) return { ledger, entry, alerts: [] };
-  const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey) : 0;
+  const previousSpent = classification.status === 'classified' ? getCategorySpent(ledger, classification.bucket, classification.category, entry.periodKey, period) : 0;
   const nextLedger = { ...ledger, entries: [...ledger.entries, entry] };
-  const currentSpent = classification.status === 'classified' ? getCategorySpent(nextLedger, classification.bucket, classification.category, entry.periodKey) : previousSpent;
-  const alerts = classification.status === 'classified' ? getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) : [];
+  const currentSpent = classification.status === 'classified' ? getCategorySpent(nextLedger, classification.bucket, classification.category, entry.periodKey, period) : previousSpent;
+  const alerts = classification.status === 'classified' && isDateInPolicyPeriod(new Date(entry.occurredAt), entry.periodKey, period) ? getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) : [];
   return { ledger: nextLedger, entry, alerts };
 }
 
@@ -157,13 +157,13 @@ export function applyCancellation(ledger: Ledger, entryId: string, cancellationA
       : candidate),
   };
 }
-export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
+export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, period?: PolicyPeriod): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('Only resolved undecided entries can be reclassified');
-  const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry));
+  const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry, period), period);
   const nextEntry: LedgerEntry = { ...entry, importOrigins: transactionOrigins(entry), status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
   const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
-  const currentSpent = getCategorySpent(nextLedger, classification.bucket, classification.category, getEntryPeriodKey(nextEntry));
+  const currentSpent = getCategorySpent(nextLedger, classification.bucket, classification.category, getEntryPeriodKey(nextEntry, period), period);
   return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) };
 }
 export function loadLedger(storage: Pick<Storage, 'getItem'>, fallback: () => Ledger = createInitialLedger): Ledger {
@@ -211,9 +211,9 @@ export function getHistoryEntries(ledger: Ledger, through?: Date) {
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
 }
 
-export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date) {
+export function getRecentEntries(ledger: Ledger, periodKey: string, limit = Number.POSITIVE_INFINITY, through?: Date, period?: PolicyPeriod) {
   return ledger.entries
-    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && isEntryInPolicyPeriod(entry, periodKey) && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
+    .filter((entry) => (entry.status === 'classified' || entry.status === 'cancelled') && isEntryInPolicyPeriod(entry, periodKey, period) && (!through || new Date(entry.occurredAt).getTime() <= through.getTime()))
     .slice()
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id))
     .slice(0, limit);

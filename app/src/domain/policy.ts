@@ -1,9 +1,11 @@
 import { getPolicyPeriodKey, type BudgetKey } from './budget';
+import { getPolicyPeriodRange, normalizePolicyPeriod, type PolicyPeriod } from './budget';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
 export type SupportProfileId = 'shinhanhae-70' | 'shinhanhae-40';
 export type SupportProfile = { id: SupportProfileId; label: string; totalLimit: number; bucketLimits: Record<BudgetKey, number>; itemCaps: Record<PolicyItem, number> };
-export type SupportPolicy = { plans: Record<PolicyItem, number>; sourceText: string; profileId?: SupportProfileId; alertTargets?: PolicyItem[]; customItems?: CustomPolicyItem[] };
+export type SupportPolicy = {
+  period?: PolicyPeriod; plans: Record<PolicyItem, number>; sourceText: string; profileId?: SupportProfileId; alertTargets?: PolicyItem[]; customItems?: CustomPolicyItem[] };
 export type PolicyItemDefinition = { key: PolicyItem; bucket: BudgetKey; label: string; ledgerCategories: string[] };
 export type CustomPolicyItem = { id: string; label: string; bucket: BudgetKey; amount: number };
 
@@ -160,7 +162,7 @@ export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
     const raw = storage.getItem(POLICY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SupportPolicy;
-    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [], ...(parsed.customItems?.length ? { customItems: parsed.customItems } : {}) };
+    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', ...(parsed.period ? { period: normalizePolicyPeriod(parsed.period) } : {}), profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [], ...(parsed.customItems?.length ? { customItems: parsed.customItems } : {}) };
   } catch { return null; }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
@@ -168,14 +170,14 @@ export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: st
 export type PolicyBook = { versions: PolicyVersion[]; mode?: 'not-applicant' };
 export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
 
-export function getNextPolicyPeriodKey(date: Date) {
-  const [year, month] = getPolicyPeriodKey(date).split('-').map(Number);
+export function getNextPolicyPeriodKey(date: Date, period?: PolicyPeriod) {
+  const [year, month] = getPolicyPeriodKey(date, period).split('-').map(Number);
   const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
   return `${next.year}-${String(next.month).padStart(2, '0')}`;
 }
 
 export function createPolicyBook(policy: SupportPolicy, date: Date = new Date()): PolicyBook {
-  return { versions: [{ ...structuredClone(policy), periodKey: getPolicyPeriodKey(date), confirmedAt: date.toISOString() }] };
+  return { versions: [{ ...structuredClone(policy), periodKey: getPolicyPeriodKey(date, policy.period), confirmedAt: date.toISOString() }] };
 }
 
 export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = new Date()): PolicyBook {
@@ -183,7 +185,7 @@ export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = 
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions)) return { ...(parsed.mode ? { mode: parsed.mode } : {}), versions: parsed.versions.map((version) => ({ ...version, plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [], ...(version.customItems?.length ? { customItems: version.customItems } : {}) })) };
+      if (Array.isArray(parsed.versions)) return { ...(parsed.mode ? { mode: parsed.mode } : {}), versions: parsed.versions.map((version) => ({ ...version, ...(version.period ? { period: normalizePolicyPeriod(version.period) } : {}), plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [], ...(version.customItems?.length ? { customItems: version.customItems } : {}) })) };
     }
     return { versions: [] };
   } catch { return { versions: [] }; }
@@ -199,15 +201,17 @@ export function getPolicyVersion(book: PolicyBook, periodKey: string) {
 
 export function getEffectivePolicy(book: PolicyBook, date: Date) {
   if (book.mode === 'not-applicant') return { policy: emptyPolicy, periodKey: getPolicyPeriodKey(date), confirmed: true };
-  const periodKey = getPolicyPeriodKey(date);
-  const exact = getPolicyVersion(book, periodKey);
+  const localDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(date);
+  const eligible = book.versions.filter((version) => getPolicyPeriodRange(version.periodKey, version.period).start <= localDate);
+  const fallback = [...eligible].sort((a, b) => getPolicyPeriodRange(a.periodKey, a.period).start.localeCompare(getPolicyPeriodRange(b.periodKey, b.period).start) || a.confirmedAt.localeCompare(b.confirmedAt)).at(-1);
+  const periodKey = getPolicyPeriodKey(date, fallback?.period);
+  const exact = eligible.find((version) => version.periodKey === periodKey && getPolicyPeriodKey(date, version.period) === periodKey);
   // Older test builds could persist an all-zero draft as a "confirmed" policy.
   // An exact version is usable only when it satisfies the selected support profile;
   // otherwise the user must return to onboarding and confirm a real plan.
   if (exact && validatePolicyAgainstProfile(exact).length === 0) {
     return { policy: exact as SupportPolicy, periodKey, confirmed: true };
   }
-  const fallback = [...book.versions].sort((a, b) => a.periodKey.localeCompare(b.periodKey)).at(-1);
   return { policy: (fallback ?? emptyPolicy) as SupportPolicy, periodKey, confirmed: false };
 }
 
