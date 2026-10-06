@@ -46,6 +46,44 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it('adjusts unused budget, preserves spending/evidence/scheduled policy and reloads the final plan', async () => {
+    const now = new Date().toISOString(); const periodKey = getPolicyPeriodKey(new Date());
+    const plans = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
+    const currentVersion = { periodKey, confirmedAt: now, sourceText: 'original plan', plans, profileId: 'shinhanhae-70', alertTargets: [] };
+    const nextVersion = { ...currentVersion, periodKey: '2099-10' };
+    const entry = { id: 'transport-payment', cardLast4: '1234', merchant: '교통비 결제', occurredAt: now, amount: 30000, cancelledAmount: 10000, status: 'classified', bucket: 'resident', category: 'transport' };
+    const ledger = { ...createEmptyLedger(), entries: [entry] };
+    const evidence = [{ id: 'saved-receipt', section: 'receipt', order: 0, linkedEntryId: entry.id, stored: { id: 'saved-image', fileName: 'saved-receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: now } }];
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(ledger));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [currentVersion, nextVersion] }));
+    window.localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify(evidence));
+    const app = await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '정주비 상세 보기' }));
+    expect(screen.getByLabelText('예산 가져올 항목')).toHaveTextContent('교통비 · 이동 가능 80,000원');
+    fireEvent.change(screen.getByLabelText('예산 가져올 항목'), { target: { value: 'transport' } });
+    fireEvent.change(screen.getByLabelText('예산 받을 항목'), { target: { value: 'housing' } });
+    fireEvent.change(screen.getByLabelText('예산 이동 금액'), { target: { value: '80001' } });
+    expect(screen.getByRole('button', { name: '예산 조정 적용' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('예산 이동 금액'), { target: { value: '50000' } });
+    fireEvent.click(screen.getByRole('button', { name: '예산 조정 적용' }));
+    await screen.findByText(/예산을 조정했습니다/);
+    const saved = JSON.parse(window.localStorage.getItem('shinhanhae-policy-book-v1')!);
+    expect(saved.versions.find((version: { periodKey: string }) => version.periodKey === periodKey).plans).toMatchObject({ housing: 50000, transport: 50000 });
+    expect(saved.versions.find((version: { periodKey: string }) => version.periodKey === '2099-10')).toEqual(nextVersion);
+    expect(JSON.parse(window.localStorage.getItem('shinhanhae-ledger-v1')!)).toEqual(ledger);
+    expect(JSON.parse(window.localStorage.getItem('shinhanhae-report-evidence-v1')!)).toEqual(evidence);
+    await waitFor(() => expect(smsBridge.syncBudgetState).toHaveBeenLastCalledWith(expect.objectContaining({ categoryLimits: expect.objectContaining({ lodging: 50000, transport: 50000 }), categorySpent: expect.objectContaining({ transport: 20000 }) })));
+    app.unmount(); await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '정주비 상세 보기' }));
+    const housingRow = screen.getByText('주거비', { selector: '.table strong' }).closest('.table>div');
+    const transportRow = screen.getByText('교통비', { selector: '.table strong' }).closest('.table>div');
+    expect(housingRow).toHaveTextContent('50,000원');
+    expect(transportRow).toHaveTextContent('50,000원20,000원30,000원');
+    fireEvent.click(screen.getByRole('button', { name: '정주비 상세 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
+    expect(await screen.findByText('예산 조정')).toBeInTheDocument();
+  });
   it('resolves a cross-source duplicate from undecided expenses without changing confirmed spending', async () => {
     const original = { id: 'approval-1234-1', cardLast4: '1234', merchant: '메가커피', occurredAt: '2026-09-20T12:00:00+09:00', amount: 2700, status: 'classified', bucket: 'resident', category: 'food', source: 'excel' };
     const pending = { id: 'bank-6789-1', cardLast4: '6789', merchant: '네이버페이', occurredAt: '2026-09-20T12:00:23+09:00', amount: 2700, status: 'undecided', source: 'bankCsv', duplicateCandidateIds: [original.id] };

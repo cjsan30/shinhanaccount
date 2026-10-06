@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
+import { adjustBudget } from '../domain/budgetAdjustment';
+import { emptyPolicy, getCategoryLimit, getPolicyItems, getPolicyLimit } from '../domain/policy';
 
 vi.mock('../native/evidenceVault', () => ({
   loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
@@ -44,6 +46,21 @@ describe('EvidenceExport', () => {
     URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('renders only the adjusted final plan in the PDF, without adjustment history or negative allocations', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    const policy = adjustBudget({ ...emptyPolicy, plans: { ...emptyPolicy.plans, food: 200000, education: 200000, transport: 100000, cafe: 200000 } }, { from: 'transport', to: 'housing', amount: 50000 }, {});
+    const adjustedSummary = { ...summary, totalUsed: 0, buckets: (['resident', 'studySpace'] as const).map((key) => ({ key, label: key === 'resident' ? '정주비' : '학습공간비', budget: getPolicyLimit(policy, key), used: 0, items: getPolicyItems(policy).filter((item) => item.bucket === key).map((item) => ({ category: item.ledgerCategories[0], label: item.label, budget: getCategoryLimit(policy, item.ledgerCategories[0]), used: 0 })) })) };
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt', stored: { id: 'stored', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={adjustedSummary} periodKey="2026-09" entries={[]} />);
+    await screen.findByText('receipt.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalled());
+    const texts = vi.mocked(canvasContext.fillText).mock.calls.map(([text]) => text);
+    expect(texts.filter((text) => text === '계획 50,000원')).toHaveLength(2);
+    expect(texts).not.toContain('계획 100,000원');
+    expect(texts).not.toContain('계획 -50,000원');
+    expect(texts.some((text) => /최초 계획|예산 조정|변경 이력/.test(text))).toBe(false);
+  });
 
   it('invalidates a statement raster cache after redaction or re-reading its rows', () => {
     const base = { id: 'statement-1', section: 'statement' as const, statementRows: [{ id: 'row-1', date: '2026-09-20', time: '12:00:00', summary: '체크카드', withdrawal: 12000, deposit: 0, merchant: '개인 결제처' }] };
