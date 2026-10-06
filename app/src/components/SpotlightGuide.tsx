@@ -20,7 +20,8 @@ export function SpotlightGuide({ title, steps, onClose }: { title: string; steps
     target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     const measure = () => {
       const bounds = target?.getBoundingClientRect();
-      setRect(bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null);
+      const viewportHeight = window.visualViewport?.height ?? (document.documentElement.clientHeight || window.innerHeight);
+      setRect(bounds && bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.top < viewportHeight ? bounds : null);
       setCardHeight(card.current?.getBoundingClientRect().height || 220);
     };
     measure();
@@ -30,12 +31,15 @@ export function SpotlightGuide({ title, steps, onClose }: { title: string; steps
     const timers = [100, 350, 700].map((delay) => window.setTimeout(measure, delay));
     window.addEventListener('scroll', measure, true);
     window.addEventListener('resize', measure);
-    return () => { observer?.disconnect(); timers.forEach(window.clearTimeout); window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); };
+    window.visualViewport?.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('scroll', measure);
+    return () => { observer?.disconnect(); timers.forEach(window.clearTimeout); window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('scroll', measure); };
   }, [step]);
-  const height = window.innerHeight;
+  const height = window.visualViewport?.height ?? (document.documentElement.clientHeight || window.innerHeight);
   const bottom = rect ? Math.min(height - 12, rect.bottom + 6) : 0;
   const top = rect ? Math.max(12, rect.top - 6) : 0;
-  const cardTop = rect && height - bottom >= cardHeight + 24 ? bottom + 12 : rect && top >= cardHeight + 24 ? top - cardHeight - 12 : Math.max(12, height - cardHeight - 16);
+  const desiredTop = rect && height - bottom >= cardHeight + 24 ? bottom + 12 : rect && top >= cardHeight + 24 ? top - cardHeight - 12 : height - cardHeight - 16;
+  const cardTop = Math.max(12, Math.min(Math.max(12, height - cardHeight - 12), desiredTop));
   const move = (delta: number) => setIndex((current) => Math.max(0, Math.min(steps.length - 1, current + delta)));
   return createPortal(<div ref={layer} className={`spotlight-layer${rect ? '' : ' spotlight-layer--empty'}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={(event) => {
     if (event.key === 'Escape') onClose();

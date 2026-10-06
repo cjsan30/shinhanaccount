@@ -1,3 +1,4 @@
+import { normalizePolicyPeriod, getPolicyPeriodRange, getPolicyPeriodKey, type PolicyPeriod } from '../domain/budget';
 import { useEffect, useRef } from 'react';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
@@ -33,6 +34,9 @@ type Props = {
   onConfirmPolicy: (applyTo: 'current' | 'next') => void;
   onOpenRules: () => void;
   periodKey: string;
+  period?: PolicyPeriod;
+  onEditPolicy?: () => void;
+  onUpdatePolicyPeriod?: (period: PolicyPeriod) => void;
   canUndoImport: boolean;
   onUndoImport: () => void;
   onResetData: (scopes: Array<'ledger' | 'rules' | 'policy'>) => void;
@@ -44,6 +48,7 @@ const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 
 export function DataManagementPanel(props: Props) {
   const policyDraftRef = useRef<HTMLDivElement>(null);
+  const draftPeriodRange = getPolicyPeriodRange(getPolicyPeriodKey(new Date(), props.policyDraft?.period), props.policyDraft?.period);
   useEffect(() => {
     if (!props.policyDraft || !props.policyDraftFocusToken) return;
     requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
@@ -65,11 +70,12 @@ export function DataManagementPanel(props: Props) {
     <details className="data-section">
       <summary><strong>계획표</strong><span>텍스트 또는 이미지로 수정</span></summary>
       <div className="data-section__body policy-card">
-        <p>모바일 웹에서 계획표를 복사해 붙여넣으세요. 자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
-        <textarea aria-label="계획표 내용" value={props.policyText} onChange={(event) => props.onPolicyTextChange(event.target.value)} placeholder="예: 숙박비 50,000원 · 식비 200,000원 · 교통비 250,000원 · 카페 200,000원" />
+        <p>정주비는 식비·교육비·교통비·주거비, 학습공간비는 카페·스터디카페·독서실입니다.</p><p>모바일 웹에서 계획표를 복사해 붙여넣으세요. 자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
+        <textarea aria-label="계획표 내용" value={props.policyText} onChange={(event) => props.onPolicyTextChange(event.target.value)} placeholder="예: 식비 200000원 교육비 160000원 교통비 140000원 카페 200000원" />
+        {props.onEditPolicy && <button className="sheet-action secondary-action" onClick={props.onEditPolicy}>저장된 계획·기간 수정</button>}
         <button className="sheet-action" onClick={props.onReviewPolicy}>계획표 읽기</button>
         <button className="sheet-action secondary-action" onClick={props.onReadPolicyScreenshot}>스크린샷에서 읽기</button>
-        {props.policyDraft && <div className="policy-preview" ref={policyDraftRef}><strong>검토 결과</strong><label>지원 유형<select aria-label="정책 지원 유형" value={props.policyDraft.profileId} onChange={(event) => props.onUpdatePolicyProfile(event.target.value as SupportProfileId)}>{SHINHANHAE_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}</select></label><div className="policy-lines">
+        {props.policyDraft && <div className="policy-preview" ref={policyDraftRef}><strong>검토 결과</strong><section className="policy-period-settings"><strong>매월 사용 가능 기간</strong>{(['startDay', 'endDay'] as const).map((field) => <label key={field}>{field === 'startDay' ? '시작일' : '종료일'}<select aria-label={`정책 기간 ${field === 'startDay' ? '시작일' : '종료일'}`} value={normalizePolicyPeriod(props.policyDraft?.period)[field]} onChange={(event) => props.onUpdatePolicyPeriod?.({ ...normalizePolicyPeriod(props.policyDraft?.period), [field]: Number(event.target.value) })}>{Array.from({ length: 31 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}일</option>)}</select></label>)}<small>종료일이 시작일보다 이르면 다음 달까지 사용합니다. 없는 날짜는 월말로 맞춥니다.</small><small>이번 기간: {draftPeriodRange.start} ~ {draftPeriodRange.end}</small></section><label>지원 유형<select aria-label="정책 지원 유형" value={props.policyDraft.profileId} onChange={(event) => props.onUpdatePolicyProfile(event.target.value as SupportProfileId)}>{SHINHANHAE_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}</select></label><div className="policy-lines">
           <section className="policy-group"><h4>정주비 <span>{won(getPolicyLimit(props.policyDraft, 'resident'))} / {won(getSupportProfile(props.policyDraft.profileId).bucketLimits.resident)}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'resident').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <section className="policy-group"><h4>학습공간비 <span>{won(getPolicyLimit(props.policyDraft, 'studySpace'))} / {won(getSupportProfile(props.policyDraft.profileId).bucketLimits.studySpace)}</span></h4>{POLICY_ITEMS.filter((item) => item.bucket === 'studySpace').map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={props.policyDraft?.plans[item.key] ?? 0} onChange={(event) => props.onUpdatePolicyDraft(item.key, event.target.value)} /></label>)}</section>
           <strong>총 한도 {won(getPolicyLimit(props.policyDraft, 'resident') + getPolicyLimit(props.policyDraft, 'studySpace'))} / {won(getSupportProfile(props.policyDraft.profileId).totalLimit)}</strong>
@@ -82,6 +88,6 @@ export function DataManagementPanel(props: Props) {
       <div className="data-section__body"><BackupRestore embedded ledger={props.ledger} policyBook={props.policyBook} merchantRules={props.merchantRules} onRestore={props.onRestore} notify={props.notify} /></div>
     </details>
 
-    <DataIntegrityPanel ledger={props.ledger} periodKey={props.periodKey} canUndoImport={props.canUndoImport} onUndoImport={props.onUndoImport} onReset={props.onResetData} />
+    <DataIntegrityPanel ledger={props.ledger} periodKey={props.periodKey} period={props.period} canUndoImport={props.canUndoImport} onUndoImport={props.onUndoImport} onReset={props.onResetData} />
   </section>;
 }

@@ -59,6 +59,13 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/연결하지 않아도 PDF를 생성할 수 있습니다/)).toBeInTheDocument();
   });
 
+  it('does not repeat old amount-matching instructions from saved receipts', async () => {
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'legacy-receipt', section: 'receipt', order: 0, stored: { id: 'old', fileName: 'old.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, receiptOcrStatus: 'ambiguous', receiptOcrMessage: '날짜와 금액을 읽었습니다. 추천 또는 직접 연결해 주세요.' }]} />);
+    await screen.findByText('old.jpg');
+    expect(screen.queryByText(/날짜와 금액을 읽었습니다/)).not.toBeInTheDocument();
+    expect(screen.getByText('결제 날짜를 선택하면 해당 날짜의 결제를 보여드립니다.')).toBeInTheDocument();
+  });
+
   it('opens an anchored PDF guide from the header request and advances only with buttons', () => {
     render(<EvidenceExport helpRequest={1} reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
     const dialog = screen.getByRole('dialog', { name: 'PDF 생성 도움말' });
@@ -107,6 +114,30 @@ describe('EvidenceExport', () => {
     expect(screen.queryByText('다른 날 결제')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /같은 날 결제/ }));
     expect(await screen.findByText('결제 연결 완료')).toBeInTheDocument();
+  });
+
+  it('identifies a manually selected date without claiming OCR read it', async () => {
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'manual', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    const date = await screen.findByLabelText('영수증 1 날짜');
+    fireEvent.change(date, { target: { value: '2026-09-20' } }); fireEvent.blur(date);
+    expect(await screen.findByText('선택한 날짜의 결제 중 하나를 눌러 연결해 주세요.')).toBeInTheDocument();
+    expect(screen.queryByText(/결제 날짜를 읽었습니다/)).not.toBeInTheDocument();
+  });
+
+  it('cancels the internal benchmark before saving a result and keeps receipt files', async () => {
+    vi.stubEnv('MODE', 'internal');
+    let resolveBitmap!: (value: unknown) => void;
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise((resolve) => { resolveBitmap = resolve; })));
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'cancel', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    await screen.findByText('receipt.jpg');
+    fireEvent.click(screen.getByRole('button', { name: '과거 방식 시간 측정' }));
+    expect(await screen.findByText('0 / 1장 처리 완료 · 0%')).toBeInTheDocument();
+    await waitFor(() => expect(resolveBitmap).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: '생성 취소' }));
+    resolveBitmap({ width: 600, height: 1200, close: vi.fn() });
+    expect(await screen.findByText('시간 측정을 취소했습니다. 선택한 파일은 그대로 유지됩니다.')).toBeInTheDocument();
+    expect(screen.getByText('receipt.jpg')).toBeInTheDocument(); expect(exportMocks.saveFile).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it('opens a receipt image in a larger preview from its thumbnail', async () => {

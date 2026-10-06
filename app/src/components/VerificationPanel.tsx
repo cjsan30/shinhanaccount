@@ -3,6 +3,8 @@ import type { Ledger } from '../domain/ledger';
 import type { PolicyBook } from '../domain/policy';
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
 import { buildAutomaticChecks, createVerificationState, manualChecks, sanitizeVerificationNote, verificationReport, type VerificationDecision, type VerificationState } from '../domain/verification';
+import { App as NativeApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { saveFile } from '../native/fileExport';
 
 type Props = {
@@ -28,8 +30,9 @@ export function VerificationPanel(props: Props) {
     props.onChange({ ...value, decisions: { ...value.decisions, [id]: { status, decidedAt: new Date().toISOString(), ...(note ? { note } : {}) } } });
   };
   const exportReport = async () => {
-    const content = verificationReport(value, automatic, { version: `internal/${import.meta.env.MODE}`, platform: navigator.userAgent.includes('Android') ? 'Android' : 'browser' });
     try {
+      const info = Capacitor.isNativePlatform() ? await NativeApp.getInfo() : null;
+      const content = verificationReport(value, automatic, { version: info ? `${info.version} (빌드 ${info.build}; ${import.meta.env.MODE})` : `웹 (${import.meta.env.MODE})`, platform: Capacitor.getPlatform() });
       const result = await saveFile('shinhanhae_device_verification.txt', new TextEncoder().encode(content), 'text/plain;charset=utf-8');
       props.notify(`${result.fileName}을 ${result.relativePath}에 저장했습니다.`);
     } catch {
