@@ -4,6 +4,16 @@ import { SpotlightGuide } from './SpotlightGuide';
 import { APP_GUIDE_STEPS } from './appGuideSteps';
 
 describe('SpotlightGuide', () => {
+  it('keeps the card in the visible viewport when the target is outside the screen', () => {
+    const target = document.createElement('button'); target.id = 'offscreen'; target.scrollIntoView = vi.fn();
+    target.getBoundingClientRect = () => new DOMRect(0, 2500, 100, 50);
+    document.body.append(target);
+    const { unmount } = render(<SpotlightGuide title="안내" steps={[{ target: '#offscreen', title: '화면 밖 대상', body: '설명' }]} onClose={vi.fn()} />);
+    const card = document.querySelector<HTMLElement>('.spotlight-card')!;
+    expect(Number.parseFloat(card.style.top)).toBeLessThanOrEqual(window.innerHeight - 220);
+    expect(document.querySelector('.spotlight-highlight')).toBeNull();
+    unmount(); target.remove();
+  });
   it('scrolls to each target, supports previous, and completes without modifying targets', () => {
     const scroll = vi.fn();
     const close = vi.fn();

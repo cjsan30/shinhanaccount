@@ -12,6 +12,17 @@ const baseProps = () => ({
 });
 
 describe('data management panel', () => {
+  it('allows monthly policy dates to be reviewed and saved with a plan', () => {
+    const onUpdatePolicyPeriod = vi.fn(); const onEditPolicy = vi.fn();
+    render(<DataManagementPanel {...baseProps()} onUpdatePolicyPeriod={onUpdatePolicyPeriod} onEditPolicy={onEditPolicy} />);
+    fireEvent.click(screen.getByRole('button', { name: '저장된 계획·기간 수정' }));
+    expect(onEditPolicy).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('정책 기간 시작일')).toHaveValue('15');
+    expect(screen.getByLabelText('정책 기간 종료일')).toHaveValue('10');
+    fireEvent.change(screen.getByLabelText('정책 기간 시작일'), { target: { value: '1' } });
+    expect(onUpdatePolicyPeriod).toHaveBeenCalledWith({ startDay: 1, endDay: 10 });
+  });
+
   it('routes users to the unified transaction-import guide', () => {
     const props = baseProps(); render(<DataManagementPanel {...props} />);
     fireEvent.click(screen.getByRole('button', { name: '거래내역 등록 가이드' }));

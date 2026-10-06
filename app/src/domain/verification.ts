@@ -38,6 +38,7 @@ export function buildAutomaticChecks(input: AutomaticCheckInput): AutomaticCheck
   const classified = input.ledger.entries.filter((entry) => entry.status === 'classified').length;
   const invalidEntry = input.ledger.entries.some((entry) => !Number.isFinite(entry.amount) || entry.amount < 0 || !entry.occurredAt || !entry.merchant.trim());
   const receiptCount = input.evidence.filter((item) => item.section === 'receipt').length;
+  const unreadStatements = input.evidence.some((item) => item.section === 'statement' && (item.stored.mimeType === 'application/pdf' || /\.pdf$/i.test(item.stored.fileName)) && (item.statementParseFailed || !item.statementRows?.length));
   const linkedReceiptCount = input.evidence.filter((item) => item.section === 'receipt' && item.linkedEntryId).length;
   return [
     {
@@ -61,8 +62,8 @@ export function buildAutomaticChecks(input: AutomaticCheckInput): AutomaticCheck
       evidence: { passed: classified > 0, observedAt, summary: classified ? `분류된 거래 ${classified}건 저장됨` : '분류된 거래가 아직 없습니다.' },
     },
     {
-      id: 'evidence-preparation', title: '증빙 준비', description: '영수증과 거래증빙의 등록·연결 상태를 확인합니다.',
-      evidence: { passed: receiptCount > 0 && linkedReceiptCount === receiptCount, observedAt, summary: receiptCount ? `영수증 ${receiptCount}개 중 ${linkedReceiptCount}개 연결됨` : '등록된 영수증이 없습니다.' },
+      id: 'evidence-preparation', title: '증빙 준비', description: '영수증 등록과 입출금내역 읽기 상태를 확인합니다. 결제 연결은 선택 사항입니다.',
+      evidence: { passed: receiptCount > 0 && !unreadStatements, observedAt, summary: receiptCount ? `영수증 ${receiptCount}개 등록 · 연결 ${linkedReceiptCount}개 (선택)${unreadStatements ? ' · 입출금내역 다시 읽기 필요' : ''}` : '등록된 영수증이 없습니다.' },
     },
   ];
 }
@@ -72,7 +73,7 @@ export const manualChecks = [
   { id: 'notification-visibility', title: '실제 결제 알림', description: '승인·취소 알림과 앱 알림이 기기 상단바에 올바르게 표시되는지 확인합니다.' },
   { id: 'import-accuracy', title: '가져오기 정확성', description: '카드 CSV/Excel 또는 은행 PDF의 실제 행과 앱 결과를 대조합니다.' },
   { id: 'backup-roundtrip', title: '백업·복원 왕복', description: '백업 파일을 새 설치 또는 초기화 환경에서 복원해 데이터가 일치하는지 확인합니다.' },
-  { id: 'pdf-readability', title: '제출서류 품질', description: 'PDF의 표·모자이크·영수증이 사람이 읽을 수 있고 5MB 이하인지 확인합니다.' },
+  { id: 'pdf-readability', title: '제출서류 품질', description: 'PDF의 원본 표·가림 처리·영수증이 사람이 읽을 수 있고 5MB 이하인지 확인합니다.' },
   { id: 'widget-visual', title: '홈 위젯 일치', description: '위젯 잔액·미정 건수·레이아웃이 앱과 일치하는지 확인합니다.' },
   { id: 'play-update', title: 'Play 업데이트 데이터 유지', description: '비공개 테스트 업데이트 뒤 정책·거래·규칙이 유지되는지 확인합니다.' },
 ] as const;

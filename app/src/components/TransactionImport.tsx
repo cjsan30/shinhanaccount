@@ -1,3 +1,4 @@
+import type { PolicyPeriod } from '../domain/budget';
 import { useState } from 'react';
 import { filterTransactionsForConfiguredCard } from '../domain/cardImportSafety';
 import { filterImportToPolicyPeriod } from '../domain/importPolicy';
@@ -8,7 +9,8 @@ import { readSelectedFile } from '../native/fileRead';
 
 export type ImportPreviewCounts = { read: number; eligible: number; outsidePeriod: number; ignoredDeposits?: number };
 export type TransactionImportPayload = { source: 'card' | 'account'; identifierLast4: string; cardTransactions?: ImportedCardTransaction[]; bankTransactions?: ImportedBankTransaction[]; excludedOutsidePeriod: number; preview: ImportPreviewCounts };
-type Props = { cardLast4: string; periodKey: string; onImport: (payload: TransactionImportPayload) => void; notify: (message: string) => void; };
+type Props = { cardLast4: string; periodKey: string;
+  period?: PolicyPeriod; onImport: (payload: TransactionImportPayload) => void; notify: (message: string) => void; };
 type ImportKind = 'card' | 'account';
 const identifierWarning = '파일 안에서 4자리를 확인할 수 없습니다. 선택한 카드·계좌의 내역인지 확인해 주세요.';
 const CARD_FILE_EXTENSIONS = ['csv', 'xls', 'xlsx'];
@@ -36,7 +38,7 @@ function importFailureMessage(error: unknown) {
   return detail ? `읽지 못했습니다: ${detail}` : '읽지 못했습니다. 파일 형식 또는 비밀번호를 확인해 주세요.';
 }
 
-export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Props) {
+export function TransactionImport({ cardLast4, periodKey, period: policyPeriod, onImport, notify }: Props) {
   const [kind, setKind] = useState<ImportKind>('card'); const [identifier, setIdentifier] = useState(cardLast4); const [pdfPassword, setPdfPassword] = useState('');
   const [file, setFile] = useState<File | null>(null); const [payload, setPayload] = useState<TransactionImportPayload | null>(null);
   const [needsConfirmation, setNeedsConfirmation] = useState(false); const [reading, setReading] = useState(false); const [message, setMessage] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Pr
       const data = await readSelectedFile(file);
       if (kind === 'account') {
         const parsed = await parseShinhanBankPdfExport(data, pdfPassword); const candidates = parsed.filter((row) => row.direction === 'withdrawal');
-        const period = filterImportToPolicyPeriod(candidates, periodKey); const fileLast4 = getMaskedAccountLast4(candidates.find((row) => row.accountMasked)?.accountMasked);
+        const period = filterImportToPolicyPeriod(candidates, periodKey, policyPeriod); const fileLast4 = getMaskedAccountLast4(candidates.find((row) => row.accountMasked)?.accountMasked);
         if (fileLast4 && fileLast4 !== identifier) throw new Error('선택한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다.');
         if (!period.included.length) throw new Error('현재 정책 기간에 가져올 출금 내역이 없습니다. 기간을 확인해 주세요.');
         setPayload({ source: 'account', identifierLast4: identifier, bankTransactions: period.included, excludedOutsidePeriod: period.excludedOutsidePeriod, preview: { read: parsed.length, eligible: period.included.length, outsidePeriod: period.excludedOutsidePeriod, ignoredDeposits: parsed.length - candidates.length } });
@@ -60,7 +62,7 @@ export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Pr
       const safety = filterTransactionsForConfiguredCard(parsed, identifier);
       const matching = safety.status === 'ready' ? safety.transactions : parsed.filter((transaction) => !transaction.cardMasked);
       if (safety.status === 'rejected' && matching.length === 0 && parsed.some((transaction) => transaction.cardMasked)) throw new Error('선택한 카드와 일치하는 결제 내역을 찾지 못했습니다.');
-      const period = filterImportToPolicyPeriod(matching, periodKey);
+      const period = filterImportToPolicyPeriod(matching, periodKey, policyPeriod);
       if (!period.included.length) throw new Error('현재 정책 기간에 가져올 승인 내역이 없습니다. 기간을 확인해 주세요.');
       setPayload({ source: 'card', identifierLast4: identifier, cardTransactions: period.included, excludedOutsidePeriod: period.excludedOutsidePeriod, preview: { read: matching.length, eligible: period.included.length, outsidePeriod: period.excludedOutsidePeriod } });
       setNeedsConfirmation(safety.status !== 'ready' || safety.hasMaskedCardWarning || !matching.some((transaction) => transaction.cardIdentity));
@@ -74,7 +76,7 @@ export function TransactionImport({ cardLast4, periodKey, onImport, notify }: Pr
     {kind === 'card' ? <section className="import-card__guide"><strong>신한카드 이용내역</strong><p>신한카드 앱에서 카드이용내역을 조회한 뒤 CSV로 저장해 선택하세요. 기존 Excel 형식도 등록할 수 있으며, 정책 기간 내 승인 내역만 가져옵니다.</p><button className="import-card__open-app" type="button" onClick={() => void openShinhanSolPay().catch(() => notify('신한카드 앱을 열지 못했습니다. 설치 여부를 확인해 주세요.'))}>신한카드 앱 열기</button></section> : <section className="import-card__guide"><strong>신한은행 입출금내역</strong><p>신한은행 앱에서 입출금내역 PDF를 저장해 선택하세요. 보호된 PDF는 비밀번호를 입력하며, 정책 기간 내 출금 내역만 미정 지출 후보로 가져옵니다.</p></section>}
     <label className="import-identifier">{kind === 'card' ? '카드' : '계좌'} 끝 4자리<input aria-label={`${kind === 'card' ? '카드' : '계좌'} 끝 4자리`} inputMode="numeric" maxLength={4} value={identifier} onChange={(event) => setIdentifier(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="0000" /></label>
     {kind === 'account' && <label className="import-identifier">PDF 비밀번호 <input aria-label="PDF 비밀번호" type="password" autoComplete="off" value={pdfPassword} onChange={(event) => setPdfPassword(event.target.value)} placeholder="보호된 PDF인 경우에만 입력" /></label>}
-    <label className="file-picker">{kind === 'card' ? '신한카드 CSV 파일 선택' : '신한은행 입출금내역 PDF 선택'}<input aria-label="거래내역 파일" type="file" accept={accept} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setPayload(null); setNeedsConfirmation(false); setMessage(event.target.files?.[0] ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} /></label>
+    <label className="file-picker">{kind === 'card' ? '신한카드 CSV·Excel 파일 선택' : '신한은행 입출금내역 PDF 선택'}<input aria-label="거래내역 파일" type="file" accept={accept} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setPayload(null); setNeedsConfirmation(false); setMessage(event.target.files?.[0] ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} /></label>
     {file && <div className="import-preview"><strong className="import-file-name">{file.name}</strong><button className="sheet-action" disabled={reading} onClick={() => void readFile()}>{reading ? '파일 읽는 중…' : '파일 읽기'}</button>{message && <p className={message.startsWith('읽지 못') || message.startsWith('선택한') || message.startsWith('암호화') ? 'import-warning' : 'import-status'} role="status">{message}</p>}</div>}
     {payload && <div className="import-preview">{needsConfirmation && <p className="import-warning">{identifierWarning}</p>}<strong>{payload.preview.eligible}건 가져오기 준비</strong><ul className="import-preview-counts"><li>파일에서 읽은 {payload.preview.read}건</li><li>정책 기간 내 {payload.preview.eligible}건</li><li>기간 외 제외 {payload.preview.outsidePeriod}건</li>{payload.preview.ignoredDeposits !== undefined && <li>입금 제외 {payload.preview.ignoredDeposits}건</li>}</ul><span>{payload.source === 'account' ? '가져온 출금 내역은 미정 지출에서 사업 무관 지출을 제외하거나 분류할 수 있습니다.' : '가져오기 전 자동 분류 결과를 적용합니다.'}</span><button className="sheet-action" onClick={() => onImport(payload)}>{needsConfirmation ? '확인 후 계속 진행' : '내역 가져오기'}</button></div>}
   </section></section>;
