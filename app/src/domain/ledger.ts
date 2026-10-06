@@ -4,14 +4,15 @@ import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 import type { ImportedBankTransaction } from './shinhanBankImport';
 import type { StoredEvidence } from '../native/evidenceVault';
+import { reconcileImportedEntries, transactionOrigins, type TransactionOrigin } from './importReconciliation';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; memo?: string; evidence?: StoredEvidence[] };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; memo?: string; evidence?: StoredEvidence[]; importOrigins?: TransactionOrigin[]; bankSummary?: string; duplicateCandidateIds?: string[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
-export type ImportResult = { ledger: Ledger; imported: number; duplicates: number; excluded: number; undecided: number; skipped: number; replacedDemo: boolean };
+export type ImportResult = { ledger: Ledger; imported: number; duplicates: number; excluded: number; undecided: number; skipped: number; replacedDemo: boolean; mergedUndecided?: number; mergedConfirmed?: number; reviewNeeded?: number };
 
 const initialEntries: LedgerEntry[] = [
   { id: 'seed-lodging', cardLast4: '', occurredAt: '2026-07-20T00:00:00+09:00', amount: 38900, merchant: '기존 숙박비', status: 'classified', bucket: 'resident', category: 'lodging' },
@@ -44,7 +45,7 @@ function isSameTransaction(left: Pick<LedgerEntry, 'occurredAt' | 'merchant' | '
 function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string): LedgerEntry {
   const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
   const entry = toEntry(payment, transaction.classification);
-  return { ...entry, id: `approval-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
+  return { ...entry, id: `approval-${cardLast4}-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
 export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string): ImportResult {
@@ -52,34 +53,21 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
-  let imported = 0;
-  let duplicates = 0;
-  let excluded = 0;
-  let undecided = 0;
-  const entries = [...baseline];
-  for (const transaction of importable) {
-    const entry = transactionToEntry(transaction, cardLast4);
-    if (entries.some((existing) => existing.approvalNumber === entry.approvalNumber || existing.id === entry.id || isSameTransaction(existing, entry))) { duplicates += 1; continue; }
-    entries.push(entry);
-    imported += 1;
-    if (entry.status === 'excluded') excluded += 1;
-    if (entry.status === 'undecided') undecided += 1;
-  }
-  return { ledger: { ...ledger, entries }, imported, duplicates, excluded, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
+  const result = reconcileImportedEntries(baseline, importable.map((transaction) => transactionToEntry(transaction, cardLast4)));
+  const added = result.entries.filter((entry) => !baseline.some((existing) => existing.id === entry.id));
+  return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: added.filter((entry) => entry.status === 'excluded').length, undecided: added.filter((entry) => entry.status === 'undecided').length, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
 export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string): ImportResult {
   const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
-  let imported = 0; let duplicates = 0; let undecided = 0; const entries = [...baseline];
-  for (const transaction of importable) {
+  const incoming = importable.map((transaction) => {
     const entry = toEntry({ cardLast4: accountLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount }, { status: 'undecided' });
-    const next = { ...entry, id: `bank-${transaction.transactionId}`, source: 'bankCsv' as const };
-    if (entries.some((existing) => existing.id === next.id || isSameTransaction(existing, next))) { duplicates += 1; continue; }
-    entries.push(next); imported += 1; undecided += 1;
-  }
-  return { ledger: { ...ledger, entries }, imported, duplicates, excluded: 0, undecided, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
+    return { ...entry, id: `bank-${accountLast4}-${transaction.transactionId}`, source: 'bankCsv' as const, bankSummary: transaction.summary };
+  });
+  const result = reconcileImportedEntries(baseline, incoming);
+  return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: 0, undecided: result.imported, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
 export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment): ApplyPaymentResult {
   const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {
@@ -144,13 +132,13 @@ export function excludeUndecided(ledger: Ledger, entryIds: string[]): Ledger {
   if (!ids.size) return ledger;
   return {
     ...ledger,
-    entries: ledger.entries.map((entry) => ids.has(entry.id) && entry.status === 'undecided'
+    entries: ledger.entries.map((entry) => ids.has(entry.id) && entry.status === 'undecided' && !entry.duplicateCandidateIds?.length
       ? { ...entry, status: 'excluded', bucket: undefined, category: undefined }
       : entry),
   };
 }
 export function removeLedgerEntry(ledger: Ledger, entryId: string): Ledger {
-  return { ...ledger, entries: ledger.entries.filter((entry) => entry.id !== entryId) };
+  return { ...ledger, entries: ledger.entries.filter((entry) => entry.id !== entryId).map((entry) => ({ ...entry, duplicateCandidateIds: entry.duplicateCandidateIds?.filter((id) => id !== entryId) })) };
 }
 export function cancelPayment(ledger: Ledger, entryId: string, cancelledAt: string): Ledger {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
@@ -171,9 +159,9 @@ export function applyCancellation(ledger: Ledger, entryId: string, cancellationA
 }
 export function reclassifyUndecided(ledger: Ledger, entryId: string, classification: ManualClassification, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}): ApplyPaymentResult {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
-  if (!entry || entry.status !== 'undecided') throw new Error('Only undecided entries can be reclassified');
+  if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('Only resolved undecided entries can be reclassified');
   const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry));
-  const nextEntry: LedgerEntry = { ...entry, status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
+  const nextEntry: LedgerEntry = { ...entry, importOrigins: transactionOrigins(entry), status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
   const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
   const currentSpent = getCategorySpent(nextLedger, classification.bucket, classification.category, getEntryPeriodKey(nextEntry));
   return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) };

@@ -4,6 +4,16 @@ import { UndecidedPanel } from './UndecidedPanel';
 import { POLICY_ITEMS } from '../domain/policy';
 
 describe('undecided panel', () => {
+  it('asks Yes or No before allowing classification of a suspected duplicate', () => {
+    const resolve = vi.fn();
+    const existing = { id: 'card', source: 'excel' as const, cardLast4: '1234', merchant: '메가커피', amount: 2700, occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, category: 'food' };
+    const incoming = { ...existing, id: 'bank', merchant: '네이버페이', status: 'undecided' as const, duplicateCandidateIds: ['card'] };
+    render(<UndecidedPanel entries={[incoming]} allEntries={[existing, incoming]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={vi.fn()} onResolveDuplicate={resolve} />);
+    expect(screen.getByLabelText('네이버페이 선택')).toBeDisabled();
+    expect(screen.getByText('같은 거래인가요?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' })); expect(resolve).toHaveBeenCalledWith('bank', 'card', true);
+    fireEvent.click(screen.getByRole('button', { name: 'No' })); expect(resolve).toHaveBeenCalledWith('bank', 'card', false);
+  });
   it('classifies selected entries in bulk and only permits a rule for one entry', () => {
     const onClassify = vi.fn();
     const entries = [

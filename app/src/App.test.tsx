@@ -46,6 +46,23 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it('resolves a cross-source duplicate from undecided expenses without changing confirmed spending', async () => {
+    const original = { id: 'approval-1234-1', cardLast4: '1234', merchant: '메가커피', occurredAt: '2026-09-20T12:00:00+09:00', amount: 2700, status: 'classified', bucket: 'resident', category: 'food', source: 'excel' };
+    const pending = { id: 'bank-6789-1', cardLast4: '6789', merchant: '네이버페이', occurredAt: '2026-09-20T12:00:23+09:00', amount: 2700, status: 'undecided', source: 'bankCsv', duplicateCandidateIds: [original.id] };
+    const now = new Date().toISOString();
+    original.occurredAt = now; pending.occurredAt = now;
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [original, pending] }));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: getPolicyPeriodKey(new Date()), confirmedAt: now, sourceText: 'saved policy', plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
+    await renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('shinhanhae-ledger-v1')!);
+      expect(stored.entries).toHaveLength(1);
+      expect(stored.entries[0]).toMatchObject({ id: original.id, category: 'food', amount: 2700, status: 'classified' });
+    });
+    expect(screen.queryByText('같은 거래인가요?')).not.toBeInTheDocument();
+  });
   it('opens optional app guidance without changing data and places PDF help in the sheet header', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy', plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
