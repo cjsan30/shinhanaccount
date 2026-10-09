@@ -7,6 +7,7 @@ type NativeVault = {
   remove(options: { id: string }): Promise<void>;
 };
 
+const webFiles = new Map<string, File>();
 const EvidenceVault = registerPlugin<NativeVault>('EvidenceVault');
 
 export type StoredEvidence = { id: string; fileName: string; mimeType: string; size: number; attachedAt: string };
@@ -14,10 +15,12 @@ export type StoredEvidence = { id: string; fileName: string; mimeType: string; s
 export async function storeEvidence(file: File): Promise<StoredEvidence> {
   const stored: StoredEvidence = { id: crypto.randomUUID().replaceAll('-', ''), fileName: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, attachedAt: new Date().toISOString() };
   if (Capacitor.isNativePlatform()) await EvidenceVault.save({ id: stored.id, base64Data: bytesToBase64(new Uint8Array(await file.arrayBuffer())) });
+  if (!Capacitor.isNativePlatform()) webFiles.set(stored.id, file);
   return stored;
 }
 
 export async function loadEvidence(stored: StoredEvidence): Promise<File> {
+  if (!Capacitor.isNativePlatform() && webFiles.has(stored.id)) return webFiles.get(stored.id)!;
   if (!Capacitor.isNativePlatform()) throw new Error('웹 미리보기에서는 앱을 다시 열면 증빙 파일을 다시 선택해 주세요.');
   const result = await EvidenceVault.read({ id: stored.id });
   const binary = atob(result.base64Data);
@@ -26,5 +29,6 @@ export async function loadEvidence(stored: StoredEvidence): Promise<File> {
 }
 
 export async function removeStoredEvidence(stored: StoredEvidence) {
+  webFiles.delete(stored.id);
   if (Capacitor.isNativePlatform()) await EvidenceVault.remove({ id: stored.id });
 }
