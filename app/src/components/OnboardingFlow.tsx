@@ -3,6 +3,8 @@ import { FirstRunPermission } from './FirstRunPermission';
 import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
 import type { SupportPolicy } from '../domain/policy';
+import { SHORT_APP_NOTICE } from '../domain/appInformation';
+import { InformationSourceLink } from './AppInformation';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
@@ -87,7 +89,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
 
   if (step === 'applicant') {
     return (
-      <main className="first-run">
+      <main className="first-run first-run--applicant">
         <section className="applicant-question" aria-label="신청해 사업 지원자 여부">
           <h1>신청해 사업<br />지원자인가요?</h1>
           <div>
@@ -95,6 +97,10 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
             <button className="onboarding-secondary" type="button" onClick={() => skipToDashboard()}>No</button>
           </div>
         </section>
+        <footer className="onboarding-app-notice">
+          <p>{SHORT_APP_NOTICE}</p>
+          <InformationSourceLink>사업 정보 출처 확인</InformationSourceLink>
+        </footer>
       </main>
     );
   }

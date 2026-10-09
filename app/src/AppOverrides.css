@@ -228,6 +228,29 @@ body.high-contrast .spotlight-card :is(small, h3, p) { color: #fff; }
 body.high-contrast .spotlight-card footer button { border-color: #fff; color: #fff; }
 body.high-contrast .spotlight-card footer .spotlight-next { background: #fff; color: #000; }
 
+/* Information stays readable in small viewports and the largest text setting. */
+.first-run--applicant { display: flex; flex-direction: column; }
+.first-run--applicant .applicant-question { min-height: 0; flex: 1 0 auto; padding-block: 24px 48px; }
+.onboarding-app-notice { margin-top: auto; padding-top: 24px; }
+.onboarding-app-notice p { margin: 0 0 12px; color: #c4d1df; font-size: 14px; line-height: 1.65; word-break: keep-all; overflow-wrap: anywhere; }
+.information-source-link { min-width: 0; margin-block: 16px; }
+.information-source-button { display: flex; align-items: center; justify-content: center; min-height: 48px; max-width: 100%; box-sizing: border-box; padding: 12px 16px; border: 1px solid #8fd9d4; border-radius: 14px; background: #173a40; color: #b6f5e8; font-size: 16px; font-weight: 750; line-height: 1.5; text-align: center; text-decoration: none; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+.information-source-button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.information-source-link > p { color: #ffb0ae; line-height: 1.6; overflow-wrap: anywhere; }
+.app-information-content { min-width: 0; }
+.app-information-content h3 { margin: 20px 0 10px; color: #f4f7fb; font-size: 18px; }
+.app-information-content h3:first-child { margin-top: 0; }
+.app-information-content p { margin: 0 0 16px; color: #c4d1df; font-size: 16px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+.app-information-backdrop { position: fixed; inset: 0; z-index: 150; display: flex; align-items: center; justify-content: center; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: #000b; }
+.app-information-notice { width: min(100%, 520px); min-width: 0; max-height: 100%; display: flex; flex-direction: column; padding: 22px; border: 1px solid #536984; border-radius: 22px; background: #182535; color: #f4f7fb; }
+.app-information-notice h2 { flex-shrink: 0; margin: 0 0 20px; font-size: 22px; line-height: 1.4; word-break: keep-all; overflow-wrap: anywhere; }
+.app-information-notice__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.app-information-notice > .sheet-action { flex-shrink: 0; width: 100%; margin: 16px 0 0; min-height: 48px; background: #fff; color: #10202d; white-space: normal; }
+.app-information-error { color: #ffb0ae; line-height: 1.5; }
+body.high-contrast :is(.app-information-notice, .information-source-button) { border-color: #fff !important; background: #000 !important; color: #fff !important; }
+body.high-contrast :is(.app-information-content p, .app-information-content h3, .onboarding-app-notice p) { color: #fff !important; }
+body.high-contrast .app .app-information-notice > .sheet-action { background: #fff !important; color: #000 !important; }
+
 /* Subsidy portions are optional: keep the editor inside its expense card. */
 .undecided-list .reclassify-card .undecided-check { grid-row: 1; }
 .support-amount-controls { grid-column: 2 / -1; display: grid; gap: 4px; min-width: 0; }

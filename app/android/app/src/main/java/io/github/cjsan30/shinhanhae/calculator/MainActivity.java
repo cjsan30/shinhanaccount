@@ -36,6 +36,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EvidenceVaultPlugin.class);
         registerPlugin(AppHealthPlugin.class);
         registerPlugin(ExternalAppPlugin.class);
+        registerPlugin(AppInformationPlugin.class);
         super.onCreate(savedInstanceState);
         initializeInAppUpdates();
     }

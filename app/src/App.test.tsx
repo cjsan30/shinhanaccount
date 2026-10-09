@@ -11,10 +11,12 @@ import App from './App';
 import { previousPanel } from './domain/navigation';
 import { getPolicyPeriodKey } from './domain/budget';
 import { createEmptyLedger } from './domain/ledger';
+import { APP_INFORMATION_ACK_KEY, APP_INFORMATION_TITLE } from './domain/appInformation';
 
 let approvalListener: (() => void) | null = null;
 
-async function renderApp() {
+async function renderApp(acknowledgeNotice = true) {
+  if (acknowledgeNotice) localStorage.setItem(APP_INFORMATION_ACK_KEY, 'confirmed');
   let result: ReturnType<typeof render> | undefined;
   await act(async () => {
     result = render(<App />);
@@ -48,6 +50,51 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it.each(['No', '넘어가기'])('shows the disclosure once after %s and keeps it confirmed on restart', async (choice) => {
+    const app = await renderApp(false);
+    await screen.findByRole('button', { name: 'Yes' });
+    expect(screen.queryByRole('dialog', { name: APP_INFORMATION_TITLE })).not.toBeInTheDocument();
+    if (choice === '넘어가기') fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(await screen.findByRole('button', { name: choice }));
+    await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE });
+    expect(localStorage.getItem(APP_INFORMATION_ACK_KEY)).toBeNull();
+    expect(app.container.querySelector('.dashboard-surface')).toHaveAttribute('inert');
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: APP_INFORMATION_TITLE })).not.toBeInTheDocument());
+    expect(localStorage.getItem(APP_INFORMATION_ACK_KEY)).toBe('confirmed');
+    app.unmount(); await renderApp(false);
+    expect(screen.queryByRole('dialog', { name: APP_INFORMATION_TITLE })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
+    expect(screen.queryByText('필요한 설정만 선택해 관리하세요.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /앱 안내·정보 출처/ }));
+    expect(screen.getByRole('heading', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '이전 화면으로 돌아가기' }));
+    expect(screen.getByRole('heading', { name: '설정' })).toBeInTheDocument();
+  });
+  it.each(['dashboard', 'import'])('defers the notice until the actual dashboard after normal onboarding: %s', async (route) => {
+    localStorage.setItem('shinhanhae-onboarding-progress-v1', JSON.stringify({ step: 'policy', policy: { plans: { housing: 300000, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 }, sourceText: 'saved plan', profileId: 'shinhanhae-70', alertTargets: [] } }));
+    await renderApp(false);
+    fireEvent.click(await screen.findByRole('button', { name: '정책 확정' }));
+    fireEvent.click(await screen.findByRole('button', { name: route === 'import' ? /결제한 적이 있어요/ : /아직 사용 전이에요/ }));
+    if (route === 'import') {
+      await screen.findByRole('button', { name: '나중에 등록하기' });
+      expect(screen.queryByRole('dialog', { name: APP_INFORMATION_TITLE })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '나중에 등록하기' }));
+    }
+    expect(await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
+  });
+  it('shows the notice to existing users until explicitly confirmed, without replacing their plan', async () => {
+    const book = { versions: [], mode: 'not-applicant' };
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify(book));
+    const app = await renderApp(false);
+    await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE });
+    expect(localStorage.getItem(APP_INFORMATION_ACK_KEY)).toBeNull();
+    app.unmount(); await renderApp(false);
+    expect(await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!)).toEqual(book);
+    expect(previousPanel('information')).toBe('settings');
+  });
   it('classifies only the subsidy portion, preserves it on reload, and guides partial cancellation back through undecided', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     const now = new Date().toISOString();
