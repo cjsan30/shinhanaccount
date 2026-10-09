@@ -285,3 +285,14 @@ Galaxy S25 Ultra의 OS font_scale 2.0 + 앱 크게 + 고대비 조합에서 다�
 - 병합 release 매니페스트에서 원래 패키지, 1.3.7 / code 11, debuggable 미지정, 제한 SMS 권한/수신 리시버 없음 확인. production 웹 번들에서 압축 품질 비교·과거/현재 측정·검증 이력 초기화 내부 버튼 문구가 제외됨을 확인했다.
 - 기존 릴리스 키 파일은 존재하지만 현재 프로세스에 서명 비밀번호는 설정되어 있지 않다. 이번 준비 작업에서는 서명 AAB/APK를 만들지 않았다. `app/build-play-release.ps1`을 사용자가 로컬 PowerShell에서 실행해 비밀번호를 직접 입력하는 기존 방식을 유지한다. 생성 후 실제 AAB 버전·기존 인증서 일치·번들 검증은 다음 단계다. 이전 build 출력 또는 `audit/release-1.3.6*` AAB를 이번 새 버전이라고 사용하지 않는다.
 - `docs/11-play-console-registration-pack.md` 최상단에 1.3.7 출시 노트 초안과 서명 생성 절차를 추가했다. 앞서 승인한 비공식 앱 고지·공식 출처 2개는 Console에 별도로 반영해야 하며 바이너리 교체만으로 거부 사유 해소를 주장하지 않는다. 이번에는 실기기 재설치·스토어 업데이트·Play 업로드/제출/배포를 하지 않았다.
+
+## 2026-10-10 서명 릴리스 생성 및 산출물 검증: 1.3.7 / code 11
+
+- 사용자 요청에 따라 기존 키 비밀번호를 로컬 PowerShell에서 직접 입력해 `56ae425`의 production 서명 AAB·APK를 생성했다. 비밀번호는 채팅·소스·로그에 기록하지 않았고 빌드 후 환경에서 제거하는 기존 방식을 사용했다. 앱 기능 소스는 변경하지 않았다.
+- AAB: Git 제외 `audit/release-1.3.7/shinhanhae-1.3.7-11-release.aab`, **33,035,760B**, SHA-256 **0da4fd6b67a68307740fa5442f4df7152f74ab17a3a58f2c02cf495f413b4562**. 서명 APK도 같은 폴더에 보존했다(67,832,658B). 산출물·키·검증 로그는 Git에 추가하지 않는다.
+- 웹 빌드 전 일반 테스트는 443개 통과/내부 전용 1개 제외. JSON 결과 기록용 추가 실행에서 온보딩 완료 후 progress 제거 단언 1개가 실패했다. 실패 이력을 숨기지 않으며 테스트·기능 코드를 수정하지 않은 상태에서 `--maxWorkers=1`로 전체를 다시 실행해 443개 통과/1개 제외/실패 0개를 확인했다. 해당 단언의 타이밍 불안정 가능성은 후속 점검 대상이다.
+- lint·보안(117개 소스)·TypeScript/production 웹 빌드·Capacitor copy·R8 서명 빌드 통과. Android debug/release 테스트는 서명 빌드에서 직전 결과가 up-to-date로 사용되어, 별도로 `--rerun-tasks --no-build-cache -Pkotlin.incremental=false`로 재실행했다. 각각 28개, 실패·오류 0개다.
+- 실제 AAB protobuf 매니페스트에서 package `io.github.cjsan30.shinhanhae.calculator`, versionName 1.3.7 / versionCode 11을 확인했다. debuggable false·제한 SMS 권한 제외·production 웹 자산 해시 일치·내부 측정/검증 화면 제외·arm64/x86_64 라이브러리 LOAD 정렬 16KB 이상을 확인했다.
+- bundletool validate 성공. jarsigner 검증은 `jar verified`/exit 0, APK apksigner 검증 성공. AAB와 APK의 인증서 SHA-256은 **eb0b1ce6ec50951b781240c9e5faae8dfef638ffb61d76c09add86cd40253f41**로 기존 1.3.6 업로드 키와 같다. jarsigner의 자체 서명·타임스탬프 없음·ZIP 접근 방식 관련 경고는 남으며 이를 경고 없음으로 보고하지 않는다.
+- 로컬 빌드 wrapper의 완료 메타데이터 기록 단계가 실패했으나 Gradle 서명 빌드와 파일 복사는 완료되어 있었다. 새 생성 시각·해시·서명·번들을 별도 검증한 후 build-result를 complete-verified로 정정했다. 검증 증거는 같은 폴더의 `artifact-verification.json`, `bundletool-validation.json`, `web-tests.json`이다.
+- 이번에는 실기기 설치/검증·Play 업로드·검토 제출·배포를 하지 않았다. 공식 출처와 비공식 앱 고지의 상세 설명 반영은 Play 제출 전 별도 확인해야 한다.

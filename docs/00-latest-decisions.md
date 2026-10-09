@@ -1,5 +1,11 @@
 # 최신 결정사항
 
+## 2026-10-10 서명 릴리스 생성 완료: 1.3.7 / code 11
+
+- 최종 승인 소스 `56ae425`로 production 서명 AAB·APK를 생성했다. 업로드 파일은 Git 제외 `audit/release-1.3.7/shinhanhae-1.3.7-11-release.aab`, 33,035,760바이트, SHA-256 `0da4fd6b67a68307740fa5442f4df7152f74ab17a3a58f2c02cf495f413b4562`다.
+- 기존 업로드 인증서 일치·실제 번들 package/version·서명·bundletool validate·production 웹 자산 일치·내부 검증 기능 제외·제한 SMS 권한 제외·64비트 네이티브 16KB 정렬을 확인했다. 최종 일반 웹 회귀 443개 통과/내부 전용 1개 제외, Android debug/release 각각 28개 통과, lint·보안·production 빌드 통과. 실제 기기 재설치나 Play 업로드·제출·배포는 하지 않았다.
+- Play 제출 시 앞서 승인한 비공식 앱 고지와 공식 출처 2개를 상세 설명에 반영해야 한다. 서명 파일 생성 완료가 정책 승인 완료를 의미하지 않는다.
+
 ## 2026-10-10 릴리스 생성 준비: 1.3.7 / code 11
 
 - 승인된 최신 기능·문구·접근성 수정과 일부 반영 금액 표시를 모두 유지하며 추가 기능 변경 없이 versionName 1.3.7 / versionCode 11로 올린다. 이미 Play에 제출한 code 10은 재사용하지 않는다.
