@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge } = vi.hoisted(() => ({
   smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
@@ -22,6 +22,8 @@ async function renderApp() {
   });
   return result!;
 }
+
+afterEach(() => { vi.useRealTimers(); });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -46,6 +48,43 @@ beforeEach(() => {
 });
 
 describe('app entry flows', () => {
+  it('classifies only the subsidy portion, preserves it on reload, and guides partial cancellation back through undecided', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    const now = new Date().toISOString();
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [{ id: 'portion', cardLast4: '1234', occurredAt: now, amount: 50000, merchant: '일부 지원금 결제', status: 'undecided' }] }));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: now, sourceText: 'plan', plans: { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
+    const app = await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(screen.getByLabelText('일부 지원금 결제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '일부 지원금 결제 지원금 반영 금액 수정' }));
+    fireEvent.change(screen.getByLabelText('일부 지원금 결제 지원금 반영 금액'), { target: { value: '30000' } });
+    fireEvent.change(screen.getByLabelText('미정 지출 일괄 분류'), { target: { value: 'food' } });
+    fireEvent.click(screen.getByRole('button', { name: '바로 분류' }));
+    fireEvent.click(screen.getByRole('button', { name: '미정 지출 닫기' }));
+    expect(app.container.querySelector('.summary')).toHaveTextContent('30,000원 사용');
+    await waitFor(() => expect(smsBridge.syncBudgetState).toHaveBeenLastCalledWith(expect.objectContaining({ categorySpent: expect.objectContaining({ food: 30000 }) })));
+    fireEvent.click(screen.getByRole('button', { name: '결제 내역 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: /일부 지원금 결제/ }));
+    expect(screen.getByText('지원금 반영 30,000원')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '취소 확인' }));
+    fireEvent.change(screen.getByLabelText('취소 금액'), { target: { value: '35000' } });
+    fireEvent.click(screen.getByRole('button', { name: '부분 취소 확정' }));
+    fireEvent.click(screen.getByRole('button', { name: /일부 지원금 결제/ }));
+    expect(screen.getByRole('alert')).toHaveTextContent('부분 취소 · 금액 재확인 필요');
+    fireEvent.click(screen.getByRole('button', { name: '미정으로 되돌리기' }));
+    expect(screen.getByText('이전 지원금 반영 30,000원')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('일부 지원금 결제 선택'));
+    fireEvent.click(screen.getByRole('button', { name: '일부 지원금 결제 지원금 반영 금액 수정' }));
+    fireEvent.change(screen.getByLabelText('일부 지원금 결제 지원금 반영 금액'), { target: { value: '10000' } });
+    fireEvent.change(screen.getByLabelText('미정 지출 일괄 분류'), { target: { value: 'food' } });
+    fireEvent.click(screen.getByRole('button', { name: '바로 분류' }));
+    fireEvent.click(screen.getByRole('button', { name: '미정 지출 닫기' }));
+    await waitFor(() => expect(app.container.querySelector('.summary')).toHaveTextContent('10,000원 사용'));
+    await act(async () => { await Promise.resolve(); }); app.unmount();
+    const reopened = await renderApp();
+    expect(reopened.container.querySelector('.summary')).toHaveTextContent('10,000원 사용');
+  });
+
   it('adjusts unused budget, preserves spending/evidence/scheduled policy and reloads the final plan', async () => {
     const now = new Date().toISOString(); const periodKey = getPolicyPeriodKey(new Date());
     const plans = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
@@ -254,6 +293,7 @@ describe('app entry flows', () => {
   });
 
   it('keeps an automatically classified approval visible in history after the app remains open across midnight', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T23:50:00+09:00'));
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',

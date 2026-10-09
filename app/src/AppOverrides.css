@@ -159,3 +159,40 @@
 .budget-adjustment__preview p{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px}
 .budget-adjustment__body [role=alert]{color:#ffd6a1}
 .budget-adjustment__body .sheet-action{white-space:normal;word-break:keep-all;overflow-wrap:normal}
+/* Subsidy portions are optional: keep the editor inside its expense card. */
+.undecided-list .reclassify-card .undecided-check { grid-row: 1; }
+.support-amount-controls { grid-column: 2 / -1; display: grid; gap: 4px; min-width: 0; }
+.support-amount-controls small { display: block; color: #becbd9; line-height: 1.5; overflow-wrap: anywhere; }
+.support-amount-review { color: #ffdbab; line-height: 1.5; overflow-wrap: anywhere; }
+.reclassify-card__meta .support-amount-toggle { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; max-width: 100%; min-width: 44px; min-height: 44px; margin-block: -10px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #e8f0f8; font: inherit; font-size: 15px; font-weight: 700; line-height: 1.36; text-align: right; }
+.support-amount-toggle span { min-width: 0; overflow-wrap: anywhere; text-decoration: underline; text-underline-offset: 3px; }
+.support-amount-toggle svg { flex: 0 0 auto; width: .78em; height: .78em; }
+.support-amount-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.reclassify-card .support-amount-editor { margin: 0; padding: 8px 0 0; border: 0; border-radius: 0; background: transparent; }
+.sheet .support-amount-editor label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, 120px); align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
+.support-amount-editor label > span { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.sheet .support-amount-editor input { min-height: 44px; margin: 0; padding: 10px 8px; text-align: right; letter-spacing: 0; font: inherit; font-variant-numeric: tabular-nums; }
+/* Keep ordinary cards at their original compact three-column layout. */
+body:not([data-text-scale='large']) .undecided-list .reclassify-card { grid-template-columns: 24px minmax(0, 1fr) minmax(108px, 140px); }
+body:not([data-text-scale='large']) .undecided-list .reclassify-card__meta { grid-column: auto; justify-items: end; text-align: right; }
+@media (max-width: 390px) {
+  .reclassify-card__meta .support-amount-toggle { font-size: 14px; }
+}
+body.high-contrast .sheet .support-amount-toggle { color: #fff !important; background: transparent !important; }
+body.high-contrast .support-amount-controls :is(small, .support-amount-review) { color: #fff !important; }
+
+/* A saved portion uses the existing amount slot, never an additional card row. */
+body:not([data-text-scale='large']) .undecided-list .reclassify-card { min-height: 64px; }
+.reclassify-card--portion .reclassify-card__merchant { display: grid; gap: 4px; }
+.reclassify-card__merchant time { color: #b7c6d6; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.reclassify-card--portion .reclassify-card__meta { gap: 2px; align-content: center; }
+.support-amount-toggle em, .reclassify-card__meta b em, .payment-row__amount b em { font-size: .75em; font-style: normal; font-weight: 500; }
+.payment-original-amount { display: block; max-width: 100%; color: #b7c6d6; font-size: 11px; line-height: 1.4; font-weight: 400; overflow-wrap: anywhere; }
+.payment-row__main { grid-template-columns: minmax(0, 1fr) minmax(108px, 140px); }
+.payment-row__merchant { display: grid; gap: 4px; min-width: 0; }
+.payment-row__merchant time { padding: 0; border: 0; font: inherit; color: #aebdce; }
+.payment-row__amount { display: grid; justify-items: end; align-content: center; gap: 2px; min-width: 0; text-align: right; }
+.payment-row__amount b { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.payment-row > svg { grid-row: 1; }
+body[data-text-scale='large'] .payment-row__main { grid-template-columns: minmax(0, 1fr); }
+body[data-text-scale='large'] .payment-row__amount { justify-items: start; text-align: left; }

@@ -7,8 +7,9 @@ import type { StoredEvidence } from '../native/evidenceVault';
 import { reconcileImportedEntries, transactionOrigins, type TransactionOrigin } from './importReconciliation';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
+// Keep original transaction amounts separate from subsidy amounts.
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; memo?: string; evidence?: StoredEvidence[]; importOrigins?: TransactionOrigin[]; bankSummary?: string; duplicateCandidateIds?: string[] };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; supportAmount?: number; supportAmountReviewRequired?: boolean; previousSupportAmount?: number; previousClassification?: ManualClassification; memo?: string; evidence?: StoredEvidence[]; importOrigins?: TransactionOrigin[]; bankSummary?: string; duplicateCandidateIds?: string[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -27,9 +28,20 @@ export function createEmptyLedger(): Ledger { return { entries: [], alertThresho
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, period?: PolicyPeriod) { return getPolicyPeriodKey(new Date(entry.occurredAt), period); }
 export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, period); }
 export function getRemainingPaymentAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount'>) { return Math.max(0, entry.amount - (entry.cancelledAmount ?? 0)); }
-export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
+export function getSupportAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount' | 'supportAmount' | 'status'>) {
+  if (entry.status === 'cancelled') return 0;
+  const remaining = getRemainingPaymentAmount(entry);
+  return entry.supportAmount === undefined ? remaining : Math.min(remaining, Math.max(0, Number.isSafeInteger(entry.supportAmount) ? entry.supportAmount : 0));
+}
+export function setSupportAmount(ledger: Ledger, entryId: string, amount: number): Ledger {
+  const entry = ledger.entries.find((candidate) => candidate.id === entryId);
+  if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('미정 지출에서만 지원금 반영 금액을 변경할 수 있습니다.');
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getRemainingPaymentAmount(entry)) throw new Error('지원금 반영 금액은 남은 결제 금액 이하의 양의 정수로 입력해 주세요.');
+  return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, supportAmount: amount } : candidate) };
+}
+export function getSpent(ledger: Ledger, bucket: BudgetKey, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getSupportAmount(entry), 0); }
 export function getSummary(ledger: Ledger, bucket: BudgetKey, limit: number, periodKey?: string, period?: PolicyPeriod): BudgetSummary { return calculateBudgetSummary(limit, getSpent(ledger, bucket, periodKey, period)); }
-export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getRemainingPaymentAmount(entry), 0); }
+export function getCategorySpent(ledger: Ledger, bucket: BudgetKey, category: string, periodKey?: string, period?: PolicyPeriod) { return ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === bucket && entry.category === category && (!periodKey || isEntryInPolicyPeriod(entry, periodKey, period))).reduce((sum, entry) => sum + getSupportAmount(entry), 0); }
 
 function toEntry(payment: NativeApproval, classification: PaymentClassification): LedgerEntry {
   const id = payment.id ?? `${payment.occurredAt}-${payment.merchant}-${payment.amount}`;
@@ -123,7 +135,7 @@ export function markAsUndecided(ledger: Ledger, entryId: string): Ledger {
   return {
     ...ledger,
     entries: ledger.entries.map((candidate) => candidate.id === entryId
-      ? { ...candidate, status: 'undecided', bucket: undefined, category: undefined }
+      ? { ...candidate, previousClassification: candidate.bucket && candidate.category ? { bucket: candidate.bucket, category: candidate.category } : candidate.previousClassification, supportAmount: getSupportAmount(candidate), status: 'undecided', bucket: undefined, category: undefined }
       : candidate),
   };
 }
@@ -153,7 +165,7 @@ export function applyCancellation(ledger: Ledger, entryId: string, cancellationA
   return {
     ...ledger,
     entries: ledger.entries.map((candidate) => candidate.id === entryId
-      ? { ...candidate, cancelledAmount: (candidate.cancelledAmount ?? 0) + cancellationAmount, cancelledAt }
+      ? { ...candidate, cancelledAmount: (candidate.cancelledAmount ?? 0) + cancellationAmount, cancelledAt, supportAmountReviewRequired: true, previousSupportAmount: candidate.previousSupportAmount ?? getSupportAmount(candidate) }
       : candidate),
   };
 }
@@ -161,7 +173,8 @@ export function reclassifyUndecided(ledger: Ledger, entryId: string, classificat
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
   if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('Only resolved undecided entries can be reclassified');
   const previousSpent = getCategorySpent(ledger, classification.bucket, classification.category, getEntryPeriodKey(entry, period), period);
-  const nextEntry: LedgerEntry = { ...entry, importOrigins: transactionOrigins(entry), status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
+  if (getSupportAmount(entry) <= 0) throw new Error('지원금 반영 금액을 확인해 주세요.');
+  const nextEntry: LedgerEntry = { ...entry, supportAmount: getSupportAmount(entry), supportAmountReviewRequired: false, previousSupportAmount: undefined, previousClassification: undefined, importOrigins: transactionOrigins(entry), status: 'classified', bucket: classification.bucket, category: classification.category, source: 'manual' };
   const nextLedger = { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? nextEntry : candidate) };
   const currentSpent = getCategorySpent(nextLedger, classification.bucket, classification.category, getEntryPeriodKey(nextEntry, period), period);
   return { ledger: nextLedger, entry: nextEntry, alerts: getCrossedAlertThresholds(previousSpent, currentSpent, categoryLimits[classification.category] ?? limits[classification.bucket], ledger.alertThresholds) };
