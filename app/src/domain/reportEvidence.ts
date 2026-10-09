@@ -15,7 +15,7 @@ export type ReportEvidenceRecord = {
   /** 이전 버전의 자동 연결 표식. 새 연결은 반드시 사용자가 결제를 선택한다. */
   receiptAutoLinked?: boolean;
   /** 영수증에서 결제 날짜를 읽은 결과. 결제 연결은 항상 사용자가 확정한다. */
-  receiptOcrStatus?: 'linked' | 'ambiguous' | 'needs-input' | 'failed';
+  receiptOcrStatus?: 'linked' | 'ambiguous' | 'needs-input' | 'failed' | 'reading';
   receiptOcrMessage?: string;
   statementRows?: StatementRow[];
   excludedStatementRowIds?: string[];
