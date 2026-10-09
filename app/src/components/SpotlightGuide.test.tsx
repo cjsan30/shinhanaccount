@@ -4,6 +4,39 @@ import { SpotlightGuide } from './SpotlightGuide';
 import { APP_GUIDE_STEPS } from './appGuideSteps';
 
 describe('SpotlightGuide', () => {
+  it('fits the guide width inside a zoomed visual viewport', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: {
+      width: 280, height: 600, offsetLeft: 20, offsetTop: 40,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    } });
+    try {
+      const { unmount } = render(<SpotlightGuide title="확대 안내" steps={[{ target: '#missing', title: '설명', body: '설명' }]} onClose={vi.fn()} />);
+      const card = document.querySelector<HTMLElement>('.spotlight-card')!;
+      expect(card.style.width).toBe('256px');
+      expect(card.style.left).toBe('32px');
+      expect(card.style.right).toBe('auto');
+      expect(card.style.maxHeight).toBe('576px');
+      expect(Number.parseFloat(card.style.top)).toBeGreaterThanOrEqual(52);
+      unmount();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'visualViewport', descriptor);
+      else Reflect.deleteProperty(window, 'visualViewport');
+    }
+  });
+
+  it('opens a collapsed input target while guiding and restores the collapsed state afterward', () => {
+    const details = document.createElement('details');
+    details.innerHTML = '<summary>연결한 영수증 수정</summary><input id="collapsed-date" type="date" value="2026-09-20" />';
+    document.body.append(details);
+    const input = details.querySelector<HTMLInputElement>('input')!; input.scrollIntoView = vi.fn();
+    const { unmount } = render(<SpotlightGuide title="접힌 안내" steps={[{ target: '#collapsed-date', title: '날짜 입력', body: '설명' }, { target: '#missing', title: '다음 단계', body: '설명' }]} onClose={vi.fn()} />);
+    expect(details.open).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    expect(details.open).toBe(false); expect(input.value).toBe('2026-09-20');
+    unmount(); details.remove();
+  });
+
   it('keeps the card in the visible viewport when the target is outside the screen', () => {
     const target = document.createElement('button'); target.id = 'offscreen'; target.scrollIntoView = vi.fn();
     target.getBoundingClientRect = () => new DOMRect(0, 2500, 100, 50);
