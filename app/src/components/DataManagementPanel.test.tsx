@@ -25,7 +25,7 @@ describe('data management panel', () => {
 
   it('routes users to the unified transaction-import guide', () => {
     const props = baseProps(); render(<DataManagementPanel {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: '거래내역 등록 가이드' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래내역 가져오기' }));
     expect(props.onOpenImportGuide).toHaveBeenCalledOnce();
   });
 

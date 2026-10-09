@@ -6,6 +6,7 @@ import { fitImageInsidePage } from '../features/evidence/imageLayout';
 import { loadEvidence, removeStoredEvidence, storeEvidence } from '../native/evidenceVault';
 import type { ReportEvidenceRecord, ReportEvidenceSection } from '../domain/reportEvidence';
 import { paymentDateInKorea } from '../domain/receiptMatching';
+import { toStatementRows } from '../domain/statementImport';
 import type { LedgerEntry } from '../domain/ledger';
 import { getReportReadiness } from '../domain/reportReadiness';
 import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
@@ -46,24 +47,6 @@ const kindOf = (file: File): EvidenceKind => file.type === 'application/pdf' || 
 
 
 
-function toStatementRows(transactions: Awaited<ReturnType<typeof parseShinhanBankPdfExport>>): StatementRow[] {
-  return transactions.map((transaction) => {
-    const date = new Date(transaction.occurredAt);
-    return {
-      id: transaction.transactionId,
-      date: transaction.occurredAt.slice(0, 10),
-      time: `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`,
-      summary: transaction.summary ?? (transaction.direction === 'withdrawal' ? '출금' : '입금'),
-      withdrawal: transaction.direction === 'withdrawal' ? transaction.amount : 0,
-      deposit: transaction.direction === 'deposit' ? transaction.amount : 0,
-      merchant: transaction.merchant,
-      ...(transaction.balance ? { balance: transaction.balance } : {}),
-      ...(transaction.branch ? { branch: transaction.branch } : {}),
-      ...(transaction.sourcePage !== undefined ? { sourcePage: transaction.sourcePage } : {}),
-      ...(transaction.sourceY !== undefined ? { sourceY: transaction.sourceY } : {}),
-    };
-  });
-}
 
 async function jpeg(canvas: HTMLCanvasElement, quality: number) {
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));

@@ -59,7 +59,7 @@ export function DataManagementPanel(props: Props) {
       <summary><strong>거래내역</strong><span>카드 CSV·Excel / 은행 PDF</span></summary>
       <div className="data-section__body import-card">
         <p>카드번호 또는 계좌번호 끝 4자리를 입력한 뒤 해당 파일을 가져옵니다. 현재 정책 기간 밖의 거래는 저장하지 않습니다.</p>
-        <button className="sheet-action" onClick={props.onOpenImportGuide}>거래내역 등록 가이드</button>
+        <button className="sheet-action" onClick={props.onOpenImportGuide}>거래내역 가져오기</button>
       </div>
     </details>
 

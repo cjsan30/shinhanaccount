@@ -149,7 +149,7 @@ describe('app entry flows', () => {
     expect(screen.queryByRole('dialog', { name: '앱 사용 도움말' })).not.toBeInTheDocument();
     const before = window.localStorage.getItem('shinhanhae-policy-book-v1');
     fireEvent.click(await screen.findByRole('button', { name: '앱 사용 도움말' }));
-    expect(screen.getByText('계획표와 거래내역은 설정에서')).toBeInTheDocument();
+    expect(screen.getByText('계획표 설정 · 거래내역 가져오기')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(window.localStorage.getItem('shinhanhae-policy-book-v1')).toBe(before);
     fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
@@ -234,7 +234,7 @@ describe('app entry flows', () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '거래내역 등록 가이드' }));
+    fireEvent.click(await screen.findByRole('button', { name: '거래내역 가져오기' }));
     expect(screen.getByRole('heading', { name: /결제내역을\s*등록할까요/ })).toBeInTheDocument();
   });
 

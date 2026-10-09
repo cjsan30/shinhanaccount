@@ -143,3 +143,32 @@ describe('transaction import', () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('10MB 이하만 읽을 수 있습니다'));
   });
 });
+
+describe('optional statement reuse', () => {
+  it('keeps all original rows for masking but imports only eligible withdrawals and never sends the password', async () => {
+    const rows = [
+      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '출금', amount: 5000, accountMasked: '6789', transactionId: 'w', direction: 'withdrawal', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'd', direction: 'deposit', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal', classification: { status: 'undecided' } },
+    ];
+    mocks.parseBankPdf.mockResolvedValue(rows);
+    const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('계좌번호'));
+    fireEvent.change(screen.getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
+    fireEvent.change(screen.getByLabelText('PDF 비밀번호'), { target: { value: 'test-private-password' } });
+    const file = new File(['pdf'], 'reuse.pdf', { type: 'application/pdf' });
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    await screen.findByText(/1건의 기간 내 출금 내역/);
+    fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
+    expect(onImport.mock.calls[0][0].statement).toBeUndefined();
+    fireEvent.click(screen.getByLabelText(/이 파일을 제출 PDF에도 추가/));
+    fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
+    const payload = onImport.mock.calls[1][0];
+    expect(payload.statement).toEqual({ file, transactions: rows, requiresPassword: true });
+    expect(payload.bankTransactions).toEqual([rows[0]]);
+    expect(JSON.stringify(payload)).not.toContain('test-private-password');
+    fireEvent.change(screen.getByLabelText('계좌 끝 4자리'), { target: { value: '1111' } });
+    expect(screen.queryByRole('button', { name: '내역 가져오기' })).not.toBeInTheDocument();
+  });
+});
