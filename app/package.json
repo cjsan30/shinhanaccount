@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:internal": "vitest run --mode internal",
     "test:coverage": "vitest run --coverage",
     "test:security": "node scripts/security-check.cjs",
     "android:sync": "npm run build && node --require ./scripts/capacitor-safe-userinfo.cjs ./node_modules/@capacitor/cli/bin/capacitor sync android",

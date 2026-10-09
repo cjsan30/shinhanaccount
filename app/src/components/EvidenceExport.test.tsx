@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadEvidence } from '../native/evidenceVault';
+import { ReceiptOcr } from '../native/receiptOcr';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
 import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
@@ -13,7 +15,8 @@ vi.mock('../native/evidenceVault', () => ({
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
 const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn() }));
-vi.mock('../native/fileExport', () => ({ saveFile: exportMocks.saveFile }));
+vi.mock('../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
+vi.mock('../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
 vi.mock('../domain/shinhanBankImport', () => ({
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal', classification: { status: 'undecided' } }]),
@@ -46,6 +49,69 @@ describe('EvidenceExport', () => {
     URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('shows stored receipts before batch OCR completes and only fills dates without auto-linking', async () => {
+    let finishFirst!: (value: unknown) => void;
+    const bitmap = { width: 600, height: 1200, close: vi.fn() };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; })).mockResolvedValue(bitmap));
+    vi.mocked(ReceiptOcr.recognize).mockResolvedValue({ text: '결제일시 2026-09-20 12:00:00' });
+    const entries = [{ id: 'pay', amount: 5000, merchant: '후보 결제', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, bucket: 'resident' as const, category: 'food' }];
+    const { container } = render(<StatefulEvidenceExport entries={entries} />);
+    fireEvent.change(container.querySelectorAll('input[type="file"]')[2], { target: { files: [new File(['a'], 'first.jpg', { type: 'image/jpeg' }), new File(['b'], 'second.jpg', { type: 'image/jpeg' })] } });
+    expect(await screen.findByText('first.jpg')).toBeInTheDocument();
+    expect(await screen.findByText('second.jpg')).toBeInTheDocument();
+    expect(screen.getByText('파일 추가 · 날짜 확인 중 0 / 2장')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDF 생성' })).toBeDisabled();
+    await waitFor(() => expect(finishFirst).toBeDefined()); finishFirst(bitmap);
+    await waitFor(() => expect(screen.getByLabelText('영수증 1 날짜')).toHaveValue('2026-09-20'));
+    await waitFor(() => expect(screen.getByLabelText('영수증 2 날짜')).toHaveValue('2026-09-20'));
+    expect(screen.queryByText('결제 연결 완료')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /후보 결제/ })).toHaveLength(2);
+  });
+
+  it('lists missing originals and blocks incomplete generation until reattached', async () => {
+    vi.mocked(loadEvidence).mockRejectedValueOnce(new Error('missing'));
+    const { container } = render(<StatefulEvidenceExport initialEvidence={[{ id: 'missing', stored: { id: 'lost', fileName: 'lost.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    expect(await screen.findByText('원본 파일 1개를 찾지 못했습니다')).toBeInTheDocument();
+    expect(screen.getByText('lost.jpg')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDF 생성' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('lost.jpg 원본 다시 추가'), { target: { files: [new File(['restored'], 'restored.jpg', { type: 'image/jpeg' })] } });
+    expect(await screen.findByText('restored.jpg')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('원본 파일 1개를 찾지 못했습니다')).not.toBeInTheDocument());
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(3);
+  });
+
+  it('filters receipt tasks, keeps source order controls correct and collapses completed cards', async () => {
+    const stored = (name: string) => ({ id: name, fileName: name + '.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' });
+    const entries = [{ id: 'linked-pay', amount: 5000, merchant: '연결 결제', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, bucket: 'resident' as const, category: 'food' }];
+    const { container } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[
+      { id: 'done', stored: stored('done'), section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'linked-pay' },
+      { id: 'todo', stored: stored('todo'), section: 'receipt', order: 1, receiptDate: '2026-09-20' },
+      { id: 'date', stored: stored('date'), section: 'receipt', order: 2 },
+    ]} />);
+    await screen.findByText('done.jpg');
+    expect(container.querySelector('#evidence-done details')).not.toHaveAttribute('open');
+    fireEvent.change(screen.getByLabelText('영수증 보기 필터'), { target: { value: 'unlinked' } });
+    expect(screen.queryByText('done.jpg')).not.toBeInTheDocument(); expect(screen.getByText('todo.jpg')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('영수증 보기 필터'), { target: { value: 'date' } });
+    expect(screen.queryByText('todo.jpg')).not.toBeInTheDocument(); expect(screen.getByText('date.jpg')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '다음 미연결 영수증' }));
+    expect(screen.getByLabelText('영수증 보기 필터')).toHaveValue('unlinked');
+  });
+
+  it('does not unlink on an unchanged date blur and uses the current payment category in the PDF', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    const entries = [{ id: 'p', cardLast4: '1234', merchant: '연결 결제', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food', occurredAt: '2026-09-20T12:00:00+09:00' }];
+    const { container } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'linked', stored: { id: 's', fileName: 'linked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'p', category: 'transport' }]} />);
+    await screen.findByText('linked.jpg');
+    fireEvent.click(screen.getByText('연결한 영수증 확인 · 수정'));
+    fireEvent.blur(screen.getByLabelText('영수증 1 날짜'));
+    expect(await screen.findByText('결제 연결 완료')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalled());
+    expect(canvasContext.fillText).toHaveBeenCalledWith('식비', expect.any(Number), expect.any(Number));
+    expect(container.querySelector('#evidence-linked')).toBeInTheDocument();
+  });
 
   it('renders only the adjusted final plan in the PDF, without adjustment history or negative allocations', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
@@ -141,7 +207,7 @@ describe('EvidenceExport', () => {
     expect(screen.queryByText(/결제 날짜를 읽었습니다/)).not.toBeInTheDocument();
   });
 
-  it('cancels the internal benchmark before saving a result and keeps receipt files', async () => {
+  it.runIf(import.meta.env.MODE === 'internal')('cancels the internal benchmark before saving a result and keeps receipt files', async () => {
     vi.stubEnv('MODE', 'internal');
     let resolveBitmap!: (value: unknown) => void;
     vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise((resolve) => { resolveBitmap = resolve; })));
