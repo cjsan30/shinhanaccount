@@ -12,6 +12,13 @@ const baseProps = () => ({
 });
 
 describe('data management panel', () => {
+  it('puts the homepage button after the support type and before balance warnings', () => {
+    render(<DataManagementPanel {...baseProps()} />);
+    const link = screen.getByRole('link', { name: '사업 기준·출처 확인' });
+    expect(link).toHaveAttribute('href', 'https://shinchunghae.co.kr/');
+    expect(screen.getByLabelText('정책 지원 유형').compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(link.compareDocumentPosition(document.querySelector('.policy-alert-targets')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
   it('allows monthly policy dates to be reviewed and saved with a plan', () => {
     const onUpdatePolicyPeriod = vi.fn(); const onEditPolicy = vi.fn();
     render(<DataManagementPanel {...baseProps()} onUpdatePolicyPeriod={onUpdatePolicyPeriod} onEditPolicy={onEditPolicy} />);

@@ -10,6 +10,19 @@ const complete70 = '숙박비 300,000원\n식비 200,000원\n카페 200,000원';
 describe('policy onboarding', () => {
   beforeEach(() => { mocks.recognize.mockReset(); });
 
+  it('places only an external source button between support type and balance warnings', async () => {
+    mocks.recognize.mockResolvedValue({ text: complete70 });
+    const onConfirm = vi.fn(); render(<PolicyOnboarding onConfirm={onConfirm} />);
+    fireEvent.click(screen.getByRole('button', { name: '이미지로 계획표 불러오기' }));
+    await screen.findByText('읽은 계획 금액');
+    const link = screen.getByRole('link', { name: '사업 기준·출처 확인' });
+    expect(link).toHaveAttribute('href', 'https://shinchunghae.co.kr/');
+    expect(document.querySelector('.support-profile-picker')!.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(link.compareDocumentPosition(document.querySelector('.policy-alert-targets')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/선택한 유형의 총액과 세부항목 상한/)).not.toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it('shows an editable blank draft when OCR finds no amount', async () => {
     mocks.recognize.mockResolvedValue({ text: '' });
     render(<PolicyOnboarding onConfirm={vi.fn()} />);
