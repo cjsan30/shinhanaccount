@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { POLICY_ITEM_ALIASES, emptyPolicy } from './policy';
 import { POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, confirmPolicyForPeriod, createPolicyBook, getAlertTargets, getCategoryLabel, getCategoryLimit, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyItems, getPolicyLimit, getPolicyVersion, loadPolicy, loadPolicyBook, parsePolicyText, savePolicy, savePolicyBook, validatePolicyAgainstProfile } from './policy';
 
 describe('policy text import', () => {
+  it.each(Object.entries(POLICY_ITEM_ALIASES).flatMap(([item, aliases]) => aliases.map((alias) => ({ item, alias }))))('reads $alias only as $item', ({ item, alias }) => {
+    expect(parsePolicyText(`${alias} 50,000원`).plans).toEqual({ ...emptyPolicy.plans, [item]: 50000 });
+  });
+  it('accepts all category aliases on one line without cross-mapping cafes', () => {
+    expect(parsePolicyText('주거 비용 50,000원 식사비 200000원 학원비 100000원 유류비 150000원 스터디 카페 이용료 100000원 일반 카페 50000원 열람실 이용료 50000원').plans).toEqual({ housing: 50000, food: 200000, education: 100000, transport: 150000, studyCafe: 100000, cafe: 50000, readingRoom: 50000 });
+  });
+  it('does not borrow another category or a subtotal when an amount is absent', () => {
+    expect(parsePolicyText('주거비\n식사비 200000원\n스터디카페\n일반카페 200000원\n교통비\n합계 700000원').plans).toEqual({ ...emptyPolicy.plans, food: 200000, cafe: 200000 });
+    expect(parsePolicyText('학습공간비 200000원 정주비 500000원').plans).toEqual(emptyPolicy.plans);
+  });
+  it('keeps repeated names in table rows as one category and supports explicit money units', () => {
+    expect(parsePolicyText('주거비 숙박비 5만원 식비 식대 20만원 교통비 유류비 250천원 스터디카페 10만원 카페 10만원').plans).toMatchObject({ housing: 50000, food: 200000, transport: 250000, studyCafe: 100000, cafe: 100000 });
+  });
+  it('does not interpret negative amounts or ratios as positive budget', () => {
+    expect(parsePolicyText('주거비 -50,000원\n카페 100%').plans).toEqual(emptyPolicy.plans);
+  });
   it('keeps the current policy stable and schedules a confirmed policy for the next period', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const initial = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };

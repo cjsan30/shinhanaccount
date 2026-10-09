@@ -51,15 +51,39 @@ export function validatePolicyAgainstProfile(policy: SupportPolicy) {
   return issues;
 }
 
-const fields: Array<[PolicyItem, RegExp]> = [
-  ['housing', /숙박비[\s\S]{0,80}?([\d,]+)\s*원?/],
-  ['food', /(?:^|\n)식비[\s\S]{0,80}?([\d,]+)\s*원?/m],
-  ['education', /교육비[\s\S]{0,80}?([\d,]+)\s*원?/],
-  ['transport', /교통비[\s\S]{0,80}?([\d,]+)\s*원?/],
-  ['studyCafe', /스터디카페[\s\S]{0,80}?([\d,]+)\s*원?/],
-  ['cafe', /(?:^|\s)카페[\s\S]{0,80}?([\d,]+)\s*원?/m],
-  ['readingRoom', /독서실[\s\S]{0,80}?([\d,]+)\s*원?/],
-];
+export const POLICY_ITEM_ALIASES: Record<PolicyItem, readonly string[]> = {
+  housing: ['주거비', '주거비용', '숙박비', '숙박비용', '숙박요금', '월세', '월세비', '임대료', '임차료'],
+  food: ['식비', '식사비', '식사비용', '식대', '식료품비', '식료품비용'],
+  education: ['교육비', '교육비용', '학원비', '수강료', '강의비', '강의료', '온라인강의료', '교재비', '도서구입비'],
+  transport: ['교통비', '교통비용', '대중교통비', '버스비', '지하철비', '택시비', '기차비', '철도요금', '고속열차', '유류비', '주유비'],
+  studyCafe: ['스터디카페', '스터디카페비', '스터디카페이용료', '스터디룸', '스터디룸이용료'],
+  cafe: ['카페', '카페비', '카페이용료', '일반카페', '일반카페비', '일반카페이용료', '커피숍', '커피숍이용료'],
+  readingRoom: ['독서실', '독서실비', '독서실이용료', '열람실', '열람실이용료'],
+};
+const aliasItems = new Map(Object.entries(POLICY_ITEM_ALIASES).flatMap(([key, aliases]) => aliases.map((alias) => [alias, key as PolicyItem] as const)));
+// Longest labels first and whole Korean words only: 카페 must not match inside
+// 스터디카페. Horizontal spaces allow OCR labels such as 스터디 카페 이용료.
+const aliasPattern = [...aliasItems.keys()].sort((a, b) => b.length - a.length).map((alias) => [...alias].join('[\\t \\u00a0]*')).join('|');
+function findPolicyLabels(text: string) {
+  const pattern = new RegExp(`(?<![가-힣a-zA-Z])(${aliasPattern})(?![가-힣a-zA-Z])`, 'g');
+  return [...text.matchAll(pattern)].map((match) => ({ item: aliasItems.get(match[0].replace(/[\t \u00a0]/g, ''))!, start: match.index, end: match.index + match[0].length }));
+}
+function parseLabeledPlans(text: string): Partial<Record<PolicyItem, number>> {
+  const plans: Partial<Record<PolicyItem, number>> = {};
+  const labels = findPolicyLabels(text);
+  labels.forEach((label, index) => {
+    const next = labels.slice(index + 1).find((candidate) => candidate.item !== label.item);
+    // Do not borrow the next category's amount or a later total when this item
+    // has no amount. Repeated synonymous labels belong to the same item.
+    const segment = text.slice(label.end, next?.start ?? text.length).split(/소계|합계|총액|총\s*한도|예상금액|비율/)[0];
+    const amount = segment.match(/(-?\d{1,3}(?:,\d{3})+|-?\d+(?:\.\d+)?)\s*(만원|천원|원)?/);
+    if (amount) {
+      const value = Number(amount[1].replaceAll(',', '')) * (amount[2] === '만원' ? 10_000 : amount[2] === '천원' ? 1_000 : 1);
+      if (Number.isSafeInteger(value) && value >= 0 && !/^\s*%/.test(segment.slice((amount.index ?? 0) + amount[0].length))) plans[label.item] = value;
+    } else if (/직접\s*입력/.test(segment)) plans[label.item] = 0;
+  });
+  return plans;
+}
 
 function parseExpectedAmountColumn(text: string): number[] {
   const start = text.indexOf('예상금액');
@@ -70,17 +94,8 @@ function parseExpectedAmountColumn(text: string): number[] {
   return [...column.matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(',', ''))).filter(Number.isFinite);
 }
 
-const rowFields: Array<[PolicyItem, RegExp]> = [
-  ['housing', /(?:주거비|숙박비)/],
-  ['food', /식비/],
-  ['education', /교육비/],
-  ['transport', /교통비/],
-  ['studyCafe', /스터디\s*카페|스터디카페/],
-  ['cafe', /(?:^|\s)카페(?:\s|$)/],
-  ['readingRoom', /독서실/],
-];
-
 function parseVisualRowAmount(line: string) {
+  if (/(?:^|\s)-\s*\d|만원|천원/.test(line)) return null;
   const explicitWon = [...line.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\s+원/g)].map((match) => match[1]);
   const commaAmounts = [...line.matchAll(/(?:^|\D)(\d{1,3}(?:,\d{3})+)(?=\D|$)/g)].map((match) => match[1]);
   const candidates = [...new Set([...explicitWon, ...commaAmounts])]
@@ -93,10 +108,10 @@ function parseVisualRowAmount(line: string) {
 function parsePlansByVisualRow(text: string): Partial<Record<PolicyItem, number>> {
   const plans: Partial<Record<PolicyItem, number>> = {};
   for (const line of text.split(/\r?\n/)) {
-    const matchedFields = rowFields.filter(([, pattern]) => pattern.test(line));
+    const matchedFields = [...new Set(findPolicyLabels(line).map((label) => label.item))];
     if (matchedFields.length !== 1) continue;
     const amount = parseVisualRowAmount(line);
-    if (amount !== null) plans[matchedFields[0][0]] = amount;
+    if (amount !== null) plans[matchedFields[0]] = amount;
   }
   return plans;
 }
@@ -120,7 +135,7 @@ export function parsePolicyText(text: string): SupportPolicy {
   }
 
   const flattenedNumbers = [...text.slice(Math.max(0, text.indexOf('예상금액'))).split('비율')[0].matchAll(/\d[\d,]*/g)].map((match) => Number(match[0].replaceAll(',', '')));
-  if (flattenedNumbers.length >= 6 && flattenedNumbers.includes(700_000) && flattenedNumbers.includes(500_000) && flattenedNumbers.includes(200_000)) {
+  if (text.includes('예상금액') && flattenedNumbers.length >= 6 && flattenedNumbers.includes(700_000) && flattenedNumbers.includes(500_000) && flattenedNumbers.includes(200_000)) {
     const [housing, food, transport, , , cafe] = flattenedNumbers;
     if (housing + food + transport === 500_000 && cafe === 200_000) {
       return { plans: { ...plans, housing, food, transport, cafe }, sourceText: text };
@@ -145,12 +160,7 @@ export function parsePolicyText(text: string): SupportPolicy {
     return { plans, sourceText: text };
   }
 
-  for (const [item, pattern] of fields) {
-    const match = text.match(pattern);
-    if (!match) continue;
-    const amount = Number(match[1].replaceAll(',', ''));
-    if (Number.isFinite(amount)) plans[item] = amount;
-  }
+  Object.assign(plans, visualRows, parseLabeledPlans(text));
   return { plans, sourceText: text };
 }
 export function getPolicyLimit(policy: SupportPolicy, bucket: BudgetKey) {
