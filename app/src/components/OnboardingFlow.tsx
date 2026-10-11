@@ -3,11 +3,13 @@ import { FirstRunPermission } from './FirstRunPermission';
 import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
 import type { SupportPolicy } from '../domain/policy';
+import { SHORT_APP_NOTICE } from '../domain/appInformation';
+import { InformationSourceLink } from './AppInformation';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
 type ApplicantStatus = 'applicant' | 'not-applicant';
-type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy; cardLast4?: string };
+type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy };
 const PROGRESS_KEY = 'shinhanhae-onboarding-progress-v1';
 function loadProgress(): SavedProgress | null { try { const saved = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) || 'null') as SavedProgress | null; return saved?.step ? saved : null; } catch { return null; } }
 
@@ -23,14 +25,17 @@ type CompletePayload = {
 export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompletePayload) => void }) {
   const [progress] = useState(loadProgress);
   const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'history'>(progress?.step ?? 'applicant');
-  const [cardLast4, setCardLast4] = useState(progress?.cardLast4 ?? '');
+  const [cardLast4, setCardLast4] = useState('');
   const [policy, setPolicy] = useState<SupportPolicy | null>(progress?.policy ?? null);
   const [pendingApprovals, setPendingApprovals] = useState<NativeApproval[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (step === 'applicant') { window.localStorage.removeItem(PROGRESS_KEY); return; }
-    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined, cardLast4: cardLast4 || undefined }));
-  }, [cardLast4, policy, step]);
+    // Onboarding can resume the non-sensitive policy step, but a card suffix
+    // must be entered again after an interruption instead of being kept in
+    // browser storage.
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined }));
+  }, [policy, step]);
 
   const skipToDashboard = (messageOverride?: string) => {
     window.localStorage.removeItem(PROGRESS_KEY);
@@ -84,7 +89,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
 
   if (step === 'applicant') {
     return (
-      <main className="first-run">
+      <main className="first-run first-run--applicant">
         <section className="applicant-question" aria-label="신청해 사업 지원자 여부">
           <h1>신청해 사업<br />지원자인가요?</h1>
           <div>
@@ -92,18 +97,25 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
             <button className="onboarding-secondary" type="button" onClick={() => skipToDashboard()}>No</button>
           </div>
         </section>
+        <footer className="onboarding-app-notice">
+          <p>{SHORT_APP_NOTICE}</p>
+          <InformationSourceLink>사업 정보 출처 확인</InformationSourceLink>
+        </footer>
       </main>
     );
   }
 
   if (step === 'permissions') {
     return (
-      <FirstRunPermission
-        onComplete={(card) => {
-          void continueAfterPermissions(card);
-        }}
-        onSkip={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}
-      />
+      <>
+        <FirstRunPermission
+          onComplete={(card) => {
+            void continueAfterPermissions(card);
+          }}
+          onSkip={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}
+        />
+        {message && <p className="onboarding-error" role="alert">{message}</p>}
+      </>
     );
   }
 

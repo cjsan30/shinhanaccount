@@ -2,6 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { createEmptyLedger, LEDGER_STORAGE_KEY, loadLedger, saveLedger, type Ledger } from '../domain/ledger';
 import { loadMerchantRules, MERCHANT_RULES_STORAGE_KEY, saveMerchantRules, type MerchantRule } from '../domain/merchantRules';
 import { loadPolicyBook, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, savePolicyBook, type PolicyBook } from '../domain/policy';
+import type { ReportEvidenceRecord } from '../domain/reportEvidence';
+import { createVerificationState } from '../domain/verification';
 import { loadEncryptedAppState, saveEncryptedAppState, type PersistedAppState } from './encryptedStore';
 
 export type StateStoreDependencies = {
@@ -10,13 +12,15 @@ export type StateStoreDependencies = {
   saveEncrypted: (state: PersistedAppState) => Promise<boolean>;
 };
 
-const sensitiveLegacyKeys = [LEDGER_STORAGE_KEY, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, MERCHANT_RULES_STORAGE_KEY] as const;
+export const REPORT_EVIDENCE_STORAGE_KEY = 'shinhanhae-report-evidence-v1';
+const sensitiveLegacyKeys = [LEDGER_STORAGE_KEY, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, MERCHANT_RULES_STORAGE_KEY, REPORT_EVIDENCE_STORAGE_KEY] as const;
 
 export function loadLegacyAppState(storage: Storage, now = new Date()): PersistedAppState {
   return {
     ledger: loadLedger(storage, createEmptyLedger),
     policyBook: loadPolicyBook(storage, now),
     merchantRules: loadMerchantRules(storage),
+    reportEvidence: loadReportEvidence(storage),
   };
 }
 
@@ -24,6 +28,7 @@ export function saveLegacyAppState(storage: Storage, state: PersistedAppState) {
   saveLedger(storage, state.ledger);
   savePolicyBook(storage, state.policyBook);
   saveMerchantRules(storage, state.merchantRules);
+  storage.setItem(REPORT_EVIDENCE_STORAGE_KEY, JSON.stringify(state.reportEvidence ?? []));
 }
 
 export function clearSensitiveLegacyState(storage: Storage) {
@@ -80,8 +85,15 @@ export async function persistAppState(
   saveLegacyAppState(storage, state);
 }
 
+function loadReportEvidence(storage: Pick<Storage, 'getItem'>): ReportEvidenceRecord[] {
+  try {
+    const raw = storage.getItem(REPORT_EVIDENCE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) as ReportEvidenceRecord[] : [];
+  } catch { return []; }
+}
+
 export function createEmptyAppState(): PersistedAppState {
-  return { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [] };
+  return { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [], reportEvidence: [], verification: createVerificationState() };
 }
 
 export type { Ledger, PolicyBook, MerchantRule };

@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyLedger } from '../domain/ledger';
-import { initializeAppState, persistAppState } from './appStateStore';
+import {
+  REPORT_EVIDENCE_STORAGE_KEY,
+  initializeAppState,
+  loadLegacyAppState,
+  persistAppState,
+} from './appStateStore';
 import type { PersistedAppState } from './encryptedStore';
 
 const policyBook = { versions: [{ periodKey: '2026-08', confirmedAt: '2026-08-10T00:00:00.000Z', sourceText: 'saved', plans: { housing: 1, food: 2, education: 0, transport: 3, studyCafe: 0, cafe: 4, readingRoom: 0 } }] };
-const state: PersistedAppState = { ledger: { ...createEmptyLedger(), alertThresholds: [55, 85] }, policyBook, merchantRules: [] };
+const state: PersistedAppState = { ledger: { ...createEmptyLedger(), alertThresholds: [55, 85] }, policyBook, merchantRules: [], reportEvidence: [] };
 const migratedState: PersistedAppState = {
   ...state,
   policyBook: {
@@ -68,5 +73,50 @@ describe('app state persistence', () => {
   it('does not fall back to plaintext when a native encrypted write fails', async () => {
     await expect(persistAppState(localStorage, state, { native: true, saveEncrypted: vi.fn(async () => false) })).rejects.toThrow(/저장하지 못했습니다/);
     expect(localStorage.getItem('shinhanhae-ledger-v1')).toBeNull();
+  });
+
+  it('keeps the web path in local storage without initializing encrypted storage', async () => {
+    const loadEncrypted = vi.fn(async () => null);
+    const saveEncrypted = vi.fn(async () => true);
+    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(state.ledger));
+
+    const result = await initializeAppState(localStorage, new Date(), {
+      native: false,
+      loadEncrypted,
+      saveEncrypted,
+    });
+
+    expect(result).toMatchObject({ state: { ledger: state.ledger }, migrated: false });
+    expect(loadEncrypted).not.toHaveBeenCalled();
+    expect(saveEncrypted).not.toHaveBeenCalled();
+    expect(localStorage.getItem('shinhanhae-ledger-v1')).not.toBeNull();
+  });
+
+  it('persists every legacy state section in the web path', async () => {
+    const reportEvidence = [{
+      id: 'receipt-1',
+      stored: { id: 'stored-receipt-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 2, attachedAt: '2026-09-29T00:00:00+09:00' },
+      section: 'receipt' as const,
+      order: 0,
+    }];
+    await persistAppState(localStorage, { ...state, reportEvidence }, { native: false, saveEncrypted: vi.fn() });
+
+    expect(loadLegacyAppState(localStorage, new Date())).toMatchObject({
+      ledger: state.ledger,
+      policyBook: migratedState.policyBook,
+      merchantRules: state.merchantRules,
+      reportEvidence,
+    });
+    expect(localStorage.getItem(REPORT_EVIDENCE_STORAGE_KEY)).toContain('receipt-1');
+  });
+
+  it('ignores only malformed report evidence while retaining the rest of a legacy state', () => {
+    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(state.ledger));
+    localStorage.setItem(REPORT_EVIDENCE_STORAGE_KEY, '{not-json');
+
+    const loaded = loadLegacyAppState(localStorage, new Date());
+
+    expect(loaded.ledger).toEqual(state.ledger);
+    expect(loaded.reportEvidence).toEqual([]);
   });
 });

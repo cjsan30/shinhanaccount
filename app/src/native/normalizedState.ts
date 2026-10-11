@@ -1,4 +1,5 @@
 import type { PersistedAppState } from './encryptedStore';
+import type { VerificationState } from '../domain/verification';
 
 export type StoredRow = { id: string; value: string; position: number };
 export type NormalizedStateRows = {
@@ -16,6 +17,9 @@ export function normalizeAppState(state: PersistedAppState): NormalizedStateRows
       ['schema-version', '2'],
       ['state-present', '1'],
       ['alert-thresholds', stringify(state.ledger.alertThresholds)],
+      ...(state.policyBook.mode ? [['policy-mode', state.policyBook.mode] as [string, string]] : []),
+      ...(state.reportEvidence ? [['report-evidence', stringify(state.reportEvidence)] as [string, string]] : []),
+      ...(state.verification ? [['verification-state', stringify(state.verification)] as [string, string]] : []),
     ]),
     ledgerEntries: state.ledger.entries.map((entry, position) => ({ id: entry.id, value: stringify(entry), position })),
     policyVersions: state.policyBook.versions.map((version, position) => ({ id: `${version.periodKey}|${version.confirmedAt}|${position}`, value: stringify(version), position })),
@@ -28,8 +32,13 @@ export function denormalizeAppState(rows: NormalizedStateRows): PersistedAppStat
   const ordered = (items: StoredRow[]) => [...items].sort((left, right) => left.position - right.position);
   return {
     ledger: { entries: ordered(rows.ledgerEntries).map((row) => JSON.parse(row.value)), alertThresholds: thresholds },
-    policyBook: { versions: ordered(rows.policyVersions).map((row) => JSON.parse(row.value)) },
+    policyBook: {
+      versions: ordered(rows.policyVersions).map((row) => JSON.parse(row.value)),
+      ...(rows.settings.get('policy-mode') === 'not-applicant' ? { mode: 'not-applicant' as const } : {}),
+    },
     merchantRules: ordered(rows.merchantRules).map((row) => JSON.parse(row.value)),
+    ...(rows.settings.has('report-evidence') ? { reportEvidence: JSON.parse(rows.settings.get('report-evidence') ?? '[]') } : {}),
+    ...(rows.settings.has('verification-state') ? { verification: JSON.parse(rows.settings.get('verification-state') ?? '{}') as VerificationState } : {}),
   };
 }
 
