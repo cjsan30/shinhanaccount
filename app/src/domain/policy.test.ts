@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { confirmPolicyForPeriod, createPolicyBook, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyLimit, parsePolicyText, validatePolicyAgainstProfile } from './policy';
+import { POLICY_ITEM_ALIASES, emptyPolicy } from './policy';
+import { POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, confirmPolicyForPeriod, createPolicyBook, getAlertTargets, getCategoryLabel, getCategoryLimit, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyItems, getPolicyLimit, getPolicyVersion, loadPolicy, loadPolicyBook, parsePolicyText, savePolicy, savePolicyBook, validatePolicyAgainstProfile } from './policy';
 
 describe('policy text import', () => {
+  it.each(Object.entries(POLICY_ITEM_ALIASES).flatMap(([item, aliases]) => aliases.map((alias) => ({ item, alias }))))('reads $alias only as $item', ({ item, alias }) => {
+    expect(parsePolicyText(`${alias} 50,000원`).plans).toEqual({ ...emptyPolicy.plans, [item]: 50000 });
+  });
+  it('accepts all category aliases on one line without cross-mapping cafes', () => {
+    expect(parsePolicyText('주거 비용 50,000원 식사비 200000원 학원비 100000원 유류비 150000원 스터디 카페 이용료 100000원 일반 카페 50000원 열람실 이용료 50000원').plans).toEqual({ housing: 50000, food: 200000, education: 100000, transport: 150000, studyCafe: 100000, cafe: 50000, readingRoom: 50000 });
+  });
+  it('does not borrow another category or a subtotal when an amount is absent', () => {
+    expect(parsePolicyText('주거비\n식사비 200000원\n스터디카페\n일반카페 200000원\n교통비\n합계 700000원').plans).toEqual({ ...emptyPolicy.plans, food: 200000, cafe: 200000 });
+    expect(parsePolicyText('학습공간비 200000원 정주비 500000원').plans).toEqual(emptyPolicy.plans);
+  });
+  it('keeps repeated names in table rows as one category and supports explicit money units', () => {
+    expect(parsePolicyText('주거비 숙박비 5만원 식비 식대 20만원 교통비 유류비 250천원 스터디카페 10만원 카페 10만원').plans).toMatchObject({ housing: 50000, food: 200000, transport: 250000, studyCafe: 100000, cafe: 100000 });
+  });
+  it('does not interpret negative amounts or ratios as positive budget', () => {
+    expect(parsePolicyText('주거비 -50,000원\n카페 100%').plans).toEqual(emptyPolicy.plans);
+  });
   it('keeps the current policy stable and schedules a confirmed policy for the next period', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const initial = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
@@ -9,7 +26,7 @@ describe('policy text import', () => {
     const scheduled = { ...getEffectivePolicy(book, now).policy, plans: { ...getEffectivePolicy(book, now).policy.plans, housing: 100000, transport: 200000 } };
     const nextBook = confirmPolicyForPeriod(book, scheduled, getNextPolicyPeriodKey(now));
     expect(getEffectivePolicy(nextBook, now).policy.plans.housing).toBe(50000);
-    expect(getEffectivePolicy(nextBook, new Date('2026-08-14T00:00:00+09:00')).policy.plans.housing).toBe(100000);
+    expect(getEffectivePolicy(nextBook, new Date('2026-08-15T00:00:00+09:00')).policy.plans.housing).toBe(100000);
   });
 
   it('maps pasted rows by support item and ignores the user-defined usage name', () => {
@@ -57,9 +74,66 @@ describe('policy text import', () => {
     expect(validatePolicyAgainstProfile(policy)).toEqual([]);
   });
 
+  it('reads space-separated plain text for both resident and study-space items', () => {
+    const policy = parsePolicyText('식비 200000원 교육비 160000원 교통비 140000원 카페 200000원');
+    expect(policy.plans).toMatchObject({ food: 200000, education: 160000, transport: 140000, cafe: 200000 });
+  });
+
+  it('does not let a malformed negative plan or custom item bypass a policy total', () => {
+    const policy = {
+      ...parsePolicyText(''),
+      plans: { housing: -50_000, food: 200_000, education: 0, transport: 350_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 },
+      customItems: [{ id: 'bad-item', label: '오류 항목', bucket: 'resident' as const, amount: -10_000 }],
+    };
+
+    expect(getPolicyLimit(policy, 'resident')).toBe(550_000);
+    expect(validatePolicyAgainstProfile(policy)).toEqual(expect.arrayContaining([
+      '주거비 항목은 0원 이상으로 설정해 주세요.',
+      '사용자 정의 항목의 이름과 금액을 확인해 주세요.',
+    ]));
+    expect(getPolicyItems(policy).map((item) => item.key)).not.toContain('bad-item');
+  });
+
   it('does not treat a persisted all-zero draft as a confirmed policy', () => {
     const now = new Date('2026-08-01T12:00:00+09:00');
     const emptyVersion = { ...parsePolicyText(''), periodKey: '2026-08', confirmedAt: now.toISOString() };
     expect(getEffectivePolicy({ versions: [emptyVersion] }, now).confirmed).toBe(false);
+  });
+
+  it('uses enabled fixed items as default alert targets and preserves explicit choices', () => {
+    const policy = { ...parsePolicyText(''), plans: { housing: 0, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    expect(getAlertTargets(policy)).toEqual(['food', 'transport', 'cafe']);
+    expect(getAlertTargets({ ...policy, alertTargets: ['food'] })).toEqual(['food']);
+  });
+
+  it('exposes custom categories in limits and labels without affecting fixed definitions', () => {
+    const policy = { ...parsePolicyText(''), customItems: [{ id: 'equipment', label: '장비 대여', bucket: 'resident' as const, amount: 50_000 }] };
+    expect(getPolicyItems(policy)).toContainEqual(expect.objectContaining({ key: 'equipment', ledgerCategories: ['custom:equipment'] }));
+    expect(getCategoryLimit(policy, 'custom:equipment')).toBe(50_000);
+    expect(getCategoryLabel('custom:equipment', policy)).toBe('장비 대여');
+    expect(getCategoryLabel('food', policy)).toBe('식비');
+  });
+
+  it('loads and saves resilient policy snapshots', () => {
+    const policy = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 } };
+    localStorage.clear();
+    savePolicy(localStorage, policy);
+    expect(loadPolicy(localStorage)).toMatchObject({ plans: policy.plans, profileId: 'shinhanhae-70', alertTargets: [] });
+    localStorage.setItem(POLICY_STORAGE_KEY, '{bad json');
+    expect(loadPolicy(localStorage)).toBeNull();
+    const book = createPolicyBook(policy, new Date('2026-08-01T12:00:00+09:00'));
+    savePolicyBook(localStorage, book);
+    expect(loadPolicyBook(localStorage)).toMatchObject({ versions: [{ periodKey: '2026-07', plans: policy.plans, profileId: 'shinhanhae-70', alertTargets: [] }] });
+    localStorage.setItem(POLICY_BOOK_STORAGE_KEY, '{bad json');
+    expect(loadPolicyBook(localStorage)).toEqual({ versions: [] });
+  });
+
+  it('uses the special non-applicant mode and leaves an unconfirmed fallback visible', () => {
+    const now = new Date('2026-09-20T12:00:00+09:00');
+    expect(getEffectivePolicy({ versions: [], mode: 'not-applicant' }, now)).toMatchObject({ confirmed: true, periodKey: '2026-09' });
+    const prior = { ...parsePolicyText(''), plans: { housing: 50_000, food: 200_000, education: 0, transport: 250_000, studyCafe: 0, cafe: 200_000, readingRoom: 0 }, periodKey: '2026-08', confirmedAt: now.toISOString() };
+    const fallback = getEffectivePolicy({ versions: [prior] }, now);
+    expect(fallback).toMatchObject({ confirmed: false, policy: { plans: prior.plans } });
+    expect(getPolicyVersion({ versions: [prior] }, '2026-08')).toBe(prior);
   });
 });

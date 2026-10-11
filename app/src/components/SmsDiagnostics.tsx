@@ -21,6 +21,8 @@ const stageLabels: Record<string, string> = {
   NOTIFICATION_LISTENER_ENTERED: '승인 알림 수신',
   NOTIFICATION_BODY_EXTRACTED: '승인 알림 본문 확인',
   NOTIFICATION_NO_NEW_APPROVAL: '새 승인 결제 없음',
+  NOTIFICATION_SOURCE_UNSUPPORTED: '지원하지 않는 알림 출처',
+  NOTIFICATION_GROUP_SUMMARY_SKIPPED: '묶음 알림 요약 건너뜀',
 };
 
 const detailText = (event: SmsDiagnosticEvent) => [
@@ -87,7 +89,7 @@ export function SmsDiagnostics({ notify }: { notify: (message: string) => void }
 
   return <section className="sms-diagnostics">
     <h3>결제 수신 진단 이력</h3>
-    <p>삼성 메시지·신한 SOL·신한카드 승인 알림의 원문·금액·상호명·카드번호 없이 최근 처리 단계만 암호화 저장합니다.</p>
+    <p>삼성 메시지·신한 SOL뱅크·신한카드·신한 SOL Pay 승인 알림의 원문·금액·상호명·카드번호 없이 최근 처리 단계만 암호화 저장합니다.</p>
     <div className="sms-diagnostic-actions">
       <button className="sheet-action secondary-action" type="button" onClick={() => void refresh()} disabled={loading}>{loading ? '불러오는 중…' : '진단 이력 새로고침'}</button>
       <button className="sheet-action secondary-action" type="button" onClick={() => void exportLog()} disabled={!items.length}>진단 로그 내보내기</button>

@@ -12,6 +12,9 @@ dist
 dist-ssr
 /build
 *.local
+.android-test/
+.gradle-user-home/
+analytics.settings
 
 # Editor directories and files
 .vscode/*

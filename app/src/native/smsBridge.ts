@@ -1,15 +1,15 @@
 import { registerPlugin } from '@capacitor/core';
 
-export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; notificationPostedAt?: number; source?: 'demo' | 'sms' | 'notification' | 'excel' | 'manual'; quickCategory?: string };
+export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; notificationPostedAt?: number; source?: 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual'; quickCategory?: string };
 export type NativeApprovalReview = { id: string; cardLast4: string; occurredAt?: string; amount?: number; merchant?: string; notificationPostedAt?: number; source?: 'notification' };
 export type NativeCancellation = NativeApproval;
-export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; alertCategories: string[]; thresholds: [number, number]; periodKey: string; quickCategories: Array<{ category: string; label: string }> };
+export type NativeBudgetState = { categoryLimits: Record<string, number>; categorySpent: Record<string, number>; alertCategories: string[]; thresholds: [number, number]; periodKey: string; periodStart?: string; periodEnd?: string; quickCategories: Array<{ category: string; label: string }> };
 export type SmsDiagnosticEvent = {
   id: string;
   eventId: string;
   recordedAt: number;
   stage: string;
-  status: 'info' | 'success' | 'ignored' | 'blocked' | 'error';
+  status: 'info' | 'success' | 'ignored' | 'skipped' | 'blocked' | 'error';
   segmentCount?: number;
   bodyLength?: number;
   markerFound?: boolean;
@@ -25,6 +25,7 @@ export type SmsDiagnosticEvent = {
 type SmsBridgePlugin = {
   addListener(eventName: 'approvalReceived', listener: () => void): Promise<{ remove: () => Promise<void> }>;
   configure(options: { cardLast4: string }): Promise<void>;
+  clearConfiguration(): Promise<void>;
   getConfiguration(): Promise<{ cardLast4: string }>;
   syncBudgetState(state: NativeBudgetState): Promise<void>;
   injectTestApproval(approval: NativeApproval): Promise<void>;

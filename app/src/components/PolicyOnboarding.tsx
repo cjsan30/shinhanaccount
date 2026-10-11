@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { PolicyOcr } from '../native/policyOcr';
+import { InformationSourceLink } from './AppInformation';
 import { DEFAULT_SUPPORT_PROFILE_ID, POLICY_ITEMS, SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, parsePolicyText, validatePolicyAgainstProfile, type CustomPolicyItem, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../domain/policy';
 
 function createBlankPolicy(): SupportPolicy {
@@ -20,7 +21,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
   useEffect(() => {
     if (!draft || !scrollAfterRead.current) return;
     scrollAfterRead.current = false;
-    requestAnimationFrame(() => draftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => draftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   }, [draft]);
   const profile = getSupportProfile(profileId);
   const applyProfile = (nextId: SupportProfileId) => { setProfileId(nextId); updateDraft((current) => current ? { ...current, profileId: nextId } : current); };
@@ -45,7 +46,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
       <h1>사용 계획을<br />확정해 주세요</h1>
       <p>이번 달 배정 지원금을 선택한 뒤 계획표를 불러와 주세요.</p>
       <section className="support-profile-picker" aria-label="신청해 지원 유형 선택">{SHINHANHAE_PROFILES.map((candidate) => <button type="button" key={candidate.id} className={profileId === candidate.id ? 'is-selected' : ''} onClick={() => applyProfile(candidate.id)}><strong>{candidate.label}</strong><span>정주비 {candidate.bucketLimits.resident.toLocaleString()}원 · 학습공간비 {candidate.bucketLimits.studySpace.toLocaleString()}원</span></button>)}</section>
-      <p className="support-profile-note">선택한 유형의 총액과 세부항목 상한에 맞춰 계획표를 검토합니다.</p>
+      <InformationSourceLink />
       <section className="first-run__card">
         <img className="onboarding-policy-example" src="/onboarding-policy-example.png" alt="정주비와 학습공간비의 사용처별 예상금액이 담긴 계획표 예시" />
         <button className="first-run__start" type="button" onClick={() => void readImage()}>이미지로 계획표 불러오기</button>

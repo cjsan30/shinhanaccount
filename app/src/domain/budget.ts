@@ -37,20 +37,34 @@ function getKoreaDateParts(date: Date) {
   };
 }
 
-export function getPolicyPeriodKey(date: Date): string {
+export type PolicyPeriod = { startDay: number; endDay: number };
+export const DEFAULT_POLICY_PERIOD: PolicyPeriod = { startDay: 15, endDay: 10 };
+export function normalizePolicyPeriod(value?: Partial<PolicyPeriod>): PolicyPeriod {
+  const valid = (day: unknown) => typeof day === 'number' && Number.isInteger(day) && day >= 1 && day <= 31;
+  return valid(value?.startDay) && valid(value?.endDay) ? { startDay: value!.startDay!, endDay: value!.endDay! } : { ...DEFAULT_POLICY_PERIOD };
+}
+const monthDay = (year: number, month: number, day: number) => Math.min(day, new Date(Date.UTC(year, month, 0)).getUTCDate());
+export function getPolicyPeriodRange(periodKey: string, period?: PolicyPeriod) {
+  const { startDay, endDay } = normalizePolicyPeriod(period);
+  const [year, month] = periodKey.split('-').map(Number);
+  if (!/^\d{4}-\d{2}$/.test(periodKey) || month < 1 || month > 12) return { start: '', end: '' };
+  const endMonth = new Date(Date.UTC(year, month - 1 + (endDay < startDay ? 1 : 0), 1));
+  const iso = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(monthDay(y, m, d)).padStart(2, '0')}`;
+  return { start: iso(year, month, startDay), end: iso(endMonth.getUTCFullYear(), endMonth.getUTCMonth() + 1, endDay) };
+}
+export function getPolicyPeriodKey(date: Date, period?: PolicyPeriod): string {
   const { year, month, day } = getKoreaDateParts(date);
-  const periodStart = day >= 14 ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+  const periodStart = day >= monthDay(year, month, normalizePolicyPeriod(period).startDay) ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
 
   return `${periodStart.year}-${String(periodStart.month).padStart(2, '0')}`;
 }
 
-export function isDateInPolicyPeriod(date: Date, periodKey: string = getPolicyPeriodKey(date)): boolean {
+export function isDateInPolicyPeriod(date: Date, periodKey?: string, period?: PolicyPeriod): boolean {
+  if (!Number.isFinite(date.getTime())) return false;
   const { year, month, day } = getKoreaDateParts(date);
-  if (day >= 11 && day <= 13) return false;
-  const datePeriodKey = day >= 14
-    ? `${year}-${String(month).padStart(2, '0')}`
-    : `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`;
-  return datePeriodKey === periodKey;
+  const value = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const range = getPolicyPeriodRange(periodKey ?? getPolicyPeriodKey(date, period), period);
+  return Boolean(range.start) && value >= range.start && value <= range.end;
 }
 
 export function calculateBudgetSummary(limit: number, spent: number): BudgetSummary {
