@@ -64,7 +64,7 @@
 | 오프라인 우선 | 개인 1인 사용과 민감한 거래 데이터를 고려해 서버 없이 기기 내 암호화 저장소를 기본값으로 선택 |
 | 파일 가져오기 | 카드 CSV는 카드 끝 4자리, 은행 PDF는 계좌 끝 4자리로 확인한다. 파일 안에서 식별번호를 읽지 못한 경우에는 경고 후 사용자가 계속 진행할 수 있다. 정책 기간 밖 거래는 저장하지 않는다. |
 | OCR 실패 대응 | 계획표 이미지를 우선 읽되 결과가 비정상적이면 동일 구조의 직접 입력 화면으로 전환 |
-| 증빙 PDF | 첫 장에 지원금 요약을 만들고, 은행 PDF는 원본을 복사하지 않고 마스킹 가능한 표로 변환한다. 영수증은 결제와 연결한 뒤 항목별로 정리하며, 미연결 결제가 있으면 생성 전 안내한다. |
+| 증빙 PDF | 첫 장에 지원금 요약을 만들고, 은행 PDF는 원본 페이지 이미지에서 제외 행을 회색 불투명 영역으로 가린다. 연결한 영수증은 항목별로, 미연결 영수증은 별도로 정리하며 연결 없이도 안내 후 생성할 수 있다. |
 
 ## 검증 방식
 
@@ -108,14 +108,13 @@ Set-Location android
 
 ## 문서
 
+개발·검증·배포 문서는 모두 [`docs/`](docs/README.md)에 모아 관리합니다. 루트에는 저장소 소개와 실행 방법을 담은 이 README만 둡니다.
+
+- [문서 목차와 읽는 순서](docs/README.md)
 - [최신 결정 사항](docs/00-latest-decisions.md)
-- [제품 요구사항](docs/01-product-requirements.md)
-- [기술 설계](docs/02-technical-design.md)
-- [TDD·테스트 계획](docs/03-tdd-test-plan.md)
-- [AI·개인정보 가드레일](docs/04-ai-guardrails.md)
-- [GitHub 가드레일](docs/05-github-guardrails.md)
-- [후속 개선 과제](docs/06-future-enhancements.md)
-- [실기기·릴리스 체크리스트](docs/07-device-release-checklist.md)
+- [최신 실기기 검증 체크리스트](docs/10-device-verification-checklist.md)
+
+과거 Notion 템플릿 작업 문서와 중복된 초기 앱 설계서는 현재 문서에서 제외했습니다. 원문은 Git 이력에서 확인할 수 있습니다.
 
 ## 향후 개선
 
