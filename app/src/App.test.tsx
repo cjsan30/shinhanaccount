@@ -133,6 +133,8 @@ describe('app entry flows', () => {
   });
 
   it('adjusts unused budget, preserves spending/evidence/scheduled policy and reloads the final plan', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     const now = new Date().toISOString(); const periodKey = getPolicyPeriodKey(new Date());
     const plans = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
     const currentVersion = { periodKey, confirmedAt: now, sourceText: 'original plan', plans, profileId: 'shinhanhae-70', alertTargets: [] };
@@ -171,6 +173,8 @@ describe('app entry flows', () => {
     expect(await screen.findByText('예산 조정')).toBeInTheDocument();
   });
   it('resolves a cross-source duplicate from undecided expenses without changing confirmed spending', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     const original = { id: 'approval-1234-1', cardLast4: '1234', merchant: '메가커피', occurredAt: '2026-09-20T12:00:00+09:00', amount: 2700, status: 'classified', bucket: 'resident', category: 'food', source: 'excel' };
     const pending = { id: 'bank-6789-1', cardLast4: '6789', merchant: '네이버페이', occurredAt: '2026-09-20T12:00:23+09:00', amount: 2700, status: 'undecided', source: 'bankCsv', duplicateCandidateIds: [original.id] };
     const now = new Date().toISOString();
@@ -426,6 +430,8 @@ describe('app entry flows', () => {
   });
 
   it('holds an incomplete approval for confirmation and acknowledges it only after registration', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -450,14 +456,16 @@ describe('app entry flows', () => {
     expect(screen.getByText('확인 필요 결제')).toBeInTheDocument();
   });
 
-  it('discards an incomplete approval review outside the confirmed period without showing a form', async () => {
+  it.each(['2026-10-11T12:00:00+09:00', '2026-10-12T12:00:00+09:00'])('discards an incomplete approval review outside the confirmed period without showing a form on %s', async (occurredAt) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(occurredAt));
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
-      id: 'period-gap-review', cardLast4: '3741', occurredAt: '2026-10-12T12:00:00+09:00', merchant: '기간 밖 확인 결제', source: 'notification',
+      id: 'period-gap-review', cardLast4: '3741', occurredAt, merchant: '기간 밖 확인 결제', source: 'notification',
     }] });
 
     await renderApp();
