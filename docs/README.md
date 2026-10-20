@@ -4,9 +4,10 @@
 
 ## 먼저 읽을 문서
 
-1. [최신 결정 사항](00-latest-decisions.md): 승인된 정책·기능 변경과 릴리스 기준.
-2. [제품 요구사항](01-product-requirements.md), [기술 설계](02-technical-design.md): 제품 범위와 구현 구조.
-3. [실기기 검증 체크리스트](10-device-verification-checklist.md), [검증·수정 결과](14-device-audit-remediation.md): 실제 확인 결과와 남은 검증.
+1. [현재 상태와 다음 작업](current_state.md): 진행 상황과 다음 작업의 유일한 인계 문서.
+2. [최신 결정 사항](00-latest-decisions.md): 승인된 정책·기능 변경과 릴리스 기준.
+3. [제품 요구사항](01-product-requirements.md), [기술 설계](02-technical-design.md): 제품 범위와 구현 구조.
+4. [실기기 검증 체크리스트](10-device-verification-checklist.md), [검증·수정 결과](14-device-audit-remediation.md): 실제 확인 결과와 남은 검증.
 
 PRD·기술 설계·초기 테스트 계획에는 이전 단계의 설명도 남아 있습니다. 현재 규칙을 판단할 때는 최신 결정 기록과 실제 소스·테스트를 함께 확인합니다. 날짜가 있는 과거 결과를 현재 버전의 검증 완료로 간주하지 않습니다.
 
@@ -31,6 +32,7 @@ PRD·기술 설계·초기 테스트 계획에는 이전 단계의 설명도 남
 | [실기기 검증 후 수정 결과](14-device-audit-remediation.md) | 구현·회귀 테스트·기기 검증의 근거 |
 | [제출서류·거래내역 개선 기록](09-pdf-submission-improvement-plan.md) | PDF·OCR·가져오기 피드백과 확정된 동작 |
 | [후속 개선 계획](06-future-enhancements.md) | 과거 보류·제안 항목의 추적; 현재 착수 전 최신 결정과 구현 여부 확인 |
+| [현재 상태와 다음 작업](current_state.md) | 진행 상황·다음 작업 인계의 단일 기준 |
 | [리팩터링 계획](08-refactoring-plan.md) | 기능 변경과 분리한 구조 개선 과제 |
 
 ## Google Play·개인정보
