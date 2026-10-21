@@ -1,6 +1,6 @@
 import type { PolicyPeriod } from './budget';
 import type { LedgerEntry } from './ledger';
-import { isEntryInPolicyPeriod } from './ledger';
+import { isInPeriodScope } from './periodSelectors';
 import type { ReportEvidenceRecord } from './reportEvidence';
 
 export type ReportReadiness = {
@@ -15,7 +15,7 @@ export type ReportReadiness = {
  * count as evidence coverage.
  */
 export function getReportReadiness(entries: LedgerEntry[], evidence: ReportEvidenceRecord[], periodKey: string, period?: PolicyPeriod): ReportReadiness {
-  const payments = entries.filter((entry) => entry.status === 'classified' && isEntryInPolicyPeriod(entry, periodKey, period));
+  const payments = entries.filter((entry) => entry.status === 'classified' && isInPeriodScope(entry, { periodKey, period }));
   const paymentIds = new Set(payments.map((entry) => entry.id));
   const linkedEntryIds = new Set(evidence
     .filter((item) => item.section === 'receipt' && item.linkedEntryId && paymentIds.has(item.linkedEntryId))

@@ -1,4 +1,5 @@
-import { normalizePolicyPeriod, getPolicyPeriodRange, getPolicyPeriodKey, type PolicyPeriod } from '../domain/budget';
+import { normalizePolicyPeriod, type PolicyPeriod } from '../domain/budget';
+import { getCurrentPeriodRange } from '../domain/periodSelectors';
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
@@ -10,6 +11,7 @@ import { DataIntegrityPanel } from './DataIntegrityPanel';
 import { InformationSourceLink } from './AppInformation';
 
 type Props = {
+  now: Date;
   budgetAdjustment?: ReactNode;
   importFile: File | null;
   importTransactions: ImportedCardTransaction[] | null;
@@ -50,7 +52,7 @@ const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 
 export function DataManagementPanel(props: Props) {
   const policyDraftRef = useRef<HTMLDivElement>(null);
-  const draftPeriodRange = getPolicyPeriodRange(getPolicyPeriodKey(new Date(), props.policyDraft?.period), props.policyDraft?.period);
+  const draftPeriodRange = getCurrentPeriodRange(props.now, props.policyDraft?.period);
   useEffect(() => {
     if (!props.policyDraft || !props.policyDraftFocusToken) return;
     requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
