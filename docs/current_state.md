@@ -4,18 +4,19 @@
 결정 이력은 [00-latest-decisions.md](00-latest-decisions.md), 구조 개선의 배경은 [08-refactoring-plan.md](08-refactoring-plan.md)에 둔다.
 
 - 마지막 갱신: 2026-10-21
-- 기준 커밋: `dev` `0133986` (+ `chore/cleanup-and-handoff` PR 병합 대기)
+- 기준 커밋: `dev` `cb97186` (PR #2, #3 병합 후)
 
 ## 현재 상태 요약
 
 | 항목 | 상태 |
 | --- | --- |
 | 배포 | Play 비공개 테스트. 서명 AAB 1.3.7 / code 11 생성 완료(`56ae425` 기준, Git 제외 `audit/release-1.3.7/`). 업로드 전 |
-| 웹 테스트 | 445개 중 443개 통과, 1개 실패, 1개 건너뜀(내부 전용) — 실패 원인은 아래 작업 1 |
+| 웹 테스트 | 445개 중 444개 통과, 1개 건너뜀(내부 전용) |
 | 린트·타입체크 | 통과 |
 | `npm audit --omit=dev` | `@capacitor/android` 8.4.2에 critical 취약점 1건 — 아래 작업 2 |
 | 브랜치 | `dev`를 `main`(`0133986`)으로 fast-forward해 이력을 맞췄다(2026-10-21) |
 | Android 단위 테스트 | 27개 통과(예제 테스트 1개 삭제 후) |
+| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI는 Draft PR #4 — 작업 2 병합 후 Ready |
 
 ## 진행 상황
 
@@ -25,7 +26,11 @@
 - 작업 0 완료: `chore/cleanup-and-handoff`에서 미사용 파일 9개를 `git rm`하고 `CLAUDE.md`, 이 문서, `docs/README.md`를 커밋했다. 사용자 승인에 따라 `05-github-guardrails.md`에 `refactor/*`, `chore/*` 접두사를 추가했다.
 - 검증: lint·build·test:security 통과, Android 단위 테스트 27개 통과. `test:run`은 작업 1의 알려진 실패 1건(`App.test.tsx` 시간 의존 테스트)만 남아 있다.
 - 로컬 환경 메모: 새 체크아웃에서는 Gradle 전에 `npm run android:sync`가 필요하다(`capacitor-cordova-android-plugins` 생성). 셸 기본 Java가 8이라 `JAVA_HOME`을 `C:\Program Files\Android\Android Studio\jbr`로, `ANDROID_HOME`을 `%LOCALAPPDATA%\Android\Sdk`로 지정해야 한다. sync 후 생기는 gradle 파일의 줄바꿈 변경은 커밋하지 않는다.
-- `core.hooksPath`가 설정돼 있지 않아 pre-push 훅이 실행되지 않는다. 작업 1로 테스트가 통과한 뒤 설정을 권장한다.
+- 로컬 `master` 브랜치를 `main`(`origin/main` 추적)으로 이름을 바꿨다. 안정 브랜치 이름은 `main`이다.
+- 작업 1 완료(PR #3 병합): 해당 테스트의 시간을 2026-10-12로 고정했다. 임시 setup 파일로 "오늘"을 6개 날짜(정책 기간, 공백, 월말, 연도 경계 등)로 바꿔 가며 웹 테스트 전체를 돌렸고, 시간에 의존하는 테스트는 이 1건뿐이었다. `TZ=UTC`에서도 웹·Android 테스트가 모두 통과한다.
+- pre-push 훅을 켰다(`git config core.hooksPath .githooks`, 로컬 설정이라 새로 clone하면 다시 해야 함).
+- CI 작성(`chore/ci`, Draft PR #4): web job(npm ci, lint, test:run, build, test:security, `npm audit --omit=dev`)과 android job(sync 후 `:app:testDebugUnitTest`). 시크릿은 쓰지 않는다. Linux 러너에서 돌도록 `gradlew`에 실행 권한을 줬다.
+- CI 관련 사용자 결정: audit 실패는 CI 실패로 처리한다. 그래서 작업 2를 먼저 병합한 뒤 PR #4를 Ready로 바꾼다. Android job은 항상 실행한다. 브랜치 보호(필수 체크 지정)는 나중에 정한다.
 
 ### 2026-10-20 분석 세션 (Cowork)
 
@@ -76,7 +81,7 @@ git push
 - `git rm`으로 삭제한 뒤 lint, test:run, build, test:security가 통과한다.
 - `:app:testDebugUnitTest`가 통과한다. 예제 테스트 1개가 빠지므로 Android 테스트 수는 기존 28개에서 줄어든다.
 
-### 1. `fix/test-policy-gap-clock` — 시간에 따라 실패하는 테스트
+### ~~1. `fix/test-policy-gap-clock` — 시간에 따라 실패하는 테스트~~ (2026-10-21 완료, PR #3)
 
 **위치**: `App.test.tsx`의 `acknowledges but does not store an approval outside the confirmed policy period`
 
@@ -112,6 +117,7 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 **완료 기준**
 
 - `npm audit --omit=dev` 결과 0건, 웹·Android 테스트 통과.
+- 병합 후 `chore/ci`(PR #4)를 `dev` 위로 rebase하고, CI web·android job이 모두 초록인지 확인한 뒤 Ready로 바꿔 병합한다.
 - 실기기 회귀 확인: 알림 인식, 위젯, 파일 저장, PDF 생성.
 - 이후 릴리스는 versionCode 12로 다시 빌드한다. 1.3.7(code 11) AAB에는 8.4.2가 들어 있으므로 업로드하지 않는다. 빌드는 사용자가 직접 한다.
 
@@ -189,5 +195,7 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 - `npm audit --omit=dev`를 `test:security` 또는 pre-push 훅에 추가한다.
 
 ## 사용자 결정이 필요한 항목
+
+- CI가 안정적으로 돈 뒤 `dev`/`main`에 브랜치 보호(필수 체크)를 걸지
 
 - 작업 2 이후 1.3.8 / code 12 릴리스를 언제 만들지
