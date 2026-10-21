@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { SpotlightGuide, type GuideStep } from './SpotlightGuide';
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import { bytesToBase64, openLatestSavedFile, saveFile } from '../native/fileExport';
+import { openLatestSavedFile, saveFile } from '../native/fileExport';
 import { fitImageInsidePage } from '../features/evidence/imageLayout';
 import { loadEvidence, removeStoredEvidence, storeEvidence } from '../native/evidenceVault';
 import type { ReportEvidenceRecord, ReportEvidenceSection } from '../domain/reportEvidence';
@@ -10,20 +9,18 @@ import { toStatementRows } from '../domain/statementImport';
 import type { LedgerEntry } from '../domain/ledger';
 import { getReportReadiness } from '../domain/reportReadiness';
 import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
-import { formatStatementAmount, redactStatementRows, type StatementRow } from '../domain/statementRedaction';
-import { groupStatementMaskBlocks } from '../domain/statementMasking';
 import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
-import { isDateInPolicyPeriod, type PolicyPeriod } from '../domain/budget';
-import { ReceiptOcr } from '../native/receiptOcr';
-import { isValidReceiptDate, parseReceiptOcr } from '../domain/receiptOcr';
+import type { PolicyPeriod } from '../domain/budget';
+import { isValidReceiptDate } from '../domain/receiptOcr';
+import { recognizeReceiptDetails, resolvedReceiptPatch } from '../features/evidence/pipeline/receipts';
+import { compressImage, divider, pageImage, pdfPages, renderMaskedStatementPdf, renderPdf, statementPages } from '../features/evidence/pipeline/render';
+import { A4, ExportCancelled, PROFILES, TARGET_BYTES, type ExportProfile, type RasterImage, type ReportSummary } from '../features/evidence/pipeline/types';
+export type { ReportSummary } from '../features/evidence/pipeline/types';
 
 type EvidenceKind = 'image' | 'pdf';
 type Evidence = ReportEvidenceRecord & { file: File; kind: EvidenceKind; url?: string; pages?: number };
-type RasterImage = { bytes: Uint8Array; width: number; height: number };
-type ExportProfile = { id: 'default' | 'compact' | 'minimum'; maxEdge: number; quality: number; pdfDpi: number | null };
 type Progress = { current: number; total: number; stage: string; attempt: number; measuring?: boolean };
 import { BenchmarkCancelled, compareBenchmarks, measureBenchmark, receiptFingerprint, type BenchmarkResult } from '../features/evidence/benchmark';
-export type ReportSummary = { periodLabel: string; totalBudget: number; totalUsed: number; buckets: Array<{ key: 'resident' | 'studySpace'; label: string; budget: number; used: number; items: Array<{ category: string; label: string; budget: number; used: number }> }> };
 const PDF_GUIDE_STEPS: readonly GuideStep[] = [
   { target: '[data-guide="statement"] > .file-picker', title: '입출금내역을 추가하세요', body: '은행 또는 카드사에서 받은 파일을 추가하세요. 보호된 PDF는 비밀번호를 입력해 다시 읽을 수 있어요.' },
   { target: '.statement-redaction > summary', fallbackTarget: '[data-guide="statement"] > .file-picker', title: '가릴 내역을 확인하세요', body: '파일의 상세보기를 열어 사업 무관 거래를 선택하세요. 선택한 행은 회색으로 가려지며, 입금과 정책 기간 외 행은 자동으로 가려집니다.' },
@@ -33,13 +30,9 @@ const PDF_GUIDE_STEPS: readonly GuideStep[] = [
   { target: '.evidence-export__actions', title: 'PDF를 생성하세요', body: '미연결 경고가 있어도 생성할 수 있고, 미연결 영수증도 별도로 포함됩니다. 생성 후 미리보기로 누락과 글자 선명도를 확인하세요. 파일은 5MB 이하로 자동 최적화하며, 불가능하면 안내합니다.' },
 ];
 
-const A4: [number, number] = [595.28, 841.89];
-const TARGET_BYTES = Math.floor(4.7 * 1024 * 1024);
 const MAX_EVIDENCE_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_EVIDENCE_TOTAL_BYTES = 120 * 1024 * 1024;
-const PROFILES: ExportProfile[] = [{ id: 'default', maxEdge: 1024, quality: .58, pdfDpi: null }, { id: 'compact', maxEdge: 920, quality: .5, pdfDpi: 150 }, { id: 'minimum', maxEdge: 800, quality: .42, pdfDpi: 120 }];
 const LABEL: Record<ReportEvidenceSection, string> = { statement: '입출금내역', transactionProof: '거래증빙', receipt: '영수증' };
-class ExportCancelled extends Error {}
 const won = (value: number) => `${Math.max(0, value).toLocaleString('ko-KR')}원`;
 const fileSize = (value: number) => `${value.toLocaleString('ko-KR')}B (${(value / 1024 / 1024).toFixed(2)}MB)`;
 const supported = (file: File) => ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) || /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
@@ -48,200 +41,6 @@ const kindOf = (file: File): EvidenceKind => file.type === 'application/pdf' || 
 
 
 
-async function jpeg(canvas: HTMLCanvasElement, quality: number) {
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));
-  return new Uint8Array(await blob.arrayBuffer());
-}
-async function recognizeReceiptDetails(file: File) {
-  const bitmap = await createImageBitmap(file);
-  // Do not scale a long receipt by its height: that turns a 5,000px receipt
-  // into a ~300px-wide image and ML Kit cannot read its figures. Preserve a
-  // readable width while limiting the total bitmap pixels for mobile safety.
-  const maxWidth = 1440; const maxPixels = 8_000_000;
-  const scale = Math.min(1, maxWidth / bitmap.width, Math.sqrt(maxPixels / (bitmap.width * bitmap.height)));
-  const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  try {
-    const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('영수증 이미지를 준비하지 못했습니다.');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const bytes = await jpeg(canvas, .8); const result = await ReceiptOcr.recognize({ base64Data: bytesToBase64(bytes) });
-    // OCR is an input aid, not an evidence-link decision maker. Amounts on a
-    // receipt can be totals, discounts, gift certificates, or card charges.
-    const { date } = parseReceiptOcr(result.text);
-    return { ...(date ? { date } : {}) };
-  } finally { bitmap.close(); canvas.width = 1; canvas.height = 1; }
-}
-function resolvedReceiptPatch(details: { date?: string }, manual = false) {
-  if (details.date) return { receiptOcrStatus: 'ambiguous' as const, receiptOcrMessage: manual ? '선택한 날짜의 결제 중 하나를 눌러 연결해 주세요.' : '결제 날짜를 읽었습니다. 같은 날짜의 결제 중 하나를 선택해 주세요.', linkedEntryId: undefined, receiptAutoLinked: undefined };
-  return { receiptOcrStatus: 'needs-input' as const, receiptOcrMessage: manual ? '날짜를 선택하면 해당 날짜의 결제를 보여드립니다.' : '결제 날짜를 읽지 못했습니다. 날짜를 선택하거나 다시 읽어 주세요.', linkedEntryId: undefined, receiptAutoLinked: undefined };
-}
-async function compressImage(file: File, maxEdge: number, quality: number): Promise<RasterImage[]> {
-  const bitmap = await createImageBitmap(file); const width = Math.min(bitmap.width, maxEdge); const result: RasterImage[] = [];
-  try { const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = Math.max(1, Math.round(bitmap.height * width / bitmap.width)); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('이미지를 압축하지 못했습니다.'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height); result.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; } finally { bitmap.close(); }
-  return result;
-}
-async function renderPdf(file: File, dpi: number, quality: number, onPage: () => void, cancelled: () => boolean): Promise<RasterImage[]> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl; const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }); const source = await task.promise; const result: RasterImage[] = [];
-  try { for (let index = 1; index <= source.numPages; index += 1) { if (cancelled()) throw new ExportCancelled(); const page = await source.getPage(index); const viewport = page.getViewport({ scale: dpi / 72 }); const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('PDF 페이지를 준비하지 못했습니다.'); await page.render({ canvas, canvasContext: ctx, viewport }).promise; result.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; page.cleanup(); onPage(); } } finally { await task.destroy(); }
-  return result;
-}
-function solidMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
-  const safeX = Math.max(0, Math.floor(x)); const safeY = Math.max(0, Math.floor(y));
-  const safeWidth = Math.max(1, Math.min(ctx.canvas.width - safeX, Math.ceil(width))); const safeHeight = Math.max(1, Math.min(ctx.canvas.height - safeY, Math.ceil(height)));
-  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.restore();
-}
-function cleanRowMask(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, label: string) {
-  const safeX = Math.max(0, Math.floor(x)); const safeY = Math.max(0, Math.floor(y));
-  const safeWidth = Math.max(1, Math.min(ctx.canvas.width - safeX, Math.ceil(width))); const safeHeight = Math.max(1, Math.min(ctx.canvas.height - safeY, Math.ceil(height)));
-  // The source layout is a fixed Shinhan table. Draw from its outer grid line
-  // to outer grid line, rather than only covering the parsed text cells.
-  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(safeX, safeY, safeWidth, safeHeight); ctx.strokeStyle = '#26343f'; ctx.lineWidth = 1; ctx.strokeRect(safeX + .5, safeY + .5, safeWidth - 1, safeHeight - 1);
-  ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, safeHeight * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, safeX + safeWidth / 2, safeY + safeHeight / 2); ctx.restore();
-}
-type StatementTableGeometry = { left: number; right: number; horizontalLines: number[] };
-const middle = (values: number[]) => { const sorted = [...values].sort((left, right) => left - right); return sorted[Math.floor(sorted.length / 2)]; };
-
-/**
- * Shinhan's PDF is vector-based, so the rendered table grid can be detected
- * reliably. Snapping masks to those lines fixes both a right-edge overrun and
- * taller deposit rows without reconstructing the original statement.
- */
-function statementTableGeometry(ctx: CanvasRenderingContext2D, scale: number, rows: StatementRow[]): StatementTableGeometry | undefined {
-  const rowCenters = rows.map((row) => ctx.canvas.height - row.sourceY! * scale);
-  if (!rowCenters.length) return undefined;
-  const minY = Math.max(0, Math.floor(Math.min(...rowCenters) - 36 * scale)); const maxY = Math.min(ctx.canvas.height - 1, Math.ceil(Math.max(...rowCenters) + 36 * scale));
-  const expectedLeft = Math.max(0, Math.floor(18 * scale)); const expectedRight = Math.min(ctx.canvas.width - 1, Math.ceil(560 * scale));
-  let pixels: Uint8ClampedArray;
-  try { pixels = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data; } catch { return undefined; }
-  const darkAt = (x: number, y: number) => { const offset = (y * ctx.canvas.width + x) * 4; return pixels[offset] < 125 && pixels[offset + 1] < 125 && pixels[offset + 2] < 125; };
-  const lineCandidates: number[] = [];
-  for (let y = minY; y <= maxY; y += 1) {
-    let dark = 0;
-    for (let x = expectedLeft; x <= expectedRight; x += 1) if (darkAt(x, y)) dark += 1;
-    if (dark >= (expectedRight - expectedLeft) * .62) lineCandidates.push(y);
-  }
-  const horizontalLines: number[] = [];
-  for (const y of lineCandidates) {
-    const previous = horizontalLines[horizontalLines.length - 1];
-    if (previous === undefined || y - previous > 2) horizontalLines.push(y);
-  }
-  if (horizontalLines.length < 2) return undefined;
-  const leftEdges: number[] = []; const rightEdges: number[] = [];
-  for (const y of horizontalLines) {
-    let left = -1; let right = -1;
-    for (let x = expectedLeft; x <= expectedRight; x += 1) if (darkAt(x, y)) { left = x; break; }
-    for (let x = expectedRight; x >= expectedLeft; x -= 1) if (darkAt(x, y)) { right = x; break; }
-    if (left >= 0 && right > left) { leftEdges.push(left); rightEdges.push(right); }
-  }
-  if (!leftEdges.length) return undefined;
-  // A horizontal rule can end a pixel inside an anti-aliased vertical border.
-  // Find that vertical border across the whole table height so the fill reaches
-  // the actual outer edge on both sides.
-  const strongestVertical = (from: number, to: number) => {
-    let best = -1; let bestScore = -1;
-    for (let x = Math.max(0, from); x <= Math.min(ctx.canvas.width - 1, to); x += 1) {
-      let score = 0;
-      for (let y = minY; y <= maxY; y += 1) if (darkAt(x, y)) score += 1;
-      if (score > bestScore) { best = x; bestScore = score; }
-    }
-    return bestScore > (maxY - minY) * .35 ? best : undefined;
-  };
-  const outerVertical = (from: number, to: number, side: 'left' | 'right') => {
-    const candidates: number[] = [];
-    for (let x = Math.max(0, from); x <= Math.min(ctx.canvas.width - 1, to); x += 1) {
-      let score = 0;
-      for (let y = minY; y <= maxY; y += 1) if (darkAt(x, y)) score += 1;
-      // The outer border can be interrupted by a taller grouped deposit row,
-      // so it need only cover a meaningful part of the statement body.
-      if (score >= (maxY - minY) * .12) candidates.push(x);
-    }
-    if (!candidates.length) return undefined;
-    return side === 'left' ? Math.min(...candidates) : Math.max(...candidates);
-  };
-  const left = outerVertical(Math.floor(15 * scale), Math.ceil(60 * scale), 'left') ?? strongestVertical(Math.floor(20 * scale), Math.ceil(45 * scale)) ?? middle(leftEdges);
-  const right = outerVertical(Math.floor(500 * scale), Math.ceil(590 * scale), 'right') ?? strongestVertical(Math.floor(530 * scale), Math.ceil(560 * scale)) ?? middle(rightEdges);
-  return { left, right, horizontalLines };
-}
-function gridLineBefore(lines: number[], y: number) { return [...lines].reverse().find((line) => line < y - 1); }
-function gridLineAfter(lines: number[], y: number) { return lines.find((line) => line > y + 1); }
-async function renderMaskedStatementPdf(file: File, rows: StatementRow[], excludedRowIds: string[], profile: ExportProfile, periodKey: string, onPage: () => void, cancelled: () => boolean, password?: string, period?: PolicyPeriod): Promise<RasterImage[]> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), ...(password ? { password } : {}) }); const source = await task.promise; const result: RasterImage[] = [];
-  try {
-    const hiddenReasons = new Map<string, string>();
-    rows.filter((row) => row.deposit > 0).forEach((row) => hiddenReasons.set(row.id, '입금 내역 제외'));
-    rows.filter((row) => !isDateInPolicyPeriod(new Date(`${row.date}T${row.time || '00:00:00'}+09:00`), periodKey, period)).forEach((row) => hiddenReasons.set(row.id, '정책 기간 외 내역'));
-    excludedRowIds.forEach((id) => { if (!hiddenReasons.has(id)) hiddenReasons.set(id, '사업 무관 제외'); });
-    for (let index = 0; index < source.numPages; index += 1) {
-      if (cancelled()) throw new ExportCancelled();
-      const page = await source.getPage(index + 1); const scale = (profile.pdfDpi ?? 150) / 72; const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height); const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('입출금내역 페이지를 준비하지 못했습니다.');
-      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-      const pageRows = rows.filter((row) => row.sourcePage === index && row.sourceY !== undefined).sort((left, right) => right.sourceY! - left.sourceY!);
-      const geometry = statementTableGeometry(ctx, scale, pageRows);
-      // Pages containing no visible transaction are omitted. This saves output
-      // size without reconstructing or changing the original table rows.
-      if (pageRows.length > 0 && pageRows.every((row) => hiddenReasons.has(row.id))) { page.cleanup(); onPage(); continue; }
-      groupStatementMaskBlocks(pageRows, hiddenReasons).forEach((block) => {
-        const first = pageRows[block.firstIndex]; const last = pageRows[block.lastIndex];
-        const above = pageRows[block.firstIndex - 1]?.sourceY;
-        const below = pageRows[block.lastIndex + 1]?.sourceY;
-        const upper = above === undefined ? first.sourceY! + 8 : (above + first.sourceY!) / 2 - 1;
-        const lower = below === undefined ? last.sourceY! - 8 : (last.sourceY! + below) / 2 + 1;
-        const fallbackTop = canvas.height - upper * scale; const fallbackBottom = canvas.height - lower * scale;
-        const firstCenter = canvas.height - first.sourceY! * scale; const lastCenter = canvas.height - last.sourceY! * scale;
-        const top = geometry ? gridLineBefore(geometry.horizontalLines, firstCenter) ?? fallbackTop : fallbackTop;
-        const bottom = geometry ? gridLineAfter(geometry.horizontalLines, lastCenter) ?? fallbackBottom : fallbackBottom;
-        const left = geometry?.left ?? 28 * scale; const right = geometry?.right ?? Math.min(canvas.width, 545 * scale);
-        cleanRowMask(ctx, left, top, right - left, Math.max(8 * scale, bottom - top), block.label);
-      });
-      const text = await page.getTextContent();
-      for (const item of text.items) {
-        if (!('str' in item) || !/\d{10,}/.test(item.str)) continue;
-        solidMask(ctx, Number(item.transform[4]) * scale - 4, canvas.height - Number(item.transform[5]) * scale - 18 * scale, Math.max(95 * scale, item.str.length * 10 * scale), 22 * scale);
-      }
-      result.push({ bytes: await jpeg(canvas, profile.quality), width: canvas.width, height: canvas.height }); canvas.width = 1; canvas.height = 1; page.cleanup(); onPage();
-    }
-  } finally { await task.destroy(); }
-  return result;
-}
-async function pdfPages(file: File) { const { PDFDocument } = await import('pdf-lib'); return (await PDFDocument.load(await file.arrayBuffer())).getPageCount(); }
-
-// Korean text is rasterized intentionally: PDF standard fonts omit Korean glyphs on Android.
-async function pageImage(summary: ReportSummary, quality: number): Promise<RasterImage> {
-  await document.fonts?.ready; const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754; const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('요약 페이지를 준비하지 못했습니다.'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1240, 1754); const x = 92; let y = 130; const font = 'Pretendard, "Noto Sans KR", sans-serif';
-  ctx.fillStyle = '#102338'; ctx.font = `700 54px ${font}`; ctx.fillText('지원금 사용 요약', x, y); ctx.fillStyle = '#6d7885'; ctx.font = `400 28px ${font}`; ctx.fillText(`${summary.periodLabel} 적용 기간`, x, y + 54); y += 142; ctx.fillStyle = '#eff8f7'; ctx.fillRect(x, y, 1056, 230); ctx.fillStyle = '#587078'; ctx.font = `600 28px ${font}`; ctx.fillText('총 지원금', x + 42, y + 58); ctx.fillStyle = '#112b37'; ctx.font = `700 58px ${font}`; ctx.fillText(won(summary.totalBudget), x + 42, y + 132); const remain = summary.totalBudget - summary.totalUsed; ctx.fillStyle = '#587078'; ctx.font = `500 28px ${font}`; ctx.fillText(`사용 ${won(summary.totalUsed)} · ${remain > 0 ? `잔액 ${won(remain)}` : '지원금 소진'}`, x + 42, y + 188); y += 300;
-  for (const bucket of summary.buckets) { ctx.fillStyle = '#102338'; ctx.font = `700 38px ${font}`; ctx.fillText(bucket.label, x, y); ctx.fillStyle = '#587078'; ctx.font = `500 25px ${font}`; ctx.fillText(`계획 ${won(bucket.budget)} · 사용 ${won(bucket.used)} · 잔액 ${won(bucket.budget - bucket.used)}`, x + 250, y); y += 42; ctx.fillStyle = '#d9e1e5'; ctx.fillRect(x, y, 1056, 2); y += 44; for (const item of bucket.items) { ctx.fillStyle = '#263b4b'; ctx.font = `600 25px ${font}`; ctx.fillText(item.label, x + 20, y); ctx.fillStyle = '#4e6070'; ctx.font = `500 24px ${font}`; ctx.fillText(`계획 ${won(item.budget)}`, x + 390, y); ctx.fillText(`사용 ${won(item.used)}`, x + 650, y); ctx.fillStyle = '#0e6f6b'; ctx.font = `700 24px ${font}`; ctx.fillText(`잔액 ${won(item.budget - item.used)}`, x + 855, y); y += 52; } y += 38; }
-  ctx.fillStyle = '#6d7885'; ctx.font = `400 22px ${font}`; ctx.fillText('이후 페이지에는 입출금내역, 거래증빙, 세부 항목별 영수증이 이어집니다.', x, 1640); return { bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height };
-}
-async function divider(label: string, quality: number): Promise<RasterImage> { await document.fonts?.ready; const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754; const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('구분 페이지를 준비하지 못했습니다.'); const font = 'Pretendard, "Noto Sans KR", sans-serif'; ctx.fillStyle = '#f4f8f8'; ctx.fillRect(0, 0, 1240, 1754); ctx.fillStyle = '#77d8ca'; ctx.fillRect(92, 760, 14, 180); ctx.fillStyle = '#102338'; ctx.font = `700 36px ${font}`; ctx.fillText('영수증 · 세부 항목', 142, 800); ctx.font = `700 62px ${font}`; ctx.fillText(label, 142, 900); return { bytes: await jpeg(canvas, quality), width: 1240, height: 1754 }; }
-
-async function statementPages(rows: StatementRow[], excludedRowIds: string[], quality: number, periodKey: string, period?: PolicyPeriod): Promise<RasterImage[]> {
-  await document.fonts?.ready;
-  const periodWithdrawals = rows.filter((row) => row.withdrawal > 0 && isDateInPolicyPeriod(new Date(`${row.date}T${row.time || '00:00:00'}+09:00`), periodKey, period));
-  const safeRows = redactStatementRows(periodWithdrawals, excludedRowIds);
-  const pageSize = 23;
-  const pages: RasterImage[] = [];
-  for (let offset = 0; offset < safeRows.length; offset += pageSize) {
-    const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754;
-    const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('입출금내역 표를 준비하지 못했습니다.');
-    const font = 'Pretendard, "Noto Sans KR", sans-serif'; const visible = safeRows.slice(offset, offset + pageSize);
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#102338'; ctx.font = `700 42px ${font}`; ctx.fillText('입출금내역', 64, 88);
-    ctx.fillStyle = '#6d7885'; ctx.font = `400 20px ${font}`; ctx.fillText(`제출용 정리 · ${offset + 1}~${offset + visible.length}행`, 64, 122);
-    const columns = [92, 320, 530, 1005]; const header = ['일자', '출금', '내용', '잔액'];
-    ctx.fillStyle = '#e9eef1'; ctx.fillRect(64, 154, 1112, 42); ctx.fillStyle = '#263b4b'; ctx.font = `600 18px ${font}`; header.forEach((value, index) => ctx.fillText(value, columns[index], 182));
-    visible.forEach((row, index) => {
-      const y = 196 + index * 57; ctx.fillStyle = row.redacted ? '#f0f0f0' : '#fff'; ctx.fillRect(64, y, 1112, 57); ctx.strokeStyle = '#d6dde2'; ctx.strokeRect(64, y, 1112, 57);
-      ctx.fillStyle = row.redacted ? '#707b84' : '#263b4b'; ctx.font = `400 16px ${font}`;
-      const dateLabel = row.date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1년 $2월 $3일');
-      const values = [dateLabel, formatStatementAmount(row.withdrawal), row.displayMerchant.length > 34 ? `${row.displayMerchant.slice(0, 33)}…` : row.displayMerchant, formatStatementAmount(row.balance ?? 0)];
-      values.forEach((value, column) => ctx.fillText(value, columns[column], y + 35));
-      if (row.redacted) { ctx.fillStyle = '#7a6a52'; ctx.font = `400 13px ${font}`; ctx.fillText(row.reason ?? '사업 무관 내역', 64, y + 52); }
-    });
-    ctx.fillStyle = '#6d7885'; ctx.font = `400 15px ${font}`; ctx.fillText('정책 기간 내 출금만 표시합니다. 사업 무관 행은 내용만 가립니다.', 64, 1698);
-    pages.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height });
-  }
-  return pages;
-}
 
 export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period }: { helpRequest?: number; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
   useEffect(() => { if (helpRequest > 0) setGuideOpen(true); }, [helpRequest]);
