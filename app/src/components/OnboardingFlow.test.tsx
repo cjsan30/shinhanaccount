@@ -14,7 +14,7 @@ vi.mock('./PolicyOnboarding', () => ({
 vi.mock('../native/smsBridge', () => ({ SmsBridge: { configure: mocks.configure, consumePendingApprovals: mocks.consumePendingApprovals } }));
 
 describe('onboarding flow', () => {
-  beforeEach(() => { localStorage.clear(); mocks.configure.mockResolvedValue(undefined); mocks.consumePendingApprovals.mockResolvedValue({ items: [] }); });
+  beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); mocks.configure.mockResolvedValue(undefined); mocks.consumePendingApprovals.mockResolvedValue({ items: [] }); });
 
   it('sends a non-applicant directly to the dashboard without configuring a card', () => {
     const onComplete = vi.fn(); render(<OnboardingFlow onComplete={onComplete} />);
