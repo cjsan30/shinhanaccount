@@ -3,10 +3,8 @@ import type { PolicyPeriod } from '../../../domain/budget';
 import { isInPeriodScope } from '../../../domain/periodSelectors';
 import { formatStatementAmount, redactStatementRows, type StatementRow } from '../../../domain/statementRedaction';
 import { drawRowMask, drawSolidMask } from './canvasMasks';
-import { statementOpenError } from './pdfErrors';
 import { isStatementPageFullyHidden, planAccountNumberMasks, planStatementRowMasks, statementHiddenReasons, statementPageRows, statementRowOccurredAt } from './statementMaskLayout';
 import { detectStatementTableGeometry, type StatementTableGeometry } from './statementTableGeometry';
-import { summaryRemainLabel } from './summaryText';
 import { ExportCancelled, type ExportProfile, type RasterImage, type ReportSummary } from './types';
 
 const won = (value: number) => `${Math.max(0, value).toLocaleString('ko-KR')}원`;
@@ -27,7 +25,10 @@ export async function renderPdf(file: File, dpi: number, quality: number, onPage
 }
 export async function renderMaskedStatementPdf(file: File, rows: StatementRow[], excludedRowIds: string[], profile: ExportProfile, periodKey: string, onPage: () => void, cancelled: () => boolean, password?: string, period?: PolicyPeriod): Promise<RasterImage[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), ...(password ? { password } : {}) }); const source = await task.promise.catch((error: unknown) => { throw statementOpenError(error); }); const result: RasterImage[] = [];
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), ...(password ? { password } : {}) }); const source = await task.promise.catch((error: unknown) => {
+    // The table was read with the right password but the field now holds another value; pdf.js would show its own English message.
+    throw (error as { name?: unknown } | null)?.name === 'PasswordException' ? new Error('입출금내역 PDF 비밀번호가 맞지 않습니다. 비밀번호를 다시 입력해 주세요.') : error;
+  }); const result: RasterImage[] = [];
   try {
     const hiddenReasons = statementHiddenReasons(rows, excludedRowIds, { periodKey, period });
     for (let index = 0; index < source.numPages; index += 1) {
@@ -57,7 +58,7 @@ export async function pdfPages(file: File) { const { PDFDocument } = await impor
 // Korean text is rasterized intentionally: PDF standard fonts omit Korean glyphs on Android.
 export async function pageImage(summary: ReportSummary, quality: number): Promise<RasterImage> {
   await document.fonts?.ready; const canvas = document.createElement('canvas'); canvas.width = 1240; canvas.height = 1754; const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('요약 페이지를 준비하지 못했습니다.'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1240, 1754); const x = 92; let y = 130; const font = 'Pretendard, "Noto Sans KR", sans-serif';
-  ctx.fillStyle = '#102338'; ctx.font = `700 54px ${font}`; ctx.fillText('지원금 사용 요약', x, y); ctx.fillStyle = '#6d7885'; ctx.font = `400 28px ${font}`; ctx.fillText(`${summary.periodLabel} 적용 기간`, x, y + 54); y += 142; ctx.fillStyle = '#eff8f7'; ctx.fillRect(x, y, 1056, 230); ctx.fillStyle = '#587078'; ctx.font = `600 28px ${font}`; ctx.fillText('총 지원금', x + 42, y + 58); ctx.fillStyle = '#112b37'; ctx.font = `700 58px ${font}`; ctx.fillText(won(summary.totalBudget), x + 42, y + 132); ctx.fillStyle = '#587078'; ctx.font = `500 28px ${font}`; ctx.fillText(`사용 ${won(summary.totalUsed)} · ${summaryRemainLabel(summary.totalBudget, summary.totalUsed)}`, x + 42, y + 188); y += 300;
+  ctx.fillStyle = '#102338'; ctx.font = `700 54px ${font}`; ctx.fillText('지원금 사용 요약', x, y); ctx.fillStyle = '#6d7885'; ctx.font = `400 28px ${font}`; ctx.fillText(`${summary.periodLabel} 적용 기간`, x, y + 54); y += 142; ctx.fillStyle = '#eff8f7'; ctx.fillRect(x, y, 1056, 230); ctx.fillStyle = '#587078'; ctx.font = `600 28px ${font}`; ctx.fillText('총 지원금', x + 42, y + 58); ctx.fillStyle = '#112b37'; ctx.font = `700 58px ${font}`; ctx.fillText(won(summary.totalBudget), x + 42, y + 132); ctx.fillStyle = '#587078'; ctx.font = `500 28px ${font}`; const remain = summary.totalBudget - summary.totalUsed; ctx.fillText(`사용 ${won(summary.totalUsed)} · ${summary.totalBudget <= 0 ? '확정된 계획 없음' : remain > 0 ? `잔액 ${won(remain)}` : '지원금 소진'}`, x + 42, y + 188); y += 300;
   for (const bucket of summary.buckets) { ctx.fillStyle = '#102338'; ctx.font = `700 38px ${font}`; ctx.fillText(bucket.label, x, y); ctx.fillStyle = '#587078'; ctx.font = `500 25px ${font}`; ctx.fillText(`계획 ${won(bucket.budget)} · 사용 ${won(bucket.used)} · 잔액 ${won(bucket.budget - bucket.used)}`, x + 250, y); y += 42; ctx.fillStyle = '#d9e1e5'; ctx.fillRect(x, y, 1056, 2); y += 44; for (const item of bucket.items) { ctx.fillStyle = '#263b4b'; ctx.font = `600 25px ${font}`; ctx.fillText(item.label, x + 20, y); ctx.fillStyle = '#4e6070'; ctx.font = `500 24px ${font}`; ctx.fillText(`계획 ${won(item.budget)}`, x + 390, y); ctx.fillText(`사용 ${won(item.used)}`, x + 650, y); ctx.fillStyle = '#0e6f6b'; ctx.font = `700 24px ${font}`; ctx.fillText(`잔액 ${won(item.budget - item.used)}`, x + 855, y); y += 52; } y += 38; }
   ctx.fillStyle = '#6d7885'; ctx.font = `400 22px ${font}`; ctx.fillText('이후 페이지에는 입출금내역, 거래증빙, 세부 항목별 영수증이 이어집니다.', x, 1640); return { bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height };
 }
