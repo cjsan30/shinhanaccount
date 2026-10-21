@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FirstRunPermission } from './FirstRunPermission';
 import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
@@ -29,7 +29,11 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
   const [policy, setPolicy] = useState<SupportPolicy | null>(progress?.policy ?? null);
   const [pendingApprovals, setPendingApprovals] = useState<NativeApproval[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  // A progress write scheduled by the last render can run after completion
+  // already cleared the key; once finished, nothing may save progress again.
+  const finished = useRef(false);
   useEffect(() => {
+    if (finished.current) return;
     if (step === 'applicant') { window.localStorage.removeItem(PROGRESS_KEY); return; }
     // Onboarding can resume the non-sensitive policy step, but a card suffix
     // must be entered again after an interruption instead of being kept in
@@ -38,6 +42,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
   }, [policy, step]);
 
   const skipToDashboard = (messageOverride?: string) => {
+    finished.current = true;
     window.localStorage.removeItem(PROGRESS_KEY);
     onComplete({
       applicantStatus: 'not-applicant',
@@ -76,6 +81,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     if (!policy) {
       return;
     }
+    finished.current = true;
     window.localStorage.removeItem(PROGRESS_KEY);
     onComplete({
       applicantStatus: 'applicant',
