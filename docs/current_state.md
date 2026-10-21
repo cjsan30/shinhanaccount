@@ -34,6 +34,7 @@
 - CI 첫 실행(PR #4): web job은 audit 단계에서만 실패했고(의도한 결과), android job은 1분 55초 만에 통과했다.
 - 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. **실기기 확인 후 병합한다.**
 - 참고: 개발 의존성까지 포함한 전체 `npm audit`에는 moderate 3건, high 5건이 남아 있다. 앱 번들에는 들어가지 않으며 CI 검사 대상도 아니다. 나중에 따로 정리할 후보다.
+- `OnboardingFlow.test.tsx` 간헐 실패 해결(PR #7 병합, `fix/onboarding-test-flake`): 원인은 timeout이 아니라 컴포넌트의 경쟁 조건이었다. 온보딩 완료 후 늦게 실행된 진행 상태 저장이 이미 지운 키를 다시 쓸 수 있었다. `OnboardingFlow.tsx`에 완료 플래그(`finished` ref)를 둬서 완료 뒤에는 저장하지 않게 했고, 테스트에는 `vi.clearAllMocks()`를 추가했다. 전체 테스트를 20회 연속 돌려 실패 0건이었다.
 
 ### 2026-10-20 분석 세션 (Cowork)
 
