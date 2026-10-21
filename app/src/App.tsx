@@ -10,13 +10,15 @@ import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
 import { previousPanel, type Panel } from './domain/navigation';
 import { calculateBudgetSummary, roundUsagePercent, getPolicyPeriodKey, getPolicyPeriodRange, normalizePolicyPeriod, type PolicyPeriod, type BudgetKey } from './domain/budget';
-import { applyCancellation, applyPayment, excludeUndecided, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRemainingPaymentAmount, setSupportAmount, markAsUndecided, removeLedgerEntry, updateLedgerEntry, importBankTransactions, importCardTransactions, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
-import { isInPeriodScope, selectClassifiedInPeriod, selectInPeriodScope, selectItemUsage, selectSpentByBucket, selectSpentByCategory, selectUndecidedByPeriod, sumSupportAmounts } from './domain/periodSelectors';
+import { applyCancellation, applyPayment, excludeUndecided, findSuspectedDuplicates, getHistoryEntries, getRemainingPaymentAmount, setSupportAmount, markAsUndecided, removeLedgerEntry, updateLedgerEntry, importBankTransactions, importCardTransactions, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
+import { isInPeriodScope, selectClassifiedInPeriod, selectItemUsage, selectSpentByBucket, selectSpentByCategory, selectUndecidedByPeriod, sumSupportAmounts } from './domain/periodSelectors';
 import { CancellationReview } from './features/payments/CancellationReview';
 import { PaymentCancel } from './features/payments/PaymentCancel';
 import { PaymentDelete } from './features/payments/PaymentDelete';
 import { PaymentDetail } from './features/payments/PaymentDetail';
 import { PaymentEdit } from './features/payments/PaymentEdit';
+import { useApprovalSync } from './features/payments/useApprovalSync';
+import { applyApprovalBatch } from './domain/approvalSync';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { readSelectedFile } from './native/fileRead';
 import { filterTransactionsForConfiguredCard } from './domain/cardImportSafety';
@@ -119,7 +121,6 @@ function App() {
   const [pdfHelpRequest, setPdfHelpRequest] = useState(0);
   const [merchantRules, setMerchantRules] = useState<MerchantRule[]>(initialState.merchantRules);
   const merchantRulesRef = useRef(merchantRules);
-  const processingApprovalsRef = useRef(false);
   const [ruleMerchant, setRuleMerchant] = useState('');
   const [ruleItemKey, setRuleItemKey] = useState<PolicyItem>('food');
   const [ruleMatchMode, setRuleMatchMode] = useState<MerchantMatchMode>('contains');
@@ -326,90 +327,52 @@ function App() {
     }).catch(() => undefined);
   }, [activePolicy.confirmed, budgetLimits.resident, budgetLimits.studySpace, resident.spent, study.spent, totalLimit, totalSpent, undecidedCount, widgetDetailRows]);
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
-  // A foreground native event handles new approvals immediately. The initial and
-  // visibility checks recover approvals queued while the app was not active.
-  useEffect(() => {
-    if (!activePolicy.confirmed) return;
-    let disposed = false;
-    const processPendingApprovals = async () => {
-      if (processingApprovalsRef.current) return;
-      processingApprovalsRef.current = true;
-      try {
-        const result = await SmsBridge.consumePendingApprovals();
-        const [reviewResult, cancellationResult] = await Promise.all([
-          SmsBridge.consumePendingApprovalReviews().catch(() => ({ items: [] as NativeApprovalReview[] })),
-          SmsBridge.consumePendingCancellations().catch(() => ({ items: [] as NativeCancellation[] })),
-        ]);
-        if (disposed) return;
-        if (!result.items.length && !reviewResult.items.length && !cancellationResult.items.length) return;
-        // Imports already omit dates outside the confirmed policy period. Apply
-        // the same rule to queued notifications so a delayed old approval or a
-        // payment during the configured policy gap never reappears in the ledger.
-        const approvals = result.items.filter((approval) => isInPeriodScope(approval, periodScope));
-        const reviews = selectInPeriodScope(reviewResult.items, periodScope);
-        const skippedReviewIds = reviewResult.items.filter((review) => !reviews.includes(review)).map((review) => review.id);
-        let nextLedger = ledgerRef.current;
-        const crossed = [] as Array<{ alerts: number[]; bucket: BudgetKey; category?: string }>;
-        for (const approval of approvals) {
-          const applied = applyPayment(nextLedger, approval, { resident: budgetLimits.resident, studySpace: budgetLimits.studySpace }, categoryLimits, (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRulesRef.current), policy.period);
-          nextLedger = applied.ledger;
-          if (applied.alerts.length) crossed.push({ alerts: applied.alerts, bucket: applied.entry.bucket ?? 'resident', category: applied.entry.category });
-        }
-        const autoCancelled: NativeCancellation[] = [];
-        const reviewCancellations: NativeCancellation[] = [];
-        for (const cancellation of cancellationResult.items) {
-          const match = getAutoCancellationMatch(nextLedger, cancellation);
-          if (match) {
-            nextLedger = applyCancellation(nextLedger, match.id, cancellation.amount, cancellation.occurredAt);
-            autoCancelled.push(cancellation);
-          } else reviewCancellations.push(cancellation);
-        }
-        await persistAppState(window.localStorage, {
-          ledger: nextLedger,
-          policyBook: policyBookRef.current,
-          merchantRules: merchantRulesRef.current,
-          reportEvidence: reportEvidenceRef.current,
-          verification: verificationRef.current,
-        });
-        ledgerRef.current = nextLedger;
-        setLedger(nextLedger);
-        await acknowledgeApprovals(result.items);
-        if (skippedReviewIds.length) await SmsBridge.acknowledgePendingApprovalReviews({ ids: skippedReviewIds });
-        if (autoCancelled.length) await SmsBridge.acknowledgePendingCancellations({ ids: autoCancelled.map((item) => item.id ?? '') });
-        if (reviews.length) {
-          const review = reviews[0];
-          setApprovalReview(review);
-          setManualPayment({ occurredAt: review.occurredAt ? manualDateTimeValue(new Date(review.occurredAt)) : manualDateTimeValue(), merchant: review.merchant ?? '', amount: review.amount?.toString() ?? '' });
-          setManualClassification('auto');
-          setPanel('payment');
-          show('결제 정보를 확인한 뒤 등록해 주세요. 확인 전에는 예산에 반영되지 않습니다.');
-        }
-        if (reviewCancellations.length) {
-          setCancellationReviews(reviewCancellations);
-          if (!reviewResult.items.length) setPanel('cancel-review');
-        }
-        crossed.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
-        if (approvals.length || autoCancelled.length) show(`${approvals.length}건의 승인 결제를 자동 반영했습니다.${autoCancelled.length ? ` 취소 ${autoCancelled.length}건도 반영했습니다.` : ''}`);
-      } catch { /* Android approval notification bridge is optional in browser preview. */ }
-      finally { processingApprovalsRef.current = false; }
-    };
-    const initialTimer = window.setTimeout(() => { void processPendingApprovals(); }, 500);
-    let listenerHandle: { remove: () => Promise<void> } | null = null;
-    void SmsBridge.addListener('approvalReceived', () => { void processPendingApprovals(); })
-      .then((handle) => {
-        if (disposed) void handle.remove();
-        else listenerHandle = handle;
-      })
-      .catch(() => undefined);
-    const processWhenVisible = () => { if (document.visibilityState === 'visible') void processPendingApprovals(); };
-    document.addEventListener('visibilitychange', processWhenVisible);
-    return () => {
-      disposed = true;
-      window.clearTimeout(initialTimer);
-      if (listenerHandle) void listenerHandle.remove();
-      document.removeEventListener('visibilitychange', processWhenVisible);
-    };
-  }, [policy.period, activePolicy.confirmed, periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits, policyBook]);
+  const processPendingApprovals = useCallback(async (isDisposed: () => boolean) => {
+    const result = await SmsBridge.consumePendingApprovals();
+    const [reviewResult, cancellationResult] = await Promise.all([
+      SmsBridge.consumePendingApprovalReviews().catch(() => ({ items: [] as NativeApprovalReview[] })),
+      SmsBridge.consumePendingCancellations().catch(() => ({ items: [] as NativeCancellation[] })),
+    ]);
+    if (isDisposed()) return;
+    if (!result.items.length && !reviewResult.items.length && !cancellationResult.items.length) return;
+    const batch = applyApprovalBatch({
+      ledger: ledgerRef.current,
+      approvals: result.items,
+      reviews: reviewResult.items,
+      cancellations: cancellationResult.items,
+      scope: periodScope,
+      limits: { resident: budgetLimits.resident, studySpace: budgetLimits.studySpace },
+      categoryLimits,
+      classify: (merchant, amount) => classifyWithMerchantRules(merchant, amount, merchantRulesRef.current),
+    });
+    await persistAppState(window.localStorage, {
+      ledger: batch.ledger,
+      policyBook: policyBookRef.current,
+      merchantRules: merchantRulesRef.current,
+      reportEvidence: reportEvidenceRef.current,
+      verification: verificationRef.current,
+    });
+    ledgerRef.current = batch.ledger;
+    setLedger(batch.ledger);
+    await acknowledgeApprovals(result.items);
+    if (batch.skippedReviewIds.length) await SmsBridge.acknowledgePendingApprovalReviews({ ids: batch.skippedReviewIds });
+    if (batch.autoCancelled.length) await SmsBridge.acknowledgePendingCancellations({ ids: batch.autoCancelled.map((item) => item.id ?? '') });
+    if (batch.reviews.length) {
+      const review = batch.reviews[0];
+      setApprovalReview(review);
+      setManualPayment({ occurredAt: review.occurredAt ? manualDateTimeValue(new Date(review.occurredAt)) : manualDateTimeValue(), merchant: review.merchant ?? '', amount: review.amount?.toString() ?? '' });
+      setManualClassification('auto');
+      setPanel('payment');
+      show('결제 정보를 확인한 뒤 등록해 주세요. 확인 전에는 예산에 반영되지 않습니다.');
+    }
+    if (batch.reviewCancellations.length) {
+      setCancellationReviews(batch.reviewCancellations);
+      if (!reviewResult.items.length) setPanel('cancel-review');
+    }
+    batch.crossedAlerts.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
+    if (batch.appliedApprovals.length || batch.autoCancelled.length) show(`${batch.appliedApprovals.length}건의 승인 결제를 자동 반영했습니다.${batch.autoCancelled.length ? ` 취소 ${batch.autoCancelled.length}건도 반영했습니다.` : ''}`);
+  }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
+  useApprovalSync(activePolicy.confirmed, processPendingApprovals);
   const completeOnboarding = async (
     payload: {
       applicantStatus: 'applicant' | 'not-applicant';
