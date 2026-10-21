@@ -9,7 +9,7 @@ import { Toast } from './components/Toast';
 import { AlertThresholdSettings } from './components/AlertThresholdSettings';
 import { clampAlertThreshold } from './domain/alertThresholds';
 import { previousPanel, type Panel } from './domain/navigation';
-import { calculateBudgetSummary, roundUsagePercent, getPolicyPeriodKey, getPolicyPeriodRange, normalizePolicyPeriod, type PolicyPeriod, type BudgetKey } from './domain/budget';
+import { calculateBudgetSummary, roundUsagePercent, getPolicyPeriodKey, getPolicyPeriodRange, type BudgetKey } from './domain/budget';
 import { applyCancellation, applyPayment, excludeUndecided, findSuspectedDuplicates, getHistoryEntries, getRemainingPaymentAmount, setSupportAmount, markAsUndecided, removeLedgerEntry, updateLedgerEntry, importBankTransactions, importCardTransactions, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { isInPeriodScope, selectClassifiedInPeriod, selectItemUsage, selectSpentByBucket, selectSpentByCategory, selectUndecidedByPeriod, sumSupportAmounts } from './domain/periodSelectors';
 import { CancellationReview } from './features/payments/CancellationReview';
@@ -18,6 +18,7 @@ import { PaymentDelete } from './features/payments/PaymentDelete';
 import { PaymentDetail } from './features/payments/PaymentDetail';
 import { PaymentEdit } from './features/payments/PaymentEdit';
 import { useApprovalSync } from './features/payments/useApprovalSync';
+import { usePolicyDraft } from './features/policy/usePolicyDraft';
 import { applyApprovalBatch } from './domain/approvalSync';
 import { parseShinhanCardExport, type ImportedCardTransaction } from './domain/shinhanImport';
 import { readSelectedFile } from './native/fileRead';
@@ -33,17 +34,14 @@ import {
   getPolicyItems,
   getNextPolicyPeriodKey,
   getPolicyLimit,
-  parsePolicyText,
   POLICY_ITEMS,
   validatePolicyAgainstProfile,
   type PolicyItem,
-  type SupportProfileId,
   type SupportPolicy,
 } from './domain/policy';
 import { type PaymentClassification } from './domain/sms';
 import { classifyWithMerchantRules, createMerchantRule, getMerchantAlias, type MerchantMatchMode, type MerchantRule } from './domain/merchantRules';
 import { SmsBridge, type NativeApproval, type NativeApprovalReview, type NativeCancellation } from './native/smsBridge';
-import { PolicyOcr } from './native/policyOcr';
 import { NotificationBridge } from './native/notificationBridge';
 import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
@@ -164,9 +162,6 @@ function App() {
   const periodScope = useMemo(() => ({ periodKey: activePolicy.periodKey, period: policy.period }), [activePolicy.periodKey, policy.period]);
   const itemUsage = useMemo(() => selectItemUsage(ledger, allPolicyItems, periodScope), [ledger, allPolicyItems, periodScope]);
   const spentByBucket = useMemo(() => selectSpentByBucket(ledger, periodScope), [ledger, periodScope]);
-  const [policyText, setPolicyText] = useState('');
-  const [policyDraft, setPolicyDraft] = useState<SupportPolicy | null>(null);
-  const [policyDraftFocusToken, setPolicyDraftFocusToken] = useState(0);
   const [cancellationTarget, setCancellationTarget] = useState<LedgerEntry | null>(null);
   const [cancellationAmount, setCancellationAmount] = useState('');
   const [editTarget, setEditTarget] = useState<LedgerEntry | null>(null);
@@ -177,6 +172,7 @@ function App() {
   const leaveImport = () => { setInitialImportRoute(false); setPanel(null); };
   const close = () => { if (panel === 'import') { leaveImport(); return; } setPanel(null); };
   const show = (message: string) => { setToast(message); window.setTimeout(() => setToast(null), 3200); };
+  const policyDraft = usePolicyDraft(policy, show);
   const refreshNotificationStates = useCallback(async () => {
     if (!nativePlatform) return;
     const [payment, budget] = await Promise.all([
@@ -551,30 +547,6 @@ function App() {
     if (scopes.includes('ledger')) { setUndoImportLedger(null); setImportResult(null); setLatestImportSummary(''); }
     show('선택한 데이터를 초기화했습니다.');
   };
-  const reviewPolicyText = () => {
-    if (!policyText.trim()) { show('계획표 내용을 붙여넣어 주세요.'); return; }
-    setPolicyDraft({ ...parsePolicyText(policyText), period: normalizePolicyPeriod(policy.period), profileId: policy.profileId, alertTargets: getAlertTargets(policy) });
-    setPolicyDraftFocusToken((current) => current + 1);
-  };
-  const readPolicyScreenshot = async () => {
-    try {
-      const result = await PolicyOcr.pickAndRecognize();
-      if (!result.text.trim()) { show('사진에서 읽을 수 있는 텍스트가 없습니다.'); return; }
-      setPolicyText(result.text);
-      setPolicyDraft({ ...parsePolicyText(result.text), period: normalizePolicyPeriod(policy.period), profileId: policy.profileId, alertTargets: getAlertTargets(policy) });
-      setPolicyDraftFocusToken((current) => current + 1);
-      show('스크린샷의 텍스트를 읽었습니다. 검토 후 확정해 주세요.');
-    } catch {
-      show('사진 선택 또는 텍스트 인식을 취소했습니다.');
-    }
-  };
-  const updatePolicyDraft = (item: PolicyItem, value: string) => {
-    const amount = Number(value.replaceAll(',', ''));
-    if (!Number.isFinite(amount) || amount < 0) return;
-    setPolicyDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current);
-  };
-  const updatePolicyProfile = (profileId: SupportProfileId) => setPolicyDraft((current) => current ? { ...current, profileId } : current);
-  const updatePolicyAlertTarget = (item: PolicyItem) => setPolicyDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
   const applyBudgetAdjustment = async (transfer: BudgetTransfer) => {
     const previousBook = policyBookRef.current;
     const current = getEffectivePolicy(previousBook, new Date());
@@ -592,14 +564,15 @@ function App() {
       throw new Error('예산 조정을 기기에 저장하지 못했습니다. 다시 시도해 주세요.');
     }
     setPolicyBook(nextBook);
-    setPolicyDraft(null);
+    policyDraft.clearDraft();
   };
   const confirmPolicy = async (applyTo: 'current' | 'next') => {
-    if (!policyDraft) return;
-    const issues = validatePolicyAgainstProfile(policyDraft);
+    const draft = policyDraft.draft;
+    if (!draft) return;
+    const issues = validatePolicyAgainstProfile(draft);
     if (issues.length) { show(issues[0]); return; }
-    const periodKey = applyTo === 'current' ? getPolicyPeriodKey(now, policyDraft.period) : getNextPolicyPeriodKey(now, policyDraft.period);
-    const nextPolicyBook = confirmPolicyForPeriod(policyBook, policyDraft, periodKey);
+    const periodKey = applyTo === 'current' ? getPolicyPeriodKey(now, draft.period) : getNextPolicyPeriodKey(now, draft.period);
+    const nextPolicyBook = confirmPolicyForPeriod(policyBook, draft, periodKey);
     // Notification handling can finish while this screen is open. Point every
     // concurrent persistence path to the confirmed book before awaiting I/O.
     policyBookRef.current = nextPolicyBook;
@@ -610,15 +583,13 @@ function App() {
       return;
     }
     setPolicyBook(nextPolicyBook);
-    setPolicyDraft(null);
-    setPolicyText('');
+    policyDraft.clear();
     show(applyTo === 'current'
       ? '이번 적용 기간 정책을 반영했습니다. 대시보드와 위젯 사용률을 다시 계산합니다.'
       : `${periodKey} 기간 정책을 예약했습니다.`);
   };
   const openSettings = () => {
-    setPolicyText('');
-    setPolicyDraft(null);
+    policyDraft.clear();
     setPanel('settings');
   };
   const openPayment = () => {
@@ -732,7 +703,7 @@ function App() {
   else if (panel === 'information') content = <AppInformationContent />;
   else if (panel === 'operations') content = <section className="operations-settings"><p>결제 수신과 예산 경고를 관리합니다. 버튼 문구로 현재 사용 상태를 확인할 수 있습니다.</p><label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); const clearsConfiguredCard = card.length === 4 && value.length !== 4; setCard(value); if (value.length === 4) void SmsBridge.configure({ cardLast4: value }); else if (clearsConfiguredCard) void SmsBridge.clearConfiguration(); }} /></label>{card.length !== 4 && <small className="card-configuration-hint">카드 4자리를 모두 입력하면 결제 알림 수신이 다시 시작됩니다.</small>}<button className="mask-toggle" type="button" onClick={() => setShowCard((current) => !current)}>{showCard ? '숨기기' : '보기'}</button><button className={`sheet-action status-action ${paymentAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void togglePaymentNotifications()}>{paymentAlertsEnabled ? '결제 알림 수신 해제' : '결제 알림 수신 설정'}</button><button className={`sheet-action status-action ${budgetAlertsEnabled ? 'is-enabled' : ''}`} onClick={() => void toggleBudgetNotifications()}>{budgetAlertsEnabled ? '예산 경고 알림 해제' : '예산 경고 알림 설정'}</button><AlertThresholdSettings first={first} second={second} onChange={updateAlertThreshold} /><SmsDiagnostics notify={show} /></section>;
   else if (panel === 'verification' && VerificationPanel) content = <VerificationPanel storageReady={storageReady} storageError={Boolean(storageError)} policyBook={policyBook} ledger={ledger} evidence={reportEvidence} value={verification} onChange={setVerification} notify={show} />;
-  else if (panel === 'data') content = <DataManagementPanel now={now} budgetAdjustment={activePolicy.confirmed && policyBook.mode !== 'not-applicant' ? <BudgetAdjustment policy={policy} spent={categorySpent} onApply={applyBudgetAdjustment} /> : undefined} importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyText} policyDraft={policyDraft} policyDraftFocusToken={policyDraftFocusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} period={policy.period} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={setPolicyText} onReviewPolicy={reviewPolicyText} onReadPolicyScreenshot={() => void readPolicyScreenshot()} onEditPolicy={() => { setPolicyDraft(structuredClone(policy)); setPolicyDraftFocusToken((value) => value + 1); }} onUpdatePolicyPeriod={(period: PolicyPeriod) => setPolicyDraft((draft) => draft ? { ...draft, period } : draft)} onUpdatePolicyDraft={updatePolicyDraft} onUpdatePolicyProfile={updatePolicyProfile} onUpdatePolicyAlertTarget={updatePolicyAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
+  else if (panel === 'data') content = <DataManagementPanel now={now} budgetAdjustment={activePolicy.confirmed && policyBook.mode !== 'not-applicant' ? <BudgetAdjustment policy={policy} spent={categorySpent} onApply={applyBudgetAdjustment} /> : undefined} importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyDraft.text} policyDraft={policyDraft.draft} policyDraftFocusToken={policyDraft.focusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} period={policy.period} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={policyDraft.setText} onReviewPolicy={policyDraft.reviewText} onReadPolicyScreenshot={() => void policyDraft.readScreenshot()} onEditPolicy={policyDraft.editSaved} onUpdatePolicyPeriod={policyDraft.updatePeriod} onUpdatePolicyDraft={policyDraft.updateAmount} onUpdatePolicyProfile={policyDraft.updateProfile} onUpdatePolicyAlertTarget={policyDraft.toggleAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => { resetRuleEditor(); setPanel('rules'); }} onRestore={restoreBackup} notify={show} />;
   else content = <><p>{approvalReview ? '알림에서 일부 결제 정보만 확인했습니다. 빈 항목을 보완하고 등록해 주세요. 확인 전에는 예산과 경고에 반영되지 않습니다.' : '직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.'}</p><label>결제일시<input aria-label="결제일시" type="datetime-local" value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">미정으로 저장</option>{allPolicyItems.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, Number(manualPayment.amount), merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>{approvalReview ? '확인 후 등록' : '지출 등록'}</button></>;
   const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '미정 지출' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'cancel-review' ? '취소 결제 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'information' ? APP_INFORMATION_TITLE : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'accessibility' ? '접근성 · 개인화' : panel === 'verification' ? '실기기 검증' : panel === 'evidence' ? 'PDF 생성' : panel === 'import' ? '거래내역 등록' : approvalReview ? '결제 정보 확인' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;
