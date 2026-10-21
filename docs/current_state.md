@@ -4,7 +4,7 @@
 결정 이력은 [00-latest-decisions.md](00-latest-decisions.md), 구조 개선의 배경은 [08-refactoring-plan.md](08-refactoring-plan.md)에 둔다.
 
 - 마지막 갱신: 2026-10-21
-- 기준 커밋: `dev` `cb97186` (PR #2, #3 병합 후)
+- 기준 커밋: `dev` `ac72fd2` (PR #6 병합 후)
 
 ## 현재 상태 요약
 
@@ -13,10 +13,11 @@
 | 배포 | Play 비공개 테스트. 서명 AAB 1.3.7 / code 11 생성 완료(`56ae425` 기준, Git 제외 `audit/release-1.3.7/`). 업로드 전 |
 | 웹 테스트 | 445개 중 444개 통과, 1개 건너뜀(내부 전용) |
 | 린트·타입체크 | 통과 |
-| `npm audit --omit=dev` | `dev`에는 `@capacitor/android` 8.4.2의 critical 1건이 남아 있다. 8.4.3 패치 PR #6을 병합하면 0건(실기기 확인 대기) |
+| `npm audit --omit=dev` | 0건 (Capacitor 8.4.3, PR #6) |
 | 브랜치 | `dev`를 `main`(`0133986`)으로 fast-forward해 이력을 맞췄다(2026-10-21) |
 | Android 단위 테스트 | 27개 통과(예제 테스트 1개 삭제 후) |
-| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI는 Draft PR #4 — 작업 2 병합 후 Ready |
+| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI는 PR #4(web, android job) |
+| 브랜치 보호 | `main`·`dev`: PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지. CI 필수 체크는 PR #4 병합 후 추가 |
 
 ## 진행 상황
 
@@ -30,9 +31,12 @@
 - 작업 1 완료(PR #3 병합): 해당 테스트의 시간을 2026-10-12로 고정했다. 임시 setup 파일로 "오늘"을 6개 날짜(정책 기간, 공백, 월말, 연도 경계 등)로 바꿔 가며 웹 테스트 전체를 돌렸고, 시간에 의존하는 테스트는 이 1건뿐이었다. `TZ=UTC`에서도 웹·Android 테스트가 모두 통과한다.
 - pre-push 훅을 켰다(`git config core.hooksPath .githooks`, 로컬 설정이라 새로 clone하면 다시 해야 함).
 - CI 작성(`chore/ci`, Draft PR #4): web job(npm ci, lint, test:run, build, test:security, `npm audit --omit=dev`)과 android job(sync 후 `:app:testDebugUnitTest`). 시크릿은 쓰지 않는다. Linux 러너에서 돌도록 `gradlew`에 실행 권한을 줬다.
-- CI 관련 사용자 결정: audit 실패는 CI 실패로 처리한다. 그래서 작업 2를 먼저 병합한 뒤 PR #4를 Ready로 바꾼다. Android job은 항상 실행한다. 브랜치 보호(필수 체크 지정)는 나중에 정한다.
+- CI 관련 사용자 결정: audit 실패는 CI 실패로 처리한다. 그래서 작업 2를 먼저 병합한 뒤 PR #4를 Ready로 바꾼다. Android job은 항상 실행한다. 브랜치 보호는 사용자 승인 후 적용했다(아래 참고).
 - CI 첫 실행(PR #4): web job은 audit 단계에서만 실패했고(의도한 결과), android job은 1분 55초 만에 통과했다.
-- 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. **실기기 확인 후 병합한다.**
+- 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. 
+- 작업 2 실기기 확인 통과, PR #6 병합(`ac72fd2`): 별도 검증 앱(`.verify`)에 덮어 설치했고 실제 사용 앱은 바뀌지 않았다. 항목 1, 7, 8은 adb로, 2~6은 사용자가 확인했다. 결과는 `10-device-verification-checklist.md`에 있다.
+- 검증 앱 빌드 방법(저장소 파일은 바꾸지 않음): 임시 Gradle init script로 debug 변형에 `applicationIdSuffix '.verify'`와 앱 이름 "신청해 계산기 검증" 리소스를 덧씌워 `assembleDebug`를 실행하고, `adb install -r --user 0`으로 설치한다. 설치 전에 패키지명과 Android Debug 서명이 기존 검증 앱과 같은지 확인한다. 평소의 debug 빌드는 실제 앱과 같은 패키지 ID를 쓰므로 그대로 설치하면 안 된다.
+- 브랜치 보호(2026-10-21): `main`·`dev`에 PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지를 걸었다. CI 필수 체크는 CI가 `dev`에 들어간 뒤 추가한다(그 전에 걸면 CI가 없는 PR은 병합할 수 없다).
 - 참고: 개발 의존성까지 포함한 전체 `npm audit`에는 moderate 3건, high 5건이 남아 있다. 앱 번들에는 들어가지 않으며 CI 검사 대상도 아니다. 나중에 따로 정리할 후보다.
 - `OnboardingFlow.test.tsx` 간헐 실패 해결(PR #7 병합, `fix/onboarding-test-flake`): 원인은 timeout이 아니라 컴포넌트의 경쟁 조건이었다. 온보딩 완료 후 늦게 실행된 진행 상태 저장이 이미 지운 키를 다시 쓸 수 있었다. `OnboardingFlow.tsx`에 완료 플래그(`finished` ref)를 둬서 완료 뒤에는 저장하지 않게 했고, 테스트에는 `vi.clearAllMocks()`를 추가했다. 전체 테스트를 20회 연속 돌려 실패 0건이었다.
 
@@ -104,7 +108,7 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 
 **추가 확인**: `new Date()`에 의존하는 다른 App 테스트가 있는지 찾아 같은 방식으로 시간을 고정한다.
 
-### 2. `fix/capacitor-cve-2026-103922` — Capacitor 보안 패치 (PR #6, 실기기 확인 대기)
+### ~~2. `fix/capacitor-cve-2026-103922` — Capacitor 보안 패치~~ (2026-10-21 완료, PR #6)
 
 **문제**
 
@@ -192,7 +196,7 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 
 ## 작은 정리 후보
 
-필요할 때 해당 작업에 묶어서 처리한다.
+필요할 때 해당 작업에 묶어서 처리한다. 사용자가 여유 있을 때 진행하도록 승인했다(2026-10-21).
 
 - `app/index.html`: `lang="en"`을 `ko`로, `<title>app</title>`을 `신청해 계산기`로 바꾼다.
 - `app/package.json`의 `version` `0.0.0`을 Android versionName과 맞춘다.
@@ -200,6 +204,4 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 
 ## 사용자 결정이 필요한 항목
 
-- CI가 안정적으로 돈 뒤 `dev`/`main`에 브랜치 보호(필수 체크)를 걸지
-
-- 작업 2 이후 1.3.8 / code 12 릴리스를 언제 만들지
+- 1.3.8 / code 12 릴리스: 사용자가 앱 개선 작업 후 직접 버전을 올리고 빌드한다(2026-10-21 결정). 1.3.7(code 11) AAB에는 Capacitor 8.4.2가 들어 있으므로 업로드하지 않는다.
