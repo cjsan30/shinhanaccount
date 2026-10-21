@@ -1,12 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { smsBridge, notificationBridge } = vi.hoisted(() => ({
+const { smsBridge, notificationBridge, widgetBridge } = vi.hoisted(() => ({
+  widgetBridge: { sync: vi.fn() },
   smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
 vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
+vi.mock('./native/widgetBridge', () => ({ WidgetBridge: widgetBridge }));
 import App from './App';
 import { previousPanel } from './domain/navigation';
 import { getPolicyPeriodKey } from './domain/budget';
@@ -47,6 +49,7 @@ beforeEach(() => {
   smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
   notificationBridge.getPermissionStatus.mockResolvedValue({ granted: true });
   notificationBridge.openNotificationSettings.mockResolvedValue(undefined);
+  widgetBridge.sync.mockResolvedValue(undefined);
 });
 
 describe('app entry flows', () => {
@@ -380,6 +383,33 @@ describe('app entry flows', () => {
     await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['policy-gap-approval'] }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     expect(screen.getByText('저장된 결제 내역이 없습니다.')).toBeInTheDocument();
+  });
+
+  it('counts widget item usage and quick categories only within the item bucket', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
+      plans: { housing: 0, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+      customItems: [{ id: 'gym', label: '운동비', bucket: 'studySpace', amount: 100000 }],
+    }] }));
+    const classified = (id: string, bucket: string, category: string, amount: number) => ({ id, cardLast4: '0000', occurredAt: '2026-09-18T10:00:00+09:00', amount, merchant: id, status: 'classified', bucket, category });
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [
+      // Classified before the custom item moved from 정주비 to 학습공간비.
+      classified('gym-before-move', 'resident', 'custom:gym', 30000),
+      classified('food-wrong-bucket-1', 'studySpace', 'food', 5000),
+      classified('food-wrong-bucket-2', 'studySpace', 'food', 5000),
+      classified('cafe-1', 'studySpace', 'generalCafe', 4000),
+    ] }));
+
+    await renderApp();
+
+    await waitFor(() => expect(widgetBridge.sync).toHaveBeenCalled());
+    const rows = widgetBridge.sync.mock.lastCall![0].detailRows as Array<{ label: string; spent: number }>;
+    expect(rows.find((row) => row.label === '운동비')?.spent).toBe(0);
+    expect(rows.find((row) => row.label === '식비')?.spent).toBe(0);
+    expect(rows.find((row) => row.label === '카페')?.spent).toBe(4000);
+    expect(smsBridge.syncBudgetState.mock.lastCall![0].quickCategories[0].category).toBe('generalCafe');
   });
 
   it('returns a classified payment to the undecided panel from its detail screen', async () => {

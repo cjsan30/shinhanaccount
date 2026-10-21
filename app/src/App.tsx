@@ -295,12 +295,12 @@ function App() {
   const categorySpent = useMemo(() => Object.fromEntries(allPolicyItems.flatMap((item) => item.ledgerCategories.map((category) => [category, getCategorySpent(ledger, item.bucket, category, activePolicy.periodKey, policy.period)]))), [policy.period, ledger, activePolicy.periodKey, allPolicyItems]);
   const quickCategories = useMemo(() => POLICY_ITEMS
     .filter((item) => policy.plans[item.key] > 0)
-    .map((item) => ({ category: item.ledgerCategories[0], label: item.label, count: ledger.entries.filter((entry) => entry.status === 'classified' && entry.category === item.ledgerCategories[0] && isEntryInPolicyPeriod(entry, activePolicy.periodKey, policy.period)).length }))
+    .map((item) => ({ category: item.ledgerCategories[0], label: item.label, count: ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === item.bucket && entry.category === item.ledgerCategories[0] && isEntryInPolicyPeriod(entry, activePolicy.periodKey, policy.period)).length }))
     .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'ko'))
     .slice(0, 2)
     .map(({ category, label }) => ({ category, label })), [activePolicy.periodKey, ledger.entries, policy]);
   const widgetDetailRows = useMemo(() => allPolicyItems.map((item) => {
-    const entries = ledger.entries.filter((entry) => entry.status === 'classified' && isEntryInPolicyPeriod(entry, activePolicy.periodKey, policy.period) && item.ledgerCategories.includes(String(entry.category)));
+    const entries = ledger.entries.filter((entry) => entry.status === 'classified' && entry.bucket === item.bucket && isEntryInPolicyPeriod(entry, activePolicy.periodKey, policy.period) && item.ledgerCategories.includes(String(entry.category)));
     return { label: item.label, limit: getCategoryLimit(policy, item.ledgerCategories[0]), spent: entries.reduce((sum, entry) => sum + getSupportAmount(entry), 0), count: entries.length };
   }).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [ledger.entries, activePolicy.periodKey, allPolicyItems, policy]);
   useEffect(() => {
