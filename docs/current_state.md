@@ -16,8 +16,8 @@
 | `npm audit --omit=dev` | 0건 (Capacitor 8.4.3, PR #6) |
 | 브랜치 | `dev`를 `main`(`0133986`)으로 fast-forward해 이력을 맞췄다(2026-10-21) |
 | Android 단위 테스트 | 27개 통과(예제 테스트 1개 삭제 후) |
-| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI는 PR #4(web, android job) |
-| 브랜치 보호 | `main`·`dev`: PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지. CI 필수 체크는 PR #4 병합 후 추가 |
+| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI(`.github/workflows/ci.yml`, web·android job)를 PR #4로 `dev`에 병합 |
+| 브랜치 보호 | `main`·`dev`: PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지. CI 필수 체크: `Web (lint · test · build · security)`, `Android unit tests` |
 
 ## 진행 상황
 
@@ -36,7 +36,7 @@
 - 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. 
 - 작업 2 실기기 확인 통과, PR #6 병합(`ac72fd2`): 별도 검증 앱(`.verify`)에 덮어 설치했고 실제 사용 앱은 바뀌지 않았다. 항목 1, 7, 8은 adb로, 2~6은 사용자가 확인했다. 결과는 `10-device-verification-checklist.md`에 있다.
 - 검증 앱 빌드 방법(저장소 파일은 바꾸지 않음): 임시 Gradle init script로 debug 변형에 `applicationIdSuffix '.verify'`와 앱 이름 "신청해 계산기 검증" 리소스를 덧씌워 `assembleDebug`를 실행하고, `adb install -r --user 0`으로 설치한다. 설치 전에 패키지명과 Android Debug 서명이 기존 검증 앱과 같은지 확인한다. 평소의 debug 빌드는 실제 앱과 같은 패키지 ID를 쓰므로 그대로 설치하면 안 된다.
-- 브랜치 보호(2026-10-21): `main`·`dev`에 PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지를 걸었다. CI 필수 체크는 CI가 `dev`에 들어간 뒤 추가한다(그 전에 걸면 CI가 없는 PR은 병합할 수 없다).
+- 브랜치 보호(2026-10-21): `main`·`dev`에 PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지를 걸었다. PR #4(CI) 병합(`2a73e7c`) 뒤 web·android 두 체크를 필수로 추가했다. strict는 꺼 두었다(PR 브랜치가 최신 `dev`를 꼭 포함하지 않아도 된다). CI가 첫 실행에서 web 1분 1초, android 1분 55초로 통과했다. CI 파일이 생기기 전에 만든 브랜치는 `dev`를 한 번 병합해야 체크가 돈다.
 - 참고: 개발 의존성까지 포함한 전체 `npm audit`에는 moderate 3건, high 5건이 남아 있다. 앱 번들에는 들어가지 않으며 CI 검사 대상도 아니다. 나중에 따로 정리할 후보다.
 - `OnboardingFlow.test.tsx` 간헐 실패 해결(PR #7 병합, `fix/onboarding-test-flake`): 원인은 timeout이 아니라 컴포넌트의 경쟁 조건이었다. 온보딩 완료 후 늦게 실행된 진행 상태 저장이 이미 지운 키를 다시 쓸 수 있었다. `OnboardingFlow.tsx`에 완료 플래그(`finished` ref)를 둬서 완료 뒤에는 저장하지 않게 했고, 테스트에는 `vi.clearAllMocks()`를 추가했다. 전체 테스트를 20회 연속 돌려 실패 0건이었다.
 
