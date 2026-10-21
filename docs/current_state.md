@@ -13,7 +13,7 @@
 | 배포 | Play 비공개 테스트. 서명 AAB 1.3.7 / code 11 생성 완료(`56ae425` 기준, Git 제외 `audit/release-1.3.7/`). 업로드 전 |
 | 웹 테스트 | 445개 중 444개 통과, 1개 건너뜀(내부 전용) |
 | 린트·타입체크 | 통과 |
-| `npm audit --omit=dev` | `@capacitor/android` 8.4.2에 critical 취약점 1건 — 아래 작업 2 |
+| `npm audit --omit=dev` | `dev`에는 `@capacitor/android` 8.4.2의 critical 1건이 남아 있다. 8.4.3 패치 PR #6을 병합하면 0건(실기기 확인 대기) |
 | 브랜치 | `dev`를 `main`(`0133986`)으로 fast-forward해 이력을 맞췄다(2026-10-21) |
 | Android 단위 테스트 | 27개 통과(예제 테스트 1개 삭제 후) |
 | 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI는 Draft PR #4 — 작업 2 병합 후 Ready |
@@ -31,6 +31,9 @@
 - pre-push 훅을 켰다(`git config core.hooksPath .githooks`, 로컬 설정이라 새로 clone하면 다시 해야 함).
 - CI 작성(`chore/ci`, Draft PR #4): web job(npm ci, lint, test:run, build, test:security, `npm audit --omit=dev`)과 android job(sync 후 `:app:testDebugUnitTest`). 시크릿은 쓰지 않는다. Linux 러너에서 돌도록 `gradlew`에 실행 권한을 줬다.
 - CI 관련 사용자 결정: audit 실패는 CI 실패로 처리한다. 그래서 작업 2를 먼저 병합한 뒤 PR #4를 Ready로 바꾼다. Android job은 항상 실행한다. 브랜치 보호(필수 체크 지정)는 나중에 정한다.
+- CI 첫 실행(PR #4): web job은 audit 단계에서만 실패했고(의도한 결과), android job은 1분 55초 만에 통과했다.
+- 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. **실기기 확인 후 병합한다.**
+- 참고: 개발 의존성까지 포함한 전체 `npm audit`에는 moderate 3건, high 5건이 남아 있다. 앱 번들에는 들어가지 않으며 CI 검사 대상도 아니다. 나중에 따로 정리할 후보다.
 
 ### 2026-10-20 분석 세션 (Cowork)
 
@@ -100,7 +103,7 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 
 **추가 확인**: `new Date()`에 의존하는 다른 App 테스트가 있는지 찾아 같은 방식으로 시간을 고정한다.
 
-### 2. `fix/capacitor-cve-2026-103922` — Capacitor 보안 패치
+### 2. `fix/capacitor-cve-2026-103922` — Capacitor 보안 패치 (PR #6, 실기기 확인 대기)
 
 **문제**
 
