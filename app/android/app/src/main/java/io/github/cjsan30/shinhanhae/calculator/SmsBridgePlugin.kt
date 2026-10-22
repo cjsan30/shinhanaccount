@@ -55,19 +55,12 @@ internal fun isApprovalInPolicyPeriod(occurredAt: String, periodKey: String, per
 
 private data class NativeClassification(val category: String, val label: String)
 
-private fun classifyForBudget(merchant: String, amount: Int): NativeClassification? {
-    val normalized = merchant.lowercase().replace(Regex("""[\s().,]"""), "")
-    if (normalized.contains("아이햅슨")) return null
-    if (normalized.contains("놀유니버스")) return NativeClassification("lodging", "주거비")
-    if (normalized == "sr") return NativeClassification("transport", "교통비")
-    if (normalized.contains("삼성웰스토리")) {
-        return if (amount == 8000) NativeClassification("food", "식비") else NativeClassification("generalCafe", "카페")
-    }
-    if (normalized.contains("서브웨이") || normalized.contains("써브웨이") || normalized.contains("맘스터치") || normalized.contains("맥도날드")) {
-        return NativeClassification("generalCafe", "카페")
-    }
-    return null
-}
+// The built-in personal merchant patterns were removed. Until the user's own rules are
+// synced to native code (task 7), an approval received while the app is closed is not
+// classified here and therefore raises no immediate budget alert; the web app classifies
+// it with the user's rules when it next opens.
+@Suppress("UNUSED_PARAMETER")
+private fun classifyForBudget(merchant: String, amount: Int): NativeClassification? = null
 
 internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
     val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
@@ -496,7 +489,7 @@ class SmsBridgePlugin : Plugin() {
             card,
             call.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
             call.getInt("amount") ?: 30000,
-            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+            call.getString("merchant") ?: "테스트 가맹점"
         )
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
         queue.put(approval.toJson())
@@ -515,7 +508,7 @@ class SmsBridgePlugin : Plugin() {
             card,
             call.getString("occurredAt") ?: java.time.OffsetDateTime.now().withSecond(0).withNano(0).toString(),
             call.getInt("amount") ?: 5000,
-            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정",
+            call.getString("merchant") ?: "테스트 가맹점",
             notificationPostedAt = postedAt,
             source = "notification",
         )
@@ -571,7 +564,7 @@ class SmsBridgePlugin : Plugin() {
             card,
             approvalObject.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
             approvalObject.getInteger("amount") ?: 30000,
-            approvalObject.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+            approvalObject.getString("merchant") ?: "테스트 가맹점"
         )
         val delayMs = call.getInt("delayMs")?.coerceIn(1_000, 60_000) ?: 10_000
         Handler(Looper.getMainLooper()).postDelayed({

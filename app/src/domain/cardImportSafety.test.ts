@@ -3,7 +3,7 @@ import { filterTransactionsForConfiguredCard } from './cardImportSafety';
 import type { ImportedCardTransaction } from './shinhanImport';
 
 const transaction = (cardMasked: string, approvalNumber: string, cardIdentity?: string): ImportedCardTransaction => ({
-  occurredAt: '2026-08-05T12:00:00+09:00', cardMasked, cardIdentity, merchant: 'Cafe', approvalNumber, amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' },
+  occurredAt: '2026-08-05T12:00:00+09:00', cardMasked, cardIdentity, merchant: 'Cafe', approvalNumber, amount: 5000, paymentStatus: '승인', cancellationStatus: '',
 });
 
 describe('card import safety', () => {
