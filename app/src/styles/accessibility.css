@@ -1,0 +1,52 @@
+body[data-text-scale='small'] .app,
+body[data-text-scale='small'] .first-run,
+body[data-text-scale='small'] .import-page {
+  zoom: .92;
+}
+
+body[data-text-scale='large'] .app,
+body[data-text-scale='large'] .first-run,
+body[data-text-scale='large'] .import-page {
+  zoom: 1.12;
+}
+
+body[data-text-scale='large'] .reclassify-card {
+  grid-template-columns: 24px minmax(0, 1fr);
+}
+
+body[data-text-scale='large'] .reclassify-card__meta {
+  grid-column: 2;
+  justify-items: start;
+  text-align: left;
+}
+
+body[data-text-scale='large'] .undecided-quick-action__buttons {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Keep ordinary cards at their original compact three-column layout. */
+
+body:not([data-text-scale='large']) .undecided-list .reclassify-card {
+  grid-template-columns: 24px minmax(0, 1fr) minmax(108px, 140px);
+}
+
+body:not([data-text-scale='large']) .undecided-list .reclassify-card__meta {
+  grid-column: auto;
+  justify-items: end;
+  text-align: right;
+}
+
+/* A saved portion uses the existing amount slot, never an additional card row. */
+
+body:not([data-text-scale='large']) .undecided-list .reclassify-card {
+  min-height: 64px;
+}
+
+body[data-text-scale='large'] .payment-row__main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-text-scale='large'] .payment-row__amount {
+  justify-items: start;
+  text-align: left;
+}
