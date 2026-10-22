@@ -555,3 +555,15 @@ describe('app entry flows', () => {
     expect(smsBridge.acknowledgePendingCancellations).not.toHaveBeenCalled();
   });
 });
+
+describe('previous policy period evidence cleanup', () => {
+  it('removes PDF files attached before the new policy period started and keeps newer ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    const record = (id: string, attachedAt: string) => ({ id, section: 'receipt', order: 0, stored: { id, fileName: `${id}.jpg`, mimeType: 'image/jpeg', size: 1, attachedAt } });
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-10', confirmedAt: '2026-10-15T09:00:00+09:00', sourceText: 'plan', plans: { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
+    localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify([record('previous', '2026-10-12T09:00:00+09:00'), record('current', '2026-10-16T09:00:00+09:00')]));
+    await renderApp();
+    expect(await screen.findByText('새 기간이 시작되어 이전 기간 PDF 자료 1개를 정리했습니다.')).toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('shinhanhae-report-evidence-v1')!).map((item: { id: string }) => item.id)).toEqual(['current']));
+  });
+});
