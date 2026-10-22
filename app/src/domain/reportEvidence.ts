@@ -1,3 +1,4 @@
+import { getPolicyPeriodRange, type PolicyPeriod } from './budget';
 import type { StoredEvidence } from '../native/evidenceVault';
 import type { StatementRow } from './statementRedaction';
 
@@ -25,3 +26,17 @@ export type ReportEvidenceRecord = {
   statementSourceRequiresPassword?: boolean;
   order: number;
 };
+
+/**
+ * Files attached before the current policy period began were gathered for an earlier report.
+ * Records whose attachment time cannot be read are kept, so nothing is removed by mistake.
+ */
+export function splitEvidenceByPolicyPeriod(records: ReportEvidenceRecord[], periodKey: string, period?: PolicyPeriod) {
+  const { start } = getPolicyPeriodRange(periodKey, period);
+  const startsAt = start ? new Date(`${start}T00:00:00+09:00`).getTime() : Number.NaN;
+  const isPrevious = (record: ReportEvidenceRecord) => {
+    const attachedAt = new Date(record.stored.attachedAt).getTime();
+    return Number.isFinite(startsAt) && Number.isFinite(attachedAt) && attachedAt < startsAt;
+  };
+  return { current: records.filter((record) => !isPrevious(record)), previous: records.filter(isPrevious) };
+}
