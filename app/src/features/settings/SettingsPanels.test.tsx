@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { OperationsSettings } from './OperationsSettings';
-import { SettingsHub } from './SettingsHub';
+import { OperationsSettings, SettingsHub } from './SettingsPanels';
 
 vi.mock('../../components/SmsDiagnostics', () => ({ SmsDiagnostics: () => null }));
 
