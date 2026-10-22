@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AlertThresholdSettings } from './AlertThresholdSettings';
-import { clampAlertThreshold } from '../domain/alertThresholds';
+import { clampAlertThreshold } from '../domain/budget';
 
 describe('alert threshold settings', () => {
   it('keeps custom sliders behind the compact preset control', () => {
