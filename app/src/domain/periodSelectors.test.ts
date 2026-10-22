@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Ledger, LedgerEntry } from './ledger';
 import { getPolicyItems } from './policy';
 import {
+  filterImportToPolicyPeriod,
   getCurrentPeriodRange,
   isInPeriodScope,
   selectClassifiedInPeriod,
@@ -98,5 +99,19 @@ describe('period selectors', () => {
     const split = selectUndecidedByPeriod(data, scope);
     expect(split.current.map((item) => item.id)).toEqual(['current-new', 'current-old']);
     expect(split.previous.map((item) => item.id)).toEqual(['gap', 'previous']);
+  });
+});
+
+describe('import period filtering', () => {
+  it('does not retain entries outside the active 15th-to-10th policy period', () => {
+    const result = filterImportToPolicyPeriod([
+      { occurredAt: '2026-09-15T12:00:00+09:00' },
+      { occurredAt: '2026-10-10T23:59:00+09:00' },
+      { occurredAt: '2026-09-13T12:00:00+09:00' },
+      { occurredAt: '2026-09-14T12:00:00+09:00' },
+      { occurredAt: '2026-10-11T00:00:00+09:00' },
+    ], '2026-09');
+    expect(result.included).toHaveLength(2);
+    expect(result.excludedOutsidePeriod).toBe(3);
   });
 });

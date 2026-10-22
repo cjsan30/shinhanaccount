@@ -2,12 +2,24 @@ import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import type { PolicyPeriod } from '../../../domain/budget';
 import { isInPeriodScope } from '../../../domain/periodSelectors';
 import { formatStatementAmount, redactStatementRows, type StatementRow } from '../../../domain/statementRedaction';
-import { drawRowMask, drawSolidMask } from './canvasMasks';
-import { isStatementPageFullyHidden, planAccountNumberMasks, planStatementRowMasks, statementHiddenReasons, statementPageRows, statementRowOccurredAt } from './statementMaskLayout';
-import { detectStatementTableGeometry, type StatementTableGeometry } from './statementTableGeometry';
+import { clampMaskRect, isStatementPageFullyHidden, planAccountNumberMasks, planStatementRowMasks, statementHiddenReasons, statementPageRows, statementRowOccurredAt, type LabeledMaskRect, type MaskRect, type StatementTableGeometry } from '../../../domain/statementMasking';
+import { detectStatementTableGeometry } from './statementTableGeometry';
 import { ExportCancelled, type ExportProfile, type RasterImage, type ReportSummary } from './types';
 
 const won = (value: number) => `${Math.max(0, value).toLocaleString('ko-KR')}원`;
+
+function drawSolidMask(ctx: CanvasRenderingContext2D, rect: MaskRect) {
+  const { x, y, width, height } = clampMaskRect(rect, ctx.canvas);
+  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(x, y, width, height); ctx.restore();
+}
+
+function drawRowMask(ctx: CanvasRenderingContext2D, rect: LabeledMaskRect) {
+  const { x, y, width, height } = clampMaskRect(rect, ctx.canvas);
+  // The source layout is a fixed Shinhan table. Draw from its outer grid line
+  // to outer grid line, rather than only covering the parsed text cells.
+  ctx.save(); ctx.fillStyle = '#e5e5e5'; ctx.fillRect(x, y, width, height); ctx.strokeStyle = '#26343f'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, width - 1, height - 1);
+  ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, height * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(rect.label, x + width / 2, y + height / 2); ctx.restore();
+}
 
 export async function jpeg(canvas: HTMLCanvasElement, quality: number) {
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));

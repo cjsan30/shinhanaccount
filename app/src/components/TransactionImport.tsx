@@ -1,7 +1,7 @@
 import type { PolicyPeriod } from '../domain/budget';
 import { useState } from 'react';
 import { filterTransactionsForConfiguredCard } from '../domain/cardImportSafety';
-import { filterImportToPolicyPeriod } from '../domain/importPolicy';
+import { filterImportToPolicyPeriod } from '../domain/periodSelectors';
 import { parseShinhanBankPdfExport, getMaskedAccountLast4, type ImportedBankTransaction } from '../domain/shinhanBankImport';
 import { parseShinhanCardExport, type ImportedCardTransaction } from '../domain/shinhanImport';
 import { openShinhanSolPay } from '../native/externalApp';

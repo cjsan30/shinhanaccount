@@ -1,6 +1,7 @@
+import type { StatementTableGeometry } from '../../../domain/statementMasking';
+
 /** RGBA pixels in row-major order, as returned by `CanvasRenderingContext2D.getImageData`. */
 export type PixelImage = { width: number; height: number; data: Uint8ClampedArray };
-export type StatementTableGeometry = { left: number; right: number; horizontalLines: number[] };
 
 const middle = (values: number[]) => { const sorted = [...values].sort((left, right) => left - right); return sorted[Math.floor(sorted.length / 2)]; };
 

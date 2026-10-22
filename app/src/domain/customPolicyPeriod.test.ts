@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getPolicyPeriodKey, getPolicyPeriodRange, isDateInPolicyPeriod, normalizePolicyPeriod } from './budget';
-import { filterImportToPolicyPeriod } from './importPolicy';
+import { filterImportToPolicyPeriod } from './periodSelectors';
 import { createEmptyLedger, getCategorySpent, importCardTransactions } from './ledger';
 import { createPolicyBook, getEffectivePolicy, loadPolicyBook, parsePolicyText, savePolicyBook } from './policy';
 import { getReportReadiness } from './reportReadiness';

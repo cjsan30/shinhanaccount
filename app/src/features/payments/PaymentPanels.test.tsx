@@ -1,11 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Ledger, LedgerEntry } from '../../domain/ledger';
-import { CancellationReview } from './CancellationReview';
-import { PaymentCancel } from './PaymentCancel';
-import { PaymentDelete } from './PaymentDelete';
-import { PaymentDetail } from './PaymentDetail';
-import { PaymentEdit } from './PaymentEdit';
+import { CancellationReview, PaymentCancel, PaymentDelete, PaymentDetail, PaymentEdit } from './PaymentPanels';
 
 const entry = (patch: Partial<LedgerEntry> = {}): LedgerEntry => ({ id: 'p1', cardLast4: '0000', occurredAt: '2026-09-20T12:00:00+09:00', amount: 12000, merchant: '테스트 식당', status: 'classified', bucket: 'resident', category: 'food', ...patch });
 const detailProps = (patch: Partial<Parameters<typeof PaymentDetail>[0]> = {}) => ({
