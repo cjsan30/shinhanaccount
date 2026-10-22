@@ -222,6 +222,21 @@ describe('EvidenceExport', () => {
     expect(screen.queryByText(/결제 날짜를 읽었습니다/)).not.toBeInTheDocument();
   });
 
+  it('shows same-day payments as soon as a receipt date is picked, without leaving the field', async () => {
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'picked', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    fireEvent.change(await screen.findByLabelText('영수증 1 날짜'), { target: { value: '2026-09-20' } });
+    expect(await screen.findByText('선택한 날짜의 결제 중 하나를 눌러 연결해 주세요.')).toBeInTheDocument();
+  });
+
+  it('opens the calendar when any part of the date field is tapped', async () => {
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'tap', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    const date = await screen.findByLabelText('영수증 1 날짜') as HTMLInputElement;
+    const showPicker = vi.fn();
+    Object.defineProperty(date, 'showPicker', { value: showPicker });
+    fireEvent.click(date);
+    expect(showPicker).toHaveBeenCalledOnce();
+  });
+
   it.runIf(import.meta.env.MODE === 'internal')('cancels the internal benchmark before saving a result and keeps receipt files', async () => {
     vi.stubEnv('MODE', 'internal');
     let resolveBitmap!: (value: unknown) => void;
