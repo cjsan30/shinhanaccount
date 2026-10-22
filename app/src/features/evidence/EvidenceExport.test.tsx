@@ -1,24 +1,24 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadEvidence } from '../native/evidenceVault';
-import { ReceiptOcr } from '../native/receiptOcr';
+import { loadEvidence } from '../../native/evidenceVault';
+import { ReceiptOcr } from '../../native/receiptOcr';
 import { EvidenceExport } from './EvidenceExport';
-import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
-import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
-import { adjustBudget } from '../domain/budgetAdjustment';
-import { emptyPolicy, getCategoryLimit, getPolicyItems, getPolicyLimit } from '../domain/policy';
+import { evidenceRasterCacheKey } from './pipeline/assemble';
+import { parseShinhanBankPdfExport } from '../../domain/shinhanBankImport';
+import { adjustBudget } from '../../domain/budgetAdjustment';
+import { emptyPolicy, getCategoryLimit, getPolicyItems, getPolicyLimit } from '../../domain/policy';
 
-vi.mock('../native/evidenceVault', () => ({
+vi.mock('../../native/evidenceVault', () => ({
   loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
   removeStoredEvidence: vi.fn(),
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
 const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn() }));
-vi.mock('../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
-vi.mock('../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
+vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
+vi.mock('../../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
-vi.mock('../domain/shinhanBankImport', () => ({
+vi.mock('../../domain/shinhanBankImport', () => ({
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal', classification: { status: 'undecided' } }]),
 }));
 
@@ -183,6 +183,21 @@ describe('EvidenceExport', () => {
     const pdf = await exportMocks.create.mock.results[0].value;
     expect(pdf.addPage).toHaveBeenCalledTimes(3);
     expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
+  });
+
+  it('cancels an export in progress without saving and keeps the selected files', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
+    let release: () => void = () => undefined;
+    exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(() => new Promise<Uint8Array>((resolve) => { release = () => resolve(new Uint8Array([1, 2, 3])); })) });
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await screen.findByText('receipt.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(await screen.findByRole('button', { name: '생성 취소' }));
+    await waitFor(() => expect(exportMocks.create).toHaveBeenCalled());
+    release();
+    expect(await screen.findByText('PDF 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.')).toBeInTheDocument();
+    expect(exportMocks.saveFile).not.toHaveBeenCalled();
+    expect(screen.getByText('receipt.jpg')).toBeInTheDocument();
   });
 
   it('uses OCR date only to show same-day payments and requires one user click to link', async () => {
