@@ -65,7 +65,7 @@ import './App.css';
 import './AppFixes.css';
 import './AppOverrides.css';
 
-const EvidenceExport = lazy(() => import('./components/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
+const EvidenceExport = lazy(() => import('./features/evidence/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
 const DataManagementPanel = lazy(() => import('./components/DataManagementPanel').then((module) => ({ default: module.DataManagementPanel })));
 const TransactionImport = lazy(() => import('./components/TransactionImport').then((module) => ({ default: module.TransactionImport })));
 const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then((module) => ({ default: module.OnboardingFlow })));

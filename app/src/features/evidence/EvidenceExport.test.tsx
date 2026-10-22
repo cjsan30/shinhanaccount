@@ -1,24 +1,24 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadEvidence } from '../native/evidenceVault';
-import { ReceiptOcr } from '../native/receiptOcr';
+import { loadEvidence } from '../../native/evidenceVault';
+import { ReceiptOcr } from '../../native/receiptOcr';
 import { EvidenceExport } from './EvidenceExport';
-import { evidenceRasterCacheKey } from '../features/evidence/rasterCacheKey';
-import { parseShinhanBankPdfExport } from '../domain/shinhanBankImport';
-import { adjustBudget } from '../domain/budgetAdjustment';
-import { emptyPolicy, getCategoryLimit, getPolicyItems, getPolicyLimit } from '../domain/policy';
+import { evidenceRasterCacheKey } from './pipeline/assemble';
+import { parseShinhanBankPdfExport } from '../../domain/shinhanBankImport';
+import { adjustBudget } from '../../domain/budgetAdjustment';
+import { emptyPolicy, getCategoryLimit, getPolicyItems, getPolicyLimit } from '../../domain/policy';
 
-vi.mock('../native/evidenceVault', () => ({
+vi.mock('../../native/evidenceVault', () => ({
   loadEvidence: vi.fn(async (stored: { fileName: string; mimeType: string }) => new File(['receipt'], stored.fileName, { type: stored.mimeType })),
   removeStoredEvidence: vi.fn(),
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
 const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn() }));
-vi.mock('../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
-vi.mock('../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
+vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
+vi.mock('../../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
-vi.mock('../domain/shinhanBankImport', () => ({
+vi.mock('../../domain/shinhanBankImport', () => ({
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal', classification: { status: 'undecided' } }]),
 }));
 
