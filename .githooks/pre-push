@@ -8,3 +8,15 @@ cd "$repo_root/app"
 npm.cmd run lint </dev/null
 npm.cmd run test:run </dev/null
 npm.cmd run build </dev/null
+
+# 앱에 포함되는 의존성의 취약점을 확인한다. 네트워크 오류로 결과를 받지 못하면
+# 경고만 남긴다(CI가 같은 검사를 다시 하므로 오프라인 푸시까지 막지 않는다).
+if audit_output="$(npm.cmd audit --omit=dev 2>&1 </dev/null)"; then
+  echo "npm audit --omit=dev: 취약점 없음"
+elif printf '%s' "$audit_output" | grep -q "vulnerabilit"; then
+  printf '%s\n' "$audit_output"
+  echo "앱 의존성에 취약점이 있어 푸시를 중단합니다." >&2
+  exit 1
+else
+  echo "경고: npm audit 결과를 받지 못했습니다(네트워크 확인). CI에서 다시 검사합니다." >&2
+fi
