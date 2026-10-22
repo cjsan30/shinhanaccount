@@ -3,150 +3,67 @@
 이 파일은 진행 상황 인계의 유일한 기준이다. 세션을 끝낼 때마다 갱신한다.
 결정 이력은 [00-latest-decisions.md](00-latest-decisions.md), 구조 개선의 배경은 [08-refactoring-plan.md](08-refactoring-plan.md)에 둔다.
 
-- 마지막 갱신: 2026-10-21
-- 기준 커밋: `dev` `ac72fd2` (PR #6 병합 후)
+- 마지막 갱신: 2026-10-22
+- 기준 커밋: `dev` `48e4239` (PR #20 병합 후)
 
 ## 현재 상태 요약
 
 | 항목 | 상태 |
 | --- | --- |
-| 배포 | Play 비공개 테스트. 서명 AAB 1.3.7 / code 11 생성 완료(`56ae425` 기준, Git 제외 `audit/release-1.3.7/`). 업로드 전 |
-| 웹 테스트 | 445개 중 444개 통과, 1개 건너뜀(내부 전용) |
-| 린트·타입체크 | 통과 |
-| `npm audit --omit=dev` | 0건 (Capacitor 8.4.3, PR #6) |
-| 브랜치 | `dev`를 `main`(`0133986`)으로 fast-forward해 이력을 맞췄다(2026-10-21) |
-| Android 단위 테스트 | 27개 통과(예제 테스트 1개 삭제 후) |
-| 검증 자동화 | 로컬 pre-push 훅 활성화(lint → test:run → build). GitHub Actions CI(`.github/workflows/ci.yml`, web·android job)를 PR #4로 `dev`에 병합 |
-| 브랜치 보호 | `main`·`dev`: PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지. CI 필수 체크: `Web (lint · test · build · security)`, `Android unit tests` |
+| 배포 | Play 비공개 테스트. 1.3.7 / code 11은 Capacitor 8.4.2(취약)가 들어 있어 내보내면 안 된다. 다음 릴리스는 1.3.8 / code 12로 사용자가 직접 빌드한다. 아래 "Play 프로덕션 거부 대응" 참고 |
+| 웹 테스트 | 516개 통과, 1개 건너뜀(내부 전용) |
+| Android 단위 테스트 | 27개 통과 |
+| `npm audit --omit=dev` | 0건 (Capacitor 8.4.3) |
+| 검증 자동화 | pre-push 훅(lint → test:run → build → `npm audit --omit=dev`), GitHub Actions CI(web·android) |
+| 브랜치 보호 | `main`·`dev`: PR로만 병합, 관리자 포함, 강제 푸시·삭제 금지, CI 두 체크 통과 필수(strict 꺼짐) |
+| 버전 | `package.json` 1.3.7 = Android `versionName` 1.3.7. 릴리스 때 둘을 함께 올린다 |
+
+## 작업 원칙 (2026-10-21~22 사용자 합의)
+
+- 각 작업은 `dev`에서 브랜치를 만들고 PR로 병합한다. 안정 브랜치 이름은 `main`이다.
+- **병합할 때마다 병합된 `dev`를 Android 에뮬레이터(Pixel_8)에서 실행해 확인한 뒤 다음 작업으로 넘어간다.** 충돌이 없어도 한다.
+- 휴대폰에는 실제 사용 앱(`io.github.cjsan30.shinhanhae.calculator`)이 있다. 휴대폰 확인은 검증 앱(`.verify`)에만 설치한다(아래 "검증 앱 빌드" 참고).
+- 한 곳에서만 쓰는 작은 함수는 따로 파일을 만들지 않고 쓰는 파일에 둔다. 계산·판정 로직은 `domain/`에 두고 같은 이름의 테스트를 둔다.
+- 보고할 때 바뀐 파일·버전을 구체적으로 적는다.
 
 ## 진행 상황
 
-### 2026-10-21 사전 준비·작업 0 (Claude Code)
+### 2026-10-21 Play 프로덕션 거부 대응 (Claude Code)
 
-- 사전 준비 완료: 로컬 `dev`를 만들고 `origin/main`을 병합(fast-forward)해 `origin/dev`에 푸시했다.
-- 작업 0 완료: `chore/cleanup-and-handoff`에서 미사용 파일 9개를 `git rm`하고 `CLAUDE.md`, 이 문서, `docs/README.md`를 커밋했다. 사용자 승인에 따라 `05-github-guardrails.md`에 `refactor/*`, `chore/*` 접두사를 추가했다.
-- 검증: lint·build·test:security 통과, Android 단위 테스트 27개 통과. `test:run`은 작업 1의 알려진 실패 1건(`App.test.tsx` 시간 의존 테스트)만 남아 있다.
-- 로컬 환경 메모: 새 체크아웃에서는 Gradle 전에 `npm run android:sync`가 필요하다(`capacitor-cordova-android-plugins` 생성). 셸 기본 Java가 8이라 `JAVA_HOME`을 `C:\Program Files\Android\Android Studio\jbr`로, `ANDROID_HOME`을 `%LOCALAPPDATA%\Android\Sdk`로 지정해야 한다. sync 후 생기는 gradle 파일의 줄바꿈 변경은 커밋하지 않는다.
-- 로컬 `master` 브랜치를 `main`(`origin/main` 추적)으로 이름을 바꿨다. 안정 브랜치 이름은 `main`이다.
-- 작업 1 완료(PR #3 병합): 해당 테스트의 시간을 2026-10-12로 고정했다. 임시 setup 파일로 "오늘"을 6개 날짜(정책 기간, 공백, 월말, 연도 경계 등)로 바꿔 가며 웹 테스트 전체를 돌렸고, 시간에 의존하는 테스트는 이 1건뿐이었다. `TZ=UTC`에서도 웹·Android 테스트가 모두 통과한다.
-- pre-push 훅을 켰다(`git config core.hooksPath .githooks`, 로컬 설정이라 새로 clone하면 다시 해야 함).
-- CI 작성(`chore/ci`, Draft PR #4): web job(npm ci, lint, test:run, build, test:security, `npm audit --omit=dev`)과 android job(sync 후 `:app:testDebugUnitTest`). 시크릿은 쓰지 않는다. Linux 러너에서 돌도록 `gradlew`에 실행 권한을 줬다.
-- CI 관련 사용자 결정: audit 실패는 CI 실패로 처리한다. 그래서 작업 2를 먼저 병합한 뒤 PR #4를 Ready로 바꾼다. Android job은 항상 실행한다. 브랜치 보호는 사용자 승인 후 적용했다(아래 참고).
-- CI 첫 실행(PR #4): web job은 audit 단계에서만 실패했고(의도한 결과), android job은 1분 55초 만에 통과했다.
-- 작업 2 진행(`fix/capacitor-cve-2026-103922`, PR #6): `@capacitor/android`, `core`, `cli`를 8.4.2에서 8.4.3으로 올렸다. 수정 버전이 있는 가장 가까운 패치 버전이라 회귀 범위가 가장 작다. lockfile에서는 이 3개 패키지만 바뀌었다. `npm audit --omit=dev`는 0건이 됐다. 웹·Android 테스트가 통과했고 디버그 APK 빌드도 성공했다. `10-device-verification-checklist.md`에 회귀 확인 항목 8개를 추가했다. 
-- 작업 2 실기기 확인 통과, PR #6 병합(`ac72fd2`): 별도 검증 앱(`.verify`)에 덮어 설치했고 실제 사용 앱은 바뀌지 않았다. 항목 1, 7, 8은 adb로, 2~6은 사용자가 확인했다. 결과는 `10-device-verification-checklist.md`에 있다.
-- 검증 앱 빌드 방법(저장소 파일은 바꾸지 않음): 임시 Gradle init script로 debug 변형에 `applicationIdSuffix '.verify'`와 앱 이름 "신청해 계산기 검증" 리소스를 덧씌워 `assembleDebug`를 실행하고, `adb install -r --user 0`으로 설치한다. 설치 전에 패키지명과 Android Debug 서명이 기존 검증 앱과 같은지 확인한다. 평소의 debug 빌드는 실제 앱과 같은 패키지 ID를 쓰므로 그대로 설치하면 안 된다.
-- 브랜치 보호(2026-10-21): `main`·`dev`에 PR로만 병합(승인 0명), 관리자 포함 적용, 강제 푸시·삭제 금지를 걸었다. PR #4(CI) 병합(`2a73e7c`) 뒤 web·android 두 체크를 필수로 추가했다. strict는 꺼 두었다(PR 브랜치가 최신 `dev`를 꼭 포함하지 않아도 된다). CI가 첫 실행에서 web 1분 1초, android 1분 55초로 통과했다. CI 파일이 생기기 전에 만든 브랜치는 `dev`를 한 번 병합해야 체크가 돈다.
-- 참고: 개발 의존성까지 포함한 전체 `npm audit`에는 moderate 3건, high 5건이 남아 있다. 앱 번들에는 들어가지 않으며 CI 검사 대상도 아니다. 나중에 따로 정리할 후보다.
-- `OnboardingFlow.test.tsx` 간헐 실패 해결(PR #7 병합, `fix/onboarding-test-flake`): 원인은 timeout이 아니라 컴포넌트의 경쟁 조건이었다. 온보딩 완료 후 늦게 실행된 진행 상태 저장이 이미 지운 키를 다시 쓸 수 있었다. `OnboardingFlow.tsx`에 완료 플래그(`finished` ref)를 둬서 완료 뒤에는 저장하지 않게 했고, 테스트에는 `vi.clearAllMocks()`를 추가했다. 전체 테스트를 20회 연속 돌려 실패 0건이었다.
+- 제출 9~13이 모두 거부됐다. 9는 정부 정보 출처 누락, 10~13은 "금융 기능 선언 양식이 정확하지 않음"이다. '금융 기능 없음'·'기타 + 설명'·카테고리 생산성 모두 같은 사유로 거부됐다.
+- '기타' 선택 시 문서 단계는 "추가 문서를 제출하지 않아도 됨"으로 표시된다. 서류 누락은 원인이 아니다.
+- 사용자 승인에 따라 금융 기능 선언을 '지원 서비스 → 기타' + 설명으로 저장했다. 게시 개요에서 검토로 보내지는 않았다.
+- 사용자 승인에 따라 이의신청을 제출했다(사유: 이 문제를 해결했다고 생각합니다, 한/영 본문 740자). 응답까지 최대 7일이 걸리고 결과는 계정 이메일로 온다.
+- 10/21 21:04 이의신청 답변(사건 8-9148000041442)은 "변경사항을 검토로 보내고 기다리라"는 일반 안내였다. 선언 적정성 판단은 없었다.
+- 게시 개요의 미전송 변경 5개: 프로덕션 출시(버전 코드 11, 대한민국), 앱 이름, 전체 설명, 카테고리 금융→생산성, 금융 기능 선언. 즉 1.3.7 / code 11은 이미 프로덕션 출시에 올라가 있다.
+- 보충 설명 PDF: Git 제외 `audit/play-review/financial-features-statement.pdf` (문서 단계 업로드 칸이 없어 사용하지 않음)
 
-### 2026-10-20 분석 세션 (Cowork)
 
-- 저장소 전체 구조, 테스트, 린트, 의존성 보안을 점검했다.
-- 아래 작업 0~8을 도출했고 사용자가 방향을 승인했다. 아직 코드 변경은 하지 않았다.
-- `CLAUDE.md`와 이 문서를 작업 트리에 새로 추가했다(아직 커밋 전, 작업 0에서 커밋).
+### 2026-10-21~22 작업 0~5와 정리 (Claude Code)
+
+| PR | 내용 |
+| --- | --- |
+| #2 | 작업 0: 미사용 템플릿 파일 9개 삭제, `CLAUDE.md`·이 문서 추가, 05 가드레일에 `refactor/*`·`chore/*` 접두사 추가 |
+| #3 | 작업 1: 시스템 시간에 따라 실패하던 App 테스트 시간 고정. 6개 날짜와 UTC로 전체 테스트를 돌려 다른 시간 의존 테스트 없음 확인 |
+| #4 | CI(web·android job). 이후 브랜치 보호에 두 체크를 필수로 추가 |
+| #6 | 작업 2: Capacitor 8.4.2 → 8.4.3 (CVE-2026-103922). 휴대폰 검증 앱 실기기 확인 통과 |
+| #7 | `OnboardingFlow` 경쟁 조건 수정(온보딩 완료 후 진행 상태가 되살아날 수 있었음). 별도 세션에서 진행 |
+| #9 | 위젯 세부항목·빠른 분류도 버킷+카테고리 기준으로 집계(사용자 결정 A안, 00에 기록) |
+| #10 | 작업 3: 기간·집계 계산을 `domain/periodSelectors.ts`로 통일 |
+| #11~#15 | 작업 4: `App.tsx` 분리 — 결제 화면, 승인 대기열(`domain/approvalSync.ts` + `useApprovalSync`), 계획표 초안(`usePolicyDraft`), 규칙(`RuleManager`), 설정. `App.tsx` 78.4KB → 약 60KB |
+| #16 | 작업 5a: 은행 PDF 가리기·렌더링을 `features/evidence/pipeline/`으로 분리, 가림 좌표 테스트 추가. 합성 PDF로 휴대폰 확인 |
+| #17 | PDF 생성 시 비밀번호가 틀리면 한국어 안내, 계획 없는 요약은 "확정된 계획 없음"(사용자 승인, 00에 기록) |
+| #18 | 테스트 때문에 잘게 나눠 둔 작은 모듈을 기능 단위 파일로 합침(소스 11개 감소) |
+| #19 | `index.html` `lang="ko"`·제목, `package.json` 버전 1.3.7, pre-push에 `npm audit` |
+| #20 | 작업 5b: PDF 조립을 `pipeline/assemble.ts`로 분리, 화면을 `features/evidence/`로 이동. 5b 전후 PDF 페이지 이미지가 모두 같음을 에뮬레이터에서 확인 |
+| #5, #8 | 인계 문서 |
+
+- 테스트: 445개 → 516개.
+- 에뮬레이터 확인(#17·#18·#19·#20 병합 시): 덮어 설치 후 데이터 유지, 설정·결제 상세/수정/취소/삭제 화면, 비밀번호 안내, PDF 생성·가림·요약, 앱 꺼짐·콘솔 오류 없음.
 
 ## 다음 작업
 
-번호 순서대로 진행한다. 각 작업은 `dev`에서 브랜치를 새로 만들고 PR로 `dev`에 병합한다.
-
-### ~~사전 준비: dev 이력 맞추기~~ (2026-10-21 완료)
-
-`main`에만 있는 병합 커밋을 `dev`로 가져와 이력을 맞춘다. 파일 내용은 같으므로 충돌은 없다.
-
-```powershell
-git switch dev
-git pull
-git merge origin/main
-git push
-```
-
-### ~~0. `chore/cleanup-and-handoff` — 미사용 파일 정리와 인계 문서 커밋~~ (2026-10-21 완료, PR 병합 대기)
-
-**삭제할 파일**: 저장소 전체에서 참조가 없음을 grep으로 확인했다.
-
-| 파일 | 이유 |
-| --- | --- |
-| `app/src/assets/react.svg` | Vite 템플릿 잔여물 |
-| `app/src/assets/vite.svg` | Vite 템플릿 잔여물 |
-| `app/src/assets/hero.png` | Vite 템플릿 잔여물 |
-| `app/public/icons.svg` | Vite 템플릿 잔여물 |
-| `app/public/onboarding-applicant-policy.svg` | 2026-08-27 추가 후 한 번도 참조되지 않음 |
-| `app/public/onboarding-applicant-yes.svg` | 위와 같음 |
-| `app/public/onboarding-not-applicant.svg` | 위와 같음 |
-| `app/android/app/src/test/java/com/getcapacitor/myapp/ExampleUnitTest.java` | Capacitor 템플릿 예제 테스트 |
-| `app/android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java` | Capacitor 템플릿 예제 테스트 |
-
-`favicon.svg`와 `onboarding-policy-example.png`는 사용 중이므로 남긴다.
-
-**함께 처리할 것**
-
-- `CLAUDE.md`, `docs/current_state.md`, `docs/README.md`(목차에 이 문서 추가)를 커밋한다.
-- `docs/05-github-guardrails.md`에 `refactor/*`, `chore/*` 브랜치 접두사를 추가한다. CLAUDE.md에는 이미 반영돼 있으므로 사용자 확인 후 맞춘다.
-
-**완료 기준**
-
-- `git rm`으로 삭제한 뒤 lint, test:run, build, test:security가 통과한다.
-- `:app:testDebugUnitTest`가 통과한다. 예제 테스트 1개가 빠지므로 Android 테스트 수는 기존 28개에서 줄어든다.
-
-### ~~1. `fix/test-policy-gap-clock` — 시간에 따라 실패하는 테스트~~ (2026-10-21 완료, PR #3)
-
-**위치**: `App.test.tsx`의 `acknowledges but does not store an approval outside the confirmed policy period`
-
-**원인**
-
-- 테스트는 `2026-09` 정책(9/15~10/10)과 공백 구간(10/12)의 승인을 고정값으로 쓰는데, 앱은 실제 오늘 날짜로 현재 기간을 정한다.
-- 10/15 이후에는 현재 기간이 `2026-10`이 된다. 확정된 정책이 없으므로 `App.tsx`의 `if (!activePolicy.confirmed) return;`에서 승인 처리 자체가 실행되지 않는다.
-- 앱 버그가 아니라 테스트가 시스템 시간에 영향을 받는 문제다.
-
-**수정**: 테스트 시작 부분에 아래 두 줄을 추가한다. Cowork 세션에서 추가 후 통과하는 것을 확인했다.
-
-```ts
-vi.useFakeTimers({ toFake: ['Date'] });
-vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
-```
-
-**추가 확인**: `new Date()`에 의존하는 다른 App 테스트가 있는지 찾아 같은 방식으로 시간을 고정한다.
-
-### ~~2. `fix/capacitor-cve-2026-103922` — Capacitor 보안 패치~~ (2026-10-21 완료, PR #6)
-
-**문제**
-
-- CVE-2026-103922(GHSA-rvm3-566m-v7fv), CVSS 9.3.
-- WebView의 이동 검사가 경로를 확인하지 않아, 내부 프록시 경로 `/_capacitor_http_interceptor_`를 통해 외부 콘텐츠가 앱 출처에서 실행될 수 있다. 실행되면 등록된 플러그인과 저장소 전체에 접근할 수 있다.
-
-**이 앱의 노출 정도**: 링크는 공식 출처 2개뿐이고 외부 브라우저에서 열린다. `dangerouslySetInnerHTML`이 없고 `server.url`·`allowNavigation` 설정도 없다. 즉시 악용될 경로는 확인되지 않았지만 피해가 크므로 패치한다.
-
-**수정**
-
-- `@capacitor/android`, `@capacitor/core`, `@capacitor/cli`를 8.4.3 이상으로 올린다. 8.5.x로 갈 경우 8.5.1 이상이어야 한다.
-- `npm run android:sync`를 실행한다.
-
-**완료 기준**
-
-- `npm audit --omit=dev` 결과 0건, 웹·Android 테스트 통과.
-- 병합 후 `chore/ci`(PR #4)를 `dev` 위로 rebase하고, CI web·android job이 모두 초록인지 확인한 뒤 Ready로 바꿔 병합한다.
-- 실기기 회귀 확인: 알림 인식, 위젯, 파일 저장, PDF 생성.
-- 이후 릴리스는 versionCode 12로 다시 빌드한다. 1.3.7(code 11) AAB에는 8.4.2가 들어 있으므로 업로드하지 않는다. 빌드는 사용자가 직접 한다.
-
-### 3. `refactor/period-selectors` — 기간·집계 계산 통일
-
-- 대시보드, 결제 목록, 알림 동기화, 위젯 스냅샷이 각자 거래를 필터링하던 코드를 `domain/`의 순수 선택자로 통일한다. 예: `selectEntriesInPeriod`, `selectSpentByBucket`.
-- 선택자는 오늘 날짜를 `now` 인자로 받는다.
-- 화면 컴포넌트에서 `periodKey` 문자열을 직접 비교하지 않는다.
-
-### 4. `refactor/app-split-*` — App.tsx 기능별 분리
-
-- 현재 `App.tsx`는 80KB, `useState` 52개, `useEffect` 21개이고 패널 23개의 JSX를 모두 갖고 있다.
-- `features/payments`, `policy`, `rules`, `settings`, `evidence`로 화면과 훅을 옮긴다. 기능 하나당 PR 하나로 진행한다.
-- 승인 대기열 처리(`processPendingApprovals`)는 `useApprovalSync` 훅과 순수 함수(기간 필터 → 원장 반영 → 저장 → ack 대상 결정)로 분리해 App 없이 테스트한다.
-- 저장 데이터 형식과 화면 동작은 바꾸지 않는다.
-
-### 5. `refactor/evidence-pipeline` — 증빙 PDF의 UI와 연산 분리
-
-- `EvidenceExport.tsx`(65KB)에서 OCR, 압축, PDF 렌더링, 은행 PDF 행 가리기(`statementTableGeometry`, `solidMask`, `cleanRowMask`), 조립 로직을 `features/evidence/pipeline/`의 순수 모듈로 옮긴다.
-- 가리기 좌표 계산에 대한 단위 테스트를 추가한다.
-- UI는 진행률, 취소, 결과만 받는다.
+번호 순서대로 진행한다. 작업 4·5까지 끝났다. 모든 작업이 끝나면 사용자가 버전을 올려 게시한다.
 
 ### 6. `fix/remove-builtin-merchant-rules` — 개인용 기본 분류 규칙 삭제
 
@@ -194,14 +111,33 @@ vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
 - 색과 간격은 CSS 변수로 통일한다.
 - 큰 글자·접근성 화면 회귀를 실기기에서 확인한다.
 
-## 작은 정리 후보
 
-필요할 때 해당 작업에 묶어서 처리한다. 사용자가 여유 있을 때 진행하도록 승인했다(2026-10-21).
+### 저장소 계층 분리 (리팩터링 계획 P2)
 
-- `app/index.html`: `lang="en"`을 `ko`로, `<title>app</title>`을 `신청해 계산기`로 바꾼다.
-- `app/package.json`의 `version` `0.0.0`을 Android versionName과 맞춘다.
-- `npm audit --omit=dev`를 `test:security` 또는 pre-push 훅에 추가한다.
+작업 4에서 남긴 부분이다. 계획표 확정(`confirmPolicy`), 예산 조정(`applyBudgetAdjustment`), 백업 복원처럼 정책 기록·원장 ref와 저장을 함께 다루는 처리는 저장 순서·동시성 때문에 화면 분리와 따로 옮긴다.
 
-## 사용자 결정이 필요한 항목
+## 발견한 개선점
 
-- 1.3.8 / code 12 릴리스: 사용자가 앱 개선 작업 후 직접 버전을 올리고 빌드한다(2026-10-21 결정). 1.3.7(code 11) AAB에는 Capacitor 8.4.2가 들어 있으므로 업로드하지 않는다.
+| 항목 | 내용 | 필요한 것 |
+| --- | --- | --- |
+| 영수증·거래증빙 PDF 비밀번호 오류 | 비밀번호가 걸린 영수증·거래증빙 PDF로 생성하면 pdf.js 영어 오류(`No password given`)가 보인다 | 안내 방식 사용자 결정(다시 입력할 칸이 없음) |
+| 큰 글자 화면 겹침 | 큰 글자·고대비에서 대시보드 "학습공간비" 제목과 "잔액" 금액이 겹친다(에뮬레이터 확인, 기존 문제) | 작업 8에서 처리 |
+| 애매한 가림 블록 1건 | 실제 신한 PDF에서 판단이 애매한 가림 블록 | 사용자가 행 정보를 공유하면 확인 |
+| 비밀번호 칸 접근성 노출 | WebView 비밀번호 입력칸의 값이 Android 접근성 트리(uiautomator)에 그대로 보인다 | 검토 후보 |
+| 개발 의존성 취약점 | 전체 `npm audit`에 moderate 3, high 5 (앱 번들 미포함) | 정리 후보 |
+| 시트를 열 때 포커스가 뒤에 남음 | 시트를 열면 대시보드에 `aria-hidden`·`inert`가 걸리는데 포커스가 대시보드 버튼에 남아 WebView가 `Blocked aria-hidden…` 경고를 낸다(에뮬레이터 콘솔, 기존 동작). 화면 읽기 사용자가 시트 뒤에 머물 수 있다 | 시트를 열 때 시트로 포커스 이동 검토 |
+
+## 확인·결정이 필요한 항목
+
+- **Play 게시**: 게시 개요의 미전송 변경에 1.3.7 / code 11 프로덕션 출시가 올라가 있다. 이 빌드에는 취약한 Capacitor 8.4.2가 들어 있으므로, 1.3.8 / code 12로 바꾼 뒤 검토로 보낸다. 시점은 사용자가 정한다.
+- 1.3.8 / code 12 릴리스: 남은 작업을 마친 뒤 사용자가 `build.gradle`·`package.json` 버전을 올리고 `build-play-release.ps1`로 직접 빌드한다.
+- 휴대폰 검증 앱 확인 대기: (1) 계획 없는 상태의 PDF 첫 장 "확정된 계획 없음" (2) 비밀번호가 걸린 실제 신한 PDF 가림(작업 5a 5번) (3) 실제 자료로 PDF 생성·생성 중 취소(작업 5b)
+- 영수증·거래증빙 PDF 비밀번호 오류 안내 방식
+
+## 환경 메모
+
+- 새 체크아웃에서는 Gradle 전에 `npm run android:sync`가 필요하다. 셸 기본 Java가 8이라 `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`, `ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk`를 지정한다. sync 후 생기는 gradle 파일 줄바꿈 변경은 커밋하지 않는다.
+- pre-push 훅은 로컬 설정이다(`git config core.hooksPath .githooks`). 새로 clone하면 다시 켠다.
+- **검증 앱 빌드**: 임시 Gradle init script로 debug 변형에 `applicationIdSuffix '.verify'`와 앱 이름 "신청해 계산기 검증" 리소스를 덧씌워 `assembleDebug` 후 `adb install -r --user 0`. 설치 전 패키지명과 Android Debug 서명이 기존 검증 앱과 같은지 확인한다. 평소 debug 빌드는 실제 앱과 같은 패키지 ID이므로 휴대폰에 그대로 설치하지 않는다.
+- 에뮬레이터 `Pixel_8`에는 이전 감사의 합성 데이터가 든 앱이 있다(사용자 지정 정책 기간, 700,000원 계획). 확인 후 추가한 테스트 파일·증빙은 지운다.
+- GitHub가 CI 상태나 PR head를 늦게 반영하는 일이 있었다. 모든 단계가 성공했는데 job이 진행 중으로 남으면 `gh run rerun`으로 다시 돌린다.
