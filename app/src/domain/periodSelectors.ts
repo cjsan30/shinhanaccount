@@ -61,3 +61,10 @@ export function selectUndecidedByPeriod(ledger: Ledger, scope: PeriodScope) {
     previous: undecided.filter((entry) => !isInPeriodScope(entry, scope)),
   };
 }
+
+export type ImportDatedRecord = { occurredAt: string };
+
+export function filterImportToPolicyPeriod<T extends ImportDatedRecord>(records: T[], periodKey: string, period?: PolicyPeriod) {
+  const included = records.filter((record) => isInPeriodScope(record, { periodKey, period }));
+  return { included, excludedOutsidePeriod: records.length - included.length };
+}
