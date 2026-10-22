@@ -54,18 +54,19 @@ function isSameTransaction(left: Pick<LedgerEntry, 'occurredAt' | 'merchant' | '
   return left.occurredAt === right.occurredAt && left.amount === right.amount && normalizedMerchant(left.merchant) === normalizedMerchant(right.merchant);
 }
 
-function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string): LedgerEntry {
+function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string, classify?: (merchant: string, amount: number) => PaymentClassification): LedgerEntry {
   const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
-  const entry = toEntry(payment, transaction.classification);
+  const entry = toEntry(payment, classify ? classify(transaction.merchant, transaction.amount) : transaction.classification);
   return { ...entry, id: `approval-${cardLast4}-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod): ImportResult {
+/** `classify` applies the user's merchant rules; bank withdrawals stay undecided candidates (see importBankTransactions). */
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod, classify?: (merchant: string, amount: number) => PaymentClassification): ImportResult {
   const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
-  const result = reconcileImportedEntries(baseline, importable.map((transaction) => transactionToEntry(transaction, cardLast4)));
+  const result = reconcileImportedEntries(baseline, importable.map((transaction) => transactionToEntry(transaction, cardLast4, classify)));
   const added = result.entries.filter((entry) => !baseline.some((existing) => existing.id === entry.id));
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: added.filter((entry) => entry.status === 'excluded').length, undecided: added.filter((entry) => entry.status === 'undecided').length, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
