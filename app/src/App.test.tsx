@@ -313,12 +313,12 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '3741' });
+    smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '4321' });
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
     const cardInput = screen.getByLabelText('카드 끝 4자리');
-    await waitFor(() => expect(cardInput).toHaveValue('3741'));
+    await waitFor(() => expect(cardInput).toHaveValue('4321'));
     fireEvent.change(cardInput, { target: { value: '374' } });
     expect(smsBridge.clearConfiguration).toHaveBeenCalledOnce();
     expect(screen.getByText(/카드 4자리를 모두 입력하면/)).toBeInTheDocument();
@@ -357,7 +357,7 @@ describe('app entry flows', () => {
     }] }));
     window.localStorage.setItem(MERCHANT_RULES_STORAGE_KEY, JSON.stringify([createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' })]));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '테스트 카페', source: 'notification',
+      id: 'sms-live-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '테스트 카페', source: 'notification',
     }] });
 
     await renderApp();
@@ -377,7 +377,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'policy-gap-approval', cardLast4: '3741', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '기간 밖 결제', source: 'notification',
+      id: 'policy-gap-approval', cardLast4: '4321', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '기간 밖 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -419,7 +419,7 @@ describe('app entry flows', () => {
     const occurredAt = new Date().toISOString();
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
       ...createEmptyLedger(),
-      entries: [{ id: 'classified-1', cardLast4: '3741', occurredAt, amount: 8000, merchant: '되돌릴 결제', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'classified-1', cardLast4: '4321', occurredAt, amount: 8000, merchant: '되돌릴 결제', status: 'classified', bucket: 'resident', category: 'food' }],
     }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -473,7 +473,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
-      id: 'review-1', cardLast4: '3741', occurredAt: new Date().toISOString(), merchant: '확인 필요 결제', source: 'notification',
+      id: 'review-1', cardLast4: '4321', occurredAt: new Date().toISOString(), merchant: '확인 필요 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -500,7 +500,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
-      id: 'period-gap-review', cardLast4: '3741', occurredAt, merchant: '기간 밖 확인 결제', source: 'notification',
+      id: 'period-gap-review', cardLast4: '4321', occurredAt, merchant: '기간 밖 확인 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -514,7 +514,7 @@ describe('app entry flows', () => {
     const occurredAt = new Date().toISOString();
     const ledger = {
       ...createEmptyLedger(),
-      entries: [{ id: 'paid-1', cardLast4: '3741', occurredAt, amount: 12300, merchant: '취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'paid-1', cardLast4: '4321', occurredAt, amount: 12300, merchant: '취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
     };
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(ledger));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
@@ -522,7 +522,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
-      id: 'cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 12300, merchant: '취소 대상', source: 'notification',
+      id: 'cancel-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 12300, merchant: '취소 대상', source: 'notification',
     }] });
 
     await renderApp();
@@ -537,14 +537,14 @@ describe('app entry flows', () => {
     const occurredAt = new Date().toISOString();
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
       ...createEmptyLedger(),
-      entries: [{ id: 'paid-partial', cardLast4: '3741', occurredAt, amount: 12300, merchant: '부분 취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'paid-partial', cardLast4: '4321', occurredAt, amount: 12300, merchant: '부분 취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
     }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
-      id: 'partial-cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 3000, merchant: '부분 취소 대상', source: 'notification',
+      id: 'partial-cancel-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 3000, merchant: '부분 취소 대상', source: 'notification',
     }] });
 
     await renderApp();

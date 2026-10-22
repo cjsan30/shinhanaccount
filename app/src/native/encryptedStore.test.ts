@@ -40,7 +40,7 @@ describe('encrypted app state', () => {
   it('creates an encrypted native database, persists normalized rows, and reloads them', async () => {
     const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
     const { saveEncryptedAppState, loadEncryptedAppState } = await import('./encryptedStore');
-    const state = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '3741', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' }] }, policyBook: { versions: [] }, merchantRules: [], reportEvidence: [] };
+    const state = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '4321', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' }] }, policyBook: { versions: [] }, merchantRules: [], reportEvidence: [] };
     await expect(saveEncryptedAppState(state)).resolves.toBe(true);
     expect(mocks.setEncryptionSecret).toHaveBeenCalledOnce();
     expect(db.settings.get('state-present')).toBe('1');
@@ -51,7 +51,7 @@ describe('encrypted app state', () => {
   it('updates only changed normalized rows and retains atomic transaction boundaries', async () => {
     const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
     const { saveEncryptedAppState } = await import('./encryptedStore');
-    const initial = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '3741', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const }] }, policyBook: { versions: [] }, merchantRules: [] };
+    const initial = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '4321', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const }] }, policyBook: { versions: [] }, merchantRules: [] };
     await saveEncryptedAppState(initial);
     const before = db.run.mock.calls.length;
     await saveEncryptedAppState({ ...initial, ledger: { ...initial.ledger, entries: [{ ...initial.ledger.entries[0], merchant: '수정 카페' }] } });
@@ -90,7 +90,7 @@ describe('encrypted app state', () => {
       return originalRun(sql, params);
     });
     const { saveEncryptedAppState } = await import('./encryptedStore');
-    const state = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '3741', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const }] }, policyBook: { versions: [] }, merchantRules: [] };
+    const state = { ledger: { ...createEmptyLedger(), entries: [{ id: 'payment-1', cardLast4: '4321', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const }] }, policyBook: { versions: [] }, merchantRules: [] };
 
     await expect(saveEncryptedAppState(state)).rejects.toThrow('simulated storage failure');
     expect(db.rollbackTransaction).toHaveBeenCalledOnce();

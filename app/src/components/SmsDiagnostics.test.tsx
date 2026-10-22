@@ -24,7 +24,7 @@ describe('SMS diagnostics', () => {
 
     expect(await screen.findByText('승인 대기열 저장')).toBeInTheDocument();
     expect(screen.getByText('대기 1건')).toBeInTheDocument();
-    expect(screen.queryByText('3741')).not.toBeInTheDocument();
+    expect(screen.queryByText('4321')).not.toBeInTheDocument();
   });
 
   it('clears diagnostics on explicit request', async () => {
@@ -46,7 +46,7 @@ describe('SMS diagnostics', () => {
     await waitFor(() => expect(saveFile).toHaveBeenCalledOnce());
     const content = new TextDecoder().decode(saveFile.mock.calls[0][1]);
     expect(content).toContain('길이 89 · 승인문구 있음 · 출처 com.shcard.smartpay');
-    expect(content).not.toMatch(/3741|1,230|씨유/);
+    expect(content).not.toMatch(/4321|1,230|씨유/);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('Downloads/신청해 계산기'));
   });
 
