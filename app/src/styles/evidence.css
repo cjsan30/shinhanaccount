@@ -317,10 +317,10 @@
 .statement-unread input {
   min-width: 0;
   padding: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-divider);
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .statement-unread button {
@@ -328,7 +328,7 @@
   padding: 8px 10px;
   border: 0;
   border-radius: 8px;
-  background: var(--accent);
+  background: var(--color-accent);
   color: #102338;
   font-weight: 700;
 }
