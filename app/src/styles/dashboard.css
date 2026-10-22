@@ -462,9 +462,9 @@
   flex-shrink: 0;
 }
 
+/* The total stays on one line; DashboardScreen scales it down when it does not fit. */
 .summary strong {
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .dashboard-surface {
@@ -475,4 +475,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Set by DashboardScreen when the name and the remaining amount do not fit on one row. */
+.budget--stacked>span {
+  grid-template-columns: minmax(0, 1fr) 24px;
+}
+
+.budget--stacked em {
+  grid-column: 1;
+  grid-row: 2;
 }
