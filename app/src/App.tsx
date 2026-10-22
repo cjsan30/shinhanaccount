@@ -51,7 +51,8 @@ import { BudgetAdjustment } from './components/BudgetAdjustment';
 import { adjustBudget, type BudgetTransfer } from './domain/budgetAdjustment';
 import { storeEvidence } from './native/evidenceVault';
 import { toStatementRows } from './domain/statementImport';
-import type { ReportEvidenceRecord } from './domain/reportEvidence';
+import { splitEvidenceByPolicyPeriod, type ReportEvidenceRecord } from './domain/reportEvidence';
+import { removeStoredEvidence } from './native/evidenceVault';
 import { loadAccessibilityPreferences, saveAccessibilityPreferences, type AccessibilityPreferences } from './domain/accessibility';
 import { AccessibilitySettings } from './components/AccessibilitySettings';
 import { createVerificationState, type VerificationState } from './domain/verification';
@@ -194,6 +195,16 @@ function App() {
     void persistAppState(window.localStorage, { ledger, policyBook, merchantRules, reportEvidence, verification }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
   }, [ledger, merchantRules, policyBook, reportEvidence, storageReady, verification]);
   useEffect(() => { merchantRulesRef.current = merchantRules; }, [merchantRules]);
+  // When a new policy period begins, files gathered for the previous report are removed.
+  useEffect(() => {
+    if (!storageReady) return;
+    const { current, previous } = splitEvidenceByPolicyPeriod(reportEvidence, activePolicy.periodKey, policy.period);
+    if (!previous.length) return;
+    reportEvidenceRef.current = current;
+    setReportEvidence(current);
+    void Promise.all(previous.map((record) => removeStoredEvidence(record.stored).catch(() => undefined)));
+    show(`새 기간이 시작되어 이전 기간 PDF 자료 ${previous.length}개를 정리했습니다.`);
+  }, [storageReady, reportEvidence, activePolicy.periodKey, policy.period]);
   useEffect(() => {
     saveAccessibilityPreferences(window.localStorage, accessibilityPreferences);
     document.body.dataset.textScale = accessibilityPreferences.textScale;
