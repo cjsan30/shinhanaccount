@@ -35,7 +35,7 @@ import {
   type SupportPolicy,
 } from './domain/policy';
 import { type PaymentClassification } from './domain/sms';
-import { classifyWithMerchantRules, createMerchantRule, getMerchantAlias, type MerchantRule } from './domain/merchantRules';
+import { buildNativeRuleSnapshot, classifyWithMerchantRules, createMerchantRule, getMerchantAlias, type MerchantRule } from './domain/merchantRules';
 import { SmsBridge, type NativeApproval, type NativeApprovalReview, type NativeCancellation } from './native/smsBridge';
 import { NotificationBridge } from './native/notificationBridge';
 import { WidgetBridge } from './native/widgetBridge';
@@ -293,9 +293,10 @@ function App() {
     .slice(0, 2)
     .map(({ category, label }) => ({ category, label })), [itemUsage, policy]);
   const widgetDetailRows = useMemo(() => itemUsage.map(({ item, spent, count }) => ({ label: item.label, limit: getCategoryLimit(policy, item.ledgerCategories[0]), spent, count })).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [itemUsage, policy]);
+  const nativeRules = useMemo(() => buildNativeRuleSnapshot(merchantRules, allPolicyItems), [merchantRules, allPolicyItems]);
   useEffect(() => {
-    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, periodStart: getPolicyPeriodRange(activePolicy.periodKey, policy.period).start, periodEnd: getPolicyPeriodRange(activePolicy.periodKey, policy.period).end, quickCategories }).catch(() => undefined);
-  }, [policy.period, activePolicy.periodKey, alertCategories, categoryLimits, categorySpent, ledger.alertThresholds, quickCategories]);
+    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, periodStart: getPolicyPeriodRange(activePolicy.periodKey, policy.period).start, periodEnd: getPolicyPeriodRange(activePolicy.periodKey, policy.period).end, quickCategories, rules: nativeRules }).catch(() => undefined);
+  }, [policy.period, activePolicy.periodKey, alertCategories, categoryLimits, categorySpent, ledger.alertThresholds, quickCategories, nativeRules]);
 
   useEffect(() => {
     void WidgetBridge.sync({
