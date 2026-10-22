@@ -421,7 +421,7 @@
 
 .rule-manager > p {
   margin: 0 0 18px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   line-height: 1.55;
 }
 
@@ -436,7 +436,7 @@
 .rule-editor label {
   display: grid;
   gap: 8px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 14px;
   font-weight: 700;
 }
@@ -457,7 +457,7 @@
   align-items: center;
   gap: 8px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .rule-management-list article div {
@@ -473,7 +473,7 @@
 }
 
 .rule-management-list article span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
@@ -483,7 +483,7 @@
   border: 0;
   border-radius: 10px;
   background: rgba(255,255,255,.07);
-  color: var(--text);
+  color: var(--color-text);
   font-weight: 700;
 }
 
