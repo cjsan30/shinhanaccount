@@ -484,7 +484,7 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun injectTestApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
-        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val approval = Approval(
             card,
             call.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
@@ -502,7 +502,7 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun injectTestNotificationApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
-        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val postedAt = System.currentTimeMillis()
         val approval = Approval(
             card,
@@ -559,7 +559,7 @@ class SmsBridgePlugin : Plugin() {
     fun scheduleTestApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
         val approvalObject = call.getObject("approval") ?: JSObject()
-        val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val approval = Approval(
             card,
             approvalObject.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),

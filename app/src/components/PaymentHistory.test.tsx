@@ -5,7 +5,7 @@ import { PaymentHistory } from './PaymentHistory';
 
 const entries: LedgerEntry[] = Array.from({ length: 12 }, (_, index) => ({
   id: `payment-${index}`,
-  cardLast4: '3741',
+  cardLast4: '4321',
   occurredAt: `2026-08-${String(19 - index).padStart(2, '0')}T12:30:00+09:00`,
   amount: 1000 + index,
   merchant: `상호 ${index}`,
