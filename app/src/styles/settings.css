@@ -957,7 +957,7 @@ header .settings-button svg {
   accent-color: #6bddcf;
 }
 
-body.high-contrast :is(.first-run__start,.new-payment,.accessibility-settings__choices button.is-selected) {
+body.high-contrast :is(.first-run__start,.new-payment,.accessibility-settings__choices button.is-selected,.recovery-notice button) {
   background: #fff !important;
   color: #000 !important;
 }

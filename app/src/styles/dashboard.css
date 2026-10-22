@@ -486,3 +486,8 @@
   grid-column: 1;
   grid-row: 2;
 }
+
+/* Plan reminder buttons wrap between words, never inside one. */
+.plan-pending-notice button {
+  word-break: keep-all;
+}

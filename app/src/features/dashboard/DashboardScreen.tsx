@@ -21,6 +21,8 @@ type Props = {
   onOpenRecent: () => void;
   onOpenEvidence: () => void;
   onImportTransactions?: () => void;
+  /** Shown to an existing user whose new policy period has no confirmed plan yet. */
+  planPending?: { canReuse: boolean; onReuse: () => void; onEdit: () => void };
 };
 
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
@@ -78,6 +80,7 @@ export function DashboardScreen(props: Props) {
   return <>
     <header><h1>지원금 관리</h1><div className="dashboard-header-actions">{props.onOpenHelp && <button className="app-help-trigger" aria-label="앱 사용 도움말" onClick={props.onOpenHelp}><Question size={25} /></button>}<button className="settings-button" aria-label="설정 열기" onClick={props.onOpenSettings}><GearSix size={34} /></button></div></header>
     {props.forceStopRecovery && <section className="recovery-notice" role="alert"><strong>결제 알림 인식이 중단된 시간이 있습니다</strong><p>강제 종료 또는 알림 접근 중단 중에는 결제가 자동 반영되지 않을 수 있습니다. 빠진 내역이 있다면 카드 CSV·Excel 또는 은행 PDF를 가져와 확인해 주세요.</p><div><button onClick={props.onRecoverTransactions}>거래내역 가져오기</button><button onClick={props.onDismissRecovery}>나중에</button></div></section>}
+    {props.planPending && <section className="recovery-notice plan-pending-notice" role="status"><strong>이번 기간 계획표를 확정해 주세요</strong><p>확정하기 전에 받은 결제는 보관만 하고 예산에는 반영하지 않습니다. 확정하면 바로 반영합니다.</p><div>{props.planPending.canReuse && <button onClick={props.planPending.onReuse}>지난 계획 그대로 확정</button>}<button onClick={props.planPending.onEdit}>수정 후 확정</button></div></section>}
     <section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={props.onNewPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong ref={total}>{won(props.totalLimit - props.totalSpent)}</strong><span>{won(props.totalLimit)} 중 {won(props.totalSpent)} 사용 · {props.totalUsage.toFixed(1)}%</span><i><b style={{ width: `${Math.min(100, props.totalUsage)}%` }} /></i></section>
     <section className="budgets"><Budget name="정주비" value={props.resident} open={props.onOpenResident} /><Budget name="학습공간비" value={props.study} open={props.onOpenStudy} /></section>
     <section className="quick"><h2>빠른 확인</h2>{props.onImportTransactions && <button onClick={props.onImportTransactions}><i><ListBullets size={29} /></i>거래내역 가져오기<CaretRight size={25} /></button>}<button data-guide="undecided" aria-label={`미정 지출 ${props.undecidedCount}건`} onClick={props.onOpenUndecided}><i><ChatCircleDots size={29} /></i><span>미정 지출</span>{props.undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{props.undecidedCount > 9 ? '9+' : props.undecidedCount}</b>}<CaretRight size={25} /></button><button data-guide="history" onClick={props.onOpenRecent}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button data-guide="export" onClick={props.onOpenEvidence}><i><ListBullets size={29} /></i>PDF 생성<CaretRight size={25} /></button></section>
