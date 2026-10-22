@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { DashboardScreen } from './DashboardScreen';
+import { budgetHeadingFits, DashboardScreen, fitScale } from './DashboardScreen';
 
 function renderDashboard(forceStopRecovery = false) {
   const actions = {
@@ -25,5 +25,25 @@ describe('dashboard recovery notice', () => {
     renderDashboard(false);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByText('580,000원')).toBeInTheDocument();
+  });
+});
+
+describe('dashboard text fitting', () => {
+  it('keeps the budget name and amount on one row only when the arrow still fits', () => {
+    expect(budgetHeadingFits(300, 100, 150, 24, 8)).toBe(true);
+    expect(budgetHeadingFits(300, 120, 150, 24, 8)).toBe(false);
+  });
+
+  it('scales the total down only as far as needed to stay on one line', () => {
+    expect(fitScale(280, 250)).toBe(1);
+    expect(fitScale(280, 400)).toBe(0.7);
+    expect(fitScale(280, 420)).toBe(0.666);
+    expect(fitScale(0, 400)).toBe(1);
+  });
+
+  it('renders the dashboard without layout measurements in tests', () => {
+    renderDashboard();
+    expect(screen.getByRole('button', { name: '정주비 상세 보기' })).toHaveClass('budget');
+    expect(screen.getByRole('button', { name: '정주비 상세 보기' })).not.toHaveClass('budget--stacked');
   });
 });

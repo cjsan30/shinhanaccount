@@ -19,7 +19,7 @@ describe('transaction import', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it('imports only current-period card CSV rows and reports excluded rows', async () => {
-    const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' } };
+    const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '' };
     const outside = { ...current, occurredAt: '2026-09-13T12:00:00+09:00', approvalNumber: '0002' };
     mocks.parseCard.mockResolvedValue([current, outside]);
     mocks.filterCard.mockReturnValue({ status: 'ready', transactions: [current, outside], hasMaskedCardWarning: false });
@@ -34,9 +34,9 @@ describe('transaction import', () => {
 
   it('imports only withdrawals from a current-period bank PDF as undecided candidates', async () => {
     mocks.parseBankPdf.mockResolvedValue([
-      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal', direction: 'withdrawal', classification: { status: 'undecided' } },
-      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'deposit', direction: 'deposit', classification: { status: 'undecided' } },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal', direction: 'withdrawal' },
+      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'deposit', direction: 'deposit' },
+      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal' },
     ]);
     const onImport = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
@@ -53,7 +53,7 @@ describe('transaction import', () => {
   });
 
   it('requires an explicit continue action when the selected file has no readable identifier', async () => {
-    const transaction = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '식당', amount: 8000, approvalNumber: '0003', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' } };
+    const transaction = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '식당', amount: 8000, approvalNumber: '0003', paymentStatus: '승인', cancellationStatus: '' };
     mocks.parseCard.mockResolvedValue([transaction]);
     mocks.filterCard.mockReturnValue({ status: 'warning', transactions: [transaction], hasMaskedCardWarning: true });
     const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
@@ -64,7 +64,7 @@ describe('transaction import', () => {
   });
 
   it('passes a bank PDF password only to the selected-file parser', async () => {
-    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal-password', direction: 'withdrawal', classification: { status: 'undecided' } }]);
+    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal-password', direction: 'withdrawal' }]);
     const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
     fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
@@ -76,7 +76,7 @@ describe('transaction import', () => {
   });
 
   it('rejects a bank PDF whose readable account suffix differs from the selected account', async () => {
-    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '다른 계좌 출금', amount: 5000, accountMasked: '0000', transactionId: 'wrong-account', direction: 'withdrawal', classification: { status: 'undecided' } }]);
+    mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '다른 계좌 출금', amount: 5000, accountMasked: '0000', transactionId: 'wrong-account', direction: 'withdrawal' }]);
     const notify = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={notify} />);
     fireEvent.click(getByLabelText('계좌번호'));
     fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
@@ -147,9 +147,9 @@ describe('transaction import', () => {
 describe('optional statement reuse', () => {
   it('keeps all original rows for masking but imports only eligible withdrawals and never sends the password', async () => {
     const rows = [
-      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '출금', amount: 5000, accountMasked: '6789', transactionId: 'w', direction: 'withdrawal', classification: { status: 'undecided' } },
-      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'd', direction: 'deposit', classification: { status: 'undecided' } },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal', classification: { status: 'undecided' } },
+      { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '출금', amount: 5000, accountMasked: '6789', transactionId: 'w', direction: 'withdrawal' },
+      { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'd', direction: 'deposit' },
+      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal' },
     ];
     mocks.parseBankPdf.mockResolvedValue(rows);
     const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);

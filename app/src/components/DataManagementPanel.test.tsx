@@ -5,6 +5,7 @@ import { createEmptyLedger } from '../domain/ledger';
 import { DataManagementPanel } from './DataManagementPanel';
 
 const baseProps = () => ({
+  now: new Date('2026-09-20T12:00:00+09:00'),
   importFile: null, importTransactions: null, importResult: null, importReading: false, importMessage: null, hasMaskedCardWarning: false,
   policyText: '', policyDraft: { ...emptyPolicy, plans: { ...emptyPolicy.plans, housing: 300000, food: 200000, cafe: 200000 } }, policyDraftFocusToken: 1,
   merchantRules: [], ledger: createEmptyLedger(), policyBook: { versions: [] }, periodKey: '2026-09', canUndoImport: false,

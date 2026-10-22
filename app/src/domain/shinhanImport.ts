@@ -1,7 +1,6 @@
-import { classifyPayment, type PaymentClassification } from './sms';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
-export type ImportedCardTransaction = { occurredAt: string; cardMasked: string; cardIdentity?: string; merchant: string; approvalNumber: string; amount: number; paymentStatus: string; cancellationStatus: string; classification: PaymentClassification };
+export type ImportedCardTransaction = { occurredAt: string; cardMasked: string; cardIdentity?: string; merchant: string; approvalNumber: string; amount: number; paymentStatus: string; cancellationStatus: string };
 const requiredHeaders = ['거래일', '이용카드', '가맹점명', '승인번호', '금액', '매입구분', '취소상태'];
 export async function parseShinhanCardExport(data: ArrayBuffer): Promise<ImportedCardTransaction[]> {
   const XLSX = await import('xlsx');
@@ -24,7 +23,7 @@ export async function parseShinhanCardExport(data: ArrayBuffer): Promise<Importe
     const [date, time] = String(row['거래일']).split(' '); const [year, month, day] = date.split('.');
     const amount = Number(String(row['금액']).replaceAll(',', ''));
     const merchant = String(row['가맹점명']).trim();
-    return { occurredAt: `${year}-${month}-${day}T${time}:00+09:00`, cardMasked: String(row['이용카드']).trim(), merchant, approvalNumber: String(row['승인번호']).padStart(8, '0'), amount, paymentStatus: String(row['매입구분']).trim(), cancellationStatus: String(row['취소상태']).trim(), classification: classifyPayment(merchant, amount) };
+    return { occurredAt: `${year}-${month}-${day}T${time}:00+09:00`, cardMasked: String(row['이용카드']).trim(), merchant, approvalNumber: String(row['승인번호']).padStart(8, '0'), amount, paymentStatus: String(row['매입구분']).trim(), cancellationStatus: String(row['취소상태']).trim() };
   });
 }
 
@@ -41,7 +40,7 @@ export function parseShinhanCardPdfText(text: string): ImportedCardTransaction[]
     const [, rawDate, time, rawAmount, rawMerchant] = matched;
     const [year, month, day] = rawDate.replace(/[./]/g, '-').split('-'); const merchant = rawMerchant.trim().replace(/\s+(일시불|체크|승인|국내).*$/u, '').trim();
     const value = amount(rawAmount);
-    return { occurredAt: `${year}-${month}-${day}T${time}:00+09:00`, cardMasked, merchant: merchant || '가맹점 정보 없음', approvalNumber: `pdf-${year}${month}${day}-${time.replace(':', '')}-${value}-${index}`, amount: value, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment(merchant, value) };
+    return { occurredAt: `${year}-${month}-${day}T${time}:00+09:00`, cardMasked, merchant: merchant || '가맹점 정보 없음', approvalNumber: `pdf-${year}${month}${day}-${time.replace(':', '')}-${value}-${index}`, amount: value, paymentStatus: '승인', cancellationStatus: '' };
   }).filter((transaction) => transaction.amount > 0);
 }
 

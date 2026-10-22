@@ -53,26 +53,41 @@ internal fun isApprovalInPolicyPeriod(occurredAt: String, periodKey: String, per
     !end.isBefore(start) && !date.isBefore(start) && !date.isAfter(end)
 } catch (_: Exception) { false }
 
-private data class NativeClassification(val category: String, val label: String)
+internal data class NativeClassification(val category: String, val label: String)
+internal data class NativeMerchantRule(val merchant: String, val exact: Boolean, val category: String, val label: String)
 
-private fun classifyForBudget(merchant: String, amount: Int): NativeClassification? {
-    val normalized = merchant.lowercase().replace(Regex("""[\s().,]"""), "")
-    if (normalized.contains("아이햅슨")) return null
-    if (normalized.contains("놀유니버스")) return NativeClassification("lodging", "주거비")
-    if (normalized == "sr") return NativeClassification("transport", "교통비")
-    if (normalized.contains("삼성웰스토리")) {
-        return if (amount == 8000) NativeClassification("food", "식비") else NativeClassification("generalCafe", "카페")
+// JavaScript's \s also covers Unicode spaces. Android's regex engine rejects the (?U) flag and the
+// desktop JVM used by unit tests reads \s as ASCII only, so the Unicode spaces are listed explicitly.
+private val merchantNoiseRegex = Regex("""[\s\p{Z}\u000B﻿().,]""")
+// Same as normalizeMerchant in domain/merchantRules.ts; nativeBudgetVectors.json checks both.
+internal fun normalizeRuleMerchant(merchant: String): String = merchant.lowercase(java.util.Locale.ROOT).replace(merchantNoiseRegex, "")
+
+internal fun parseNativeRules(rules: org.json.JSONArray?): List<NativeMerchantRule> =
+    if (rules == null) emptyList() else (0 until rules.length()).mapNotNull { index ->
+        rules.optJSONObject(index)?.let { NativeMerchantRule(it.optString("merchant"), it.optBoolean("exact"), it.optString("category"), it.optString("label")) }
     }
-    if (normalized.contains("서브웨이") || normalized.contains("써브웨이") || normalized.contains("맘스터치") || normalized.contains("맥도날드")) {
-        return NativeClassification("generalCafe", "카페")
+
+// The web app sends the user's rules already in priority order (buildNativeRuleSnapshot), so the
+// first match decides. A matched rule with an empty category counts toward no budget item.
+internal fun classifyForBudget(rules: List<NativeMerchantRule>, merchant: String): NativeClassification? {
+    val normalized = normalizeRuleMerchant(merchant)
+    val rule = rules.firstOrNull { it.merchant.isNotEmpty() && if (it.exact) normalized == it.merchant else normalized.contains(it.merchant) } ?: return null
+    return if (rule.category.isEmpty()) null else NativeClassification(rule.category, rule.label)
+}
+
+// Same as getCrossedAlertThresholds in domain/budget.ts.
+internal fun crossedAlertThresholds(previous: Int, current: Int, limit: Int, thresholds: List<Int>): List<Int> {
+    if (limit <= 0 || current <= previous) return emptyList()
+    return thresholds.filter { threshold ->
+        val boundary = limit * threshold / 100.0
+        previous < boundary && current >= boundary
     }
-    return null
 }
 
 internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approval: Approval): String? {
     val state = try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
     if (!isApprovalInPolicyPeriod(approval.occurredAt, state.optString("periodKey"), state.optString("periodStart"), state.optString("periodEnd"))) return null
-    val classification = classifyForBudget(approval.merchant, approval.amount) ?: return null
+    val classification = classifyForBudget(parseNativeRules(state.optJSONArray("rules")), approval.merchant) ?: return null
     val limits = state.optJSONObject("categoryLimits") ?: return null
     val alertCategories = state.optJSONArray("alertCategories") ?: return null
     if ((0 until alertCategories.length()).none { alertCategories.optString(it) == classification.category }) return null
@@ -85,12 +100,7 @@ internal fun consumeBudgetAlert(prefs: android.content.SharedPreferences, approv
     spent.put(classification.category, current)
     state.put("categorySpent", spent)
     prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
-    val crossed = mutableListOf<Int>()
-    for (index in 0 until thresholds.length()) {
-        val threshold = thresholds.optInt(index, 0)
-        val boundary = limit * threshold / 100.0
-        if (previous < boundary && current >= boundary) crossed.add(threshold)
-    }
+    val crossed = crossedAlertThresholds(previous, current, limit, (0 until thresholds.length()).map { thresholds.optInt(it, 0) })
     return if (crossed.isEmpty()) null else classification.label + " 잔액이 " + crossed.joinToString(", ") { (100 - it).toString() + "%" } + " 남았습니다."
 }
 private val approvalRegex = Regex("""\[?신한(?:체크)?승인\]?\s+.*?\((\d{4})\)\s+(\d{2})/(\d{2})\s+(\d{2}):(\d{2})\s+(?:\(금액\)|금액)\s*([\d,]+)\s*원\s+(.+)$""")
@@ -485,18 +495,19 @@ class SmsBridgePlugin : Plugin() {
             .put("periodStart", call.getString("periodStart") ?: "")
             .put("periodEnd", call.getString("periodEnd") ?: "")
             .put("quickCategories", quickCategories)
+            .put("rules", call.getArray("rules") ?: JSArray())
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
         call.resolve()
     }
     @com.getcapacitor.PluginMethod
     fun injectTestApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
-        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val approval = Approval(
             card,
             call.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
             call.getInt("amount") ?: 30000,
-            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+            call.getString("merchant") ?: "테스트 가맹점"
         )
         val queue = JSArray(prefs.getString(QUEUE_KEY, "[]"))
         queue.put(approval.toJson())
@@ -509,13 +520,13 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun injectTestNotificationApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
-        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = call.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val postedAt = System.currentTimeMillis()
         val approval = Approval(
             card,
             call.getString("occurredAt") ?: java.time.OffsetDateTime.now().withSecond(0).withNano(0).toString(),
             call.getInt("amount") ?: 5000,
-            call.getString("merchant") ?: "삼성웰스토리(주)크래프톤정",
+            call.getString("merchant") ?: "테스트 가맹점",
             notificationPostedAt = postedAt,
             source = "notification",
         )
@@ -566,12 +577,12 @@ class SmsBridgePlugin : Plugin() {
     fun scheduleTestApproval(call: PluginCall) {
         if (!isDebugBuild(context)) { call.reject("Test approval injection is available in debug builds only"); return }
         val approvalObject = call.getObject("approval") ?: JSObject()
-        val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "3741") ?: "3741"
+        val card = approvalObject.getString("cardLast4")?.filter { it.isDigit() } ?: prefs.getString(CARD_KEY, "4321") ?: "4321"
         val approval = Approval(
             card,
             approvalObject.getString("occurredAt") ?: java.time.OffsetDateTime.now().toString(),
             approvalObject.getInteger("amount") ?: 30000,
-            approvalObject.getString("merchant") ?: "삼성웰스토리(주)크래프톤정"
+            approvalObject.getString("merchant") ?: "테스트 가맹점"
         )
         val delayMs = call.getInt("delayMs")?.coerceIn(1_000, 60_000) ?: 10_000
         Handler(Looper.getMainLooper()).postDelayed({

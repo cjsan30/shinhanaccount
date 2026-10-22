@@ -1,0 +1,61 @@
+{
+  "description": "Shared cases for the immediate budget alert raised by native code while the app is closed. nativeBudgetVectors.test.ts checks them against the TypeScript rules and NativeBudgetVectorsTest.kt against the Kotlin listener, so both sides must agree.",
+  "period": [
+    { "name": "first day of the default period", "occurredAt": "2026-09-15T00:00:00+09:00", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": true },
+    { "name": "day before the default period", "occurredAt": "2026-09-14T23:59:59+09:00", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": false },
+    { "name": "last moment of the default period", "occurredAt": "2026-10-10T23:59:59+09:00", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": true },
+    { "name": "first day of the gap", "occurredAt": "2026-10-11T00:00:00+09:00", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": false },
+    { "name": "inside the gap", "occurredAt": "2026-10-12T12:00:00+09:00", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": false },
+    { "name": "UTC time that is already the gap in Korea", "occurredAt": "2026-10-10T15:00:00Z", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": false },
+    { "name": "UTC time that is already the first day in Korea", "occurredAt": "2026-09-14T15:00:00Z", "periodKey": "2026-09", "period": { "startDay": 15, "endDay": 10 }, "periodStart": "2026-09-15", "periodEnd": "2026-10-10", "inPeriod": true },
+    { "name": "start day 31 falls back to the last day of February", "occurredAt": "2026-02-28T00:00:00+09:00", "periodKey": "2026-02", "period": { "startDay": 31, "endDay": 30 }, "periodStart": "2026-02-28", "periodEnd": "2026-03-30", "inPeriod": true },
+    { "name": "day before a February start clamped from 31", "occurredAt": "2026-02-27T23:59:59+09:00", "periodKey": "2026-02", "period": { "startDay": 31, "endDay": 30 }, "periodStart": "2026-02-28", "periodEnd": "2026-03-30", "inPeriod": false },
+    { "name": "end day 31 in a 31-day month", "occurredAt": "2026-01-31T23:59:59+09:00", "periodKey": "2026-01", "period": { "startDay": 1, "endDay": 31 }, "periodStart": "2026-01-01", "periodEnd": "2026-01-31", "inPeriod": true },
+    { "name": "day after a month ending on the 31st", "occurredAt": "2026-02-01T00:00:00+09:00", "periodKey": "2026-01", "period": { "startDay": 1, "endDay": 31 }, "periodStart": "2026-01-01", "periodEnd": "2026-01-31", "inPeriod": false },
+    { "name": "end day 31 in a 30-day month", "occurredAt": "2026-04-30T23:00:00+09:00", "periodKey": "2026-04", "period": { "startDay": 1, "endDay": 31 }, "periodStart": "2026-04-01", "periodEnd": "2026-04-30", "inPeriod": true }
+  ],
+  "rules": {
+    "input": [
+      { "merchant": "메가커피", "matchMode": "contains", "bucket": "studySpace", "category": "generalCafe", "createdAt": "2026-08-01T00:00:00.000Z" },
+      { "merchant": "메가커피 강남점", "matchMode": "exact", "bucket": "resident", "category": "food", "createdAt": "2026-08-01T00:00:00.000Z" },
+      { "merchant": "커피", "matchMode": "contains", "bucket": "resident", "category": "food", "createdAt": "2026-08-02T00:00:00.000Z" },
+      { "merchant": "테스트 식당", "matchMode": "contains", "bucket": "studySpace", "category": "food", "createdAt": "2026-08-03T00:00:00.000Z" },
+      { "merchant": "식당", "matchMode": "contains", "bucket": "resident", "category": "food", "createdAt": "2026-08-04T00:00:00.000Z" },
+      { "merchant": "스터디", "matchMode": "contains", "bucket": "studySpace", "category": "studyCafe", "createdAt": "2026-08-01T00:00:00.000Z" },
+      { "merchant": "스터디", "matchMode": "contains", "bucket": "resident", "category": "education", "createdAt": "2026-08-05T00:00:00.000Z" },
+      { "merchant": "Mega Coffee", "matchMode": "contains", "bucket": "studySpace", "category": "generalCafe", "createdAt": "2026-08-06T00:00:00.000Z" }
+    ],
+    "snapshot": [
+      { "merchant": "메가커피강남점", "exact": true, "category": "food", "label": "식비" },
+      { "merchant": "megacoffee", "exact": false, "category": "generalCafe", "label": "카페" },
+      { "merchant": "테스트식당", "exact": false, "category": "", "label": "" },
+      { "merchant": "메가커피", "exact": false, "category": "generalCafe", "label": "카페" },
+      { "merchant": "스터디", "exact": false, "category": "education", "label": "교육비" },
+      { "merchant": "스터디", "exact": false, "category": "studyCafe", "label": "스터디카페" },
+      { "merchant": "식당", "exact": false, "category": "food", "label": "식비" },
+      { "merchant": "커피", "exact": false, "category": "food", "label": "식비" }
+    ],
+    "payments": [
+      { "name": "exact rule wins over contains", "merchant": "메가커피 강남점", "category": "food" },
+      { "name": "exact rule ignores brackets", "merchant": "메가커피(강남점)", "category": "food" },
+      { "name": "exact rule does not match a longer name", "merchant": "메가 커피 강남점 2층", "category": "generalCafe" },
+      { "name": "longest contains keyword wins", "merchant": "메가커피 역삼점", "category": "generalCafe" },
+      { "name": "short keyword still matches", "merchant": "동네커피", "category": "food" },
+      { "name": "rule without a budget item stops the search", "merchant": "테스트 식당 2호점", "category": "" },
+      { "name": "newer rule wins a tie", "merchant": "스터디룸", "category": "education" },
+      { "name": "matching ignores letter case", "merchant": "MEGA COFFEE 신촌", "category": "generalCafe" },
+      { "name": "no-break space is removed like a space", "merchant": "메가 커피 신촌", "category": "generalCafe" },
+      { "name": "ideographic and zero-width no-break spaces are removed", "merchant": "메가　커피﻿ 신촌", "category": "generalCafe" },
+      { "name": "no rule matches", "merchant": "편의점", "category": "" }
+    ]
+  },
+  "thresholds": [
+    { "name": "reaching the first threshold exactly", "limit": 100000, "previous": 49999, "amount": 1, "thresholds": [50, 80], "crossed": [50] },
+    { "name": "already past the first threshold", "limit": 100000, "previous": 50000, "amount": 1000, "thresholds": [50, 80], "crossed": [] },
+    { "name": "one payment crossing both thresholds", "limit": 100000, "previous": 40000, "amount": 60000, "thresholds": [50, 80], "crossed": [50, 80] },
+    { "name": "one won short of the first threshold", "limit": 100000, "previous": 0, "amount": 49999, "thresholds": [50, 80], "crossed": [] },
+    { "name": "fractional boundary is crossed by the next won", "limit": 33333, "previous": 23333, "amount": 1, "thresholds": [70, 90], "crossed": [70] },
+    { "name": "below a fractional second boundary", "limit": 33333, "previous": 23334, "amount": 5000, "thresholds": [70, 90], "crossed": [] },
+    { "name": "no limit raises no alert", "limit": 0, "previous": 0, "amount": 1000, "thresholds": [50, 80], "crossed": [] }
+  ]
+}

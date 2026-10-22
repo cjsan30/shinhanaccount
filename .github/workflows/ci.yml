@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+# 같은 브랜치에 새 커밋이 오면 이전 실행을 취소한다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 검증만 한다. 서명키·시크릿은 쓰지 않는다(릴리스 빌드는 로컬에서만).
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web (lint · test · build · security)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:run
+      - run: npm run build
+      - run: npm run test:security
+      - name: npm audit (production deps)
+        run: npm audit --omit=dev
+
+  android:
+    name: Android unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install and sync Capacitor
+        working-directory: app
+        run: |
+          npm ci
+          npm run android:sync
+      - name: Run unit tests
+        working-directory: app/android
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-unit-test-reports
+          path: app/android/app/build/reports/tests/
+          retention-days: 7

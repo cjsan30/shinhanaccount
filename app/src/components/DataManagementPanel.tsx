@@ -1,4 +1,5 @@
-import { normalizePolicyPeriod, getPolicyPeriodRange, getPolicyPeriodKey, type PolicyPeriod } from '../domain/budget';
+import { normalizePolicyPeriod, type PolicyPeriod } from '../domain/budget';
+import { getCurrentPeriodRange } from '../domain/periodSelectors';
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
@@ -10,6 +11,7 @@ import { DataIntegrityPanel } from './DataIntegrityPanel';
 import { InformationSourceLink } from './AppInformation';
 
 type Props = {
+  now: Date;
   budgetAdjustment?: ReactNode;
   importFile: File | null;
   importTransactions: ImportedCardTransaction[] | null;
@@ -18,6 +20,8 @@ type Props = {
   importMessage: string | null;
   hasMaskedCardWarning: boolean;
   policyText: string;
+  /** Opens the plan section, e.g. when the dashboard asks for this period's plan. */
+  openPlan?: boolean;
   policyDraft: SupportPolicy | null;
   policyDraftFocusToken: number;
   merchantRules: MerchantRule[];
@@ -50,7 +54,7 @@ const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 
 export function DataManagementPanel(props: Props) {
   const policyDraftRef = useRef<HTMLDivElement>(null);
-  const draftPeriodRange = getPolicyPeriodRange(getPolicyPeriodKey(new Date(), props.policyDraft?.period), props.policyDraft?.period);
+  const draftPeriodRange = getCurrentPeriodRange(props.now, props.policyDraft?.period);
   useEffect(() => {
     if (!props.policyDraft || !props.policyDraftFocusToken) return;
     requestAnimationFrame(() => policyDraftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
@@ -69,7 +73,7 @@ export function DataManagementPanel(props: Props) {
       <div className="data-section__body merchant-rule-card"><p>상호명 포함 또는 정확히 일치하는 조건을 관리합니다.</p><button className="sheet-action" onClick={props.onOpenRules}>규칙 관리</button></div>
     </details>
 
-    <details className="data-section">
+    <details className="data-section" open={props.openPlan || undefined}>
       <summary><strong>계획표</strong><span>텍스트 또는 이미지로 수정</span></summary>
       <div className="data-section__body policy-card">
         {props.budgetAdjustment}

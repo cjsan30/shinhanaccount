@@ -1,16 +1,19 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { smsBridge, notificationBridge } = vi.hoisted(() => ({
+const { smsBridge, notificationBridge, widgetBridge } = vi.hoisted(() => ({
+  widgetBridge: { sync: vi.fn() },
   smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
 vi.mock('./native/notificationBridge', () => ({ NotificationBridge: notificationBridge }));
+vi.mock('./native/widgetBridge', () => ({ WidgetBridge: widgetBridge }));
 import App from './App';
 import { previousPanel } from './domain/navigation';
 import { getPolicyPeriodKey } from './domain/budget';
 import { createEmptyLedger } from './domain/ledger';
+import { createMerchantRule, MERCHANT_RULES_STORAGE_KEY } from './domain/merchantRules';
 import { APP_INFORMATION_ACK_KEY, APP_INFORMATION_TITLE } from './domain/appInformation';
 
 let approvalListener: (() => void) | null = null;
@@ -47,6 +50,7 @@ beforeEach(() => {
   smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
   notificationBridge.getPermissionStatus.mockResolvedValue({ granted: true });
   notificationBridge.openNotificationSettings.mockResolvedValue(undefined);
+  widgetBridge.sync.mockResolvedValue(undefined);
 });
 
 describe('app entry flows', () => {
@@ -246,14 +250,15 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
+    window.localStorage.setItem(MERCHANT_RULES_STORAGE_KEY, JSON.stringify([createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' })]));
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '새 지출 직접 등록' }));
-    fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '삼성웰스토리' } });
+    fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '테스트 카페' } });
     fireEvent.change(screen.getByLabelText('금액'), { target: { value: '5000' } });
     fireEvent.click(screen.getByRole('button', { name: '지출 등록' }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
-    expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /삼성웰스토리/ }));
+    expect(screen.getByText(/테스트 카페/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /테스트 카페/ }));
     expect(screen.getByRole('heading', { name: '결제 상세' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '수정 · 분류 변경' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '취소 확인' })).toBeInTheDocument();
@@ -308,12 +313,12 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
-    smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '3741' });
+    smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '4321' });
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
     const cardInput = screen.getByLabelText('카드 끝 4자리');
-    await waitFor(() => expect(cardInput).toHaveValue('3741'));
+    await waitFor(() => expect(cardInput).toHaveValue('4321'));
     fireEvent.change(cardInput, { target: { value: '374' } });
     expect(smsBridge.clearConfiguration).toHaveBeenCalledOnce();
     expect(screen.getByText(/카드 4자리를 모두 입력하면/)).toBeInTheDocument();
@@ -350,8 +355,9 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
+    window.localStorage.setItem(MERCHANT_RULES_STORAGE_KEY, JSON.stringify([createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' })]));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'notification',
+      id: 'sms-live-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '테스트 카페', source: 'notification',
     }] });
 
     await renderApp();
@@ -359,17 +365,19 @@ describe('app entry flows', () => {
 
     await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
-    expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
+    expect(screen.getByText(/테스트 카페/)).toBeInTheDocument();
   });
 
   it('acknowledges but does not store an approval outside the confirmed policy period', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'policy-gap-approval', cardLast4: '3741', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '기간 밖 결제', source: 'notification',
+      id: 'policy-gap-approval', cardLast4: '4321', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '기간 밖 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -380,11 +388,38 @@ describe('app entry flows', () => {
     expect(screen.getByText('저장된 결제 내역이 없습니다.')).toBeInTheDocument();
   });
 
+  it('counts widget item usage and quick categories only within the item bucket', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
+      plans: { housing: 0, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+      customItems: [{ id: 'gym', label: '운동비', bucket: 'studySpace', amount: 100000 }],
+    }] }));
+    const classified = (id: string, bucket: string, category: string, amount: number) => ({ id, cardLast4: '0000', occurredAt: '2026-09-18T10:00:00+09:00', amount, merchant: id, status: 'classified', bucket, category });
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [
+      // Classified before the custom item moved from 정주비 to 학습공간비.
+      classified('gym-before-move', 'resident', 'custom:gym', 30000),
+      classified('food-wrong-bucket-1', 'studySpace', 'food', 5000),
+      classified('food-wrong-bucket-2', 'studySpace', 'food', 5000),
+      classified('cafe-1', 'studySpace', 'generalCafe', 4000),
+    ] }));
+
+    await renderApp();
+
+    await waitFor(() => expect(widgetBridge.sync).toHaveBeenCalled());
+    const rows = widgetBridge.sync.mock.lastCall![0].detailRows as Array<{ label: string; spent: number }>;
+    expect(rows.find((row) => row.label === '운동비')?.spent).toBe(0);
+    expect(rows.find((row) => row.label === '식비')?.spent).toBe(0);
+    expect(rows.find((row) => row.label === '카페')?.spent).toBe(4000);
+    expect(smsBridge.syncBudgetState.mock.lastCall![0].quickCategories[0].category).toBe('generalCafe');
+  });
+
   it('returns a classified payment to the undecided panel from its detail screen', async () => {
     const occurredAt = new Date().toISOString();
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
       ...createEmptyLedger(),
-      entries: [{ id: 'classified-1', cardLast4: '3741', occurredAt, amount: 8000, merchant: '되돌릴 결제', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'classified-1', cardLast4: '4321', occurredAt, amount: 8000, merchant: '되돌릴 결제', status: 'classified', bucket: 'resident', category: 'food' }],
     }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -438,7 +473,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
-      id: 'review-1', cardLast4: '3741', occurredAt: new Date().toISOString(), merchant: '확인 필요 결제', source: 'notification',
+      id: 'review-1', cardLast4: '4321', occurredAt: new Date().toISOString(), merchant: '확인 필요 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -465,7 +500,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingApprovalReviews.mockResolvedValue({ items: [{
-      id: 'period-gap-review', cardLast4: '3741', occurredAt, merchant: '기간 밖 확인 결제', source: 'notification',
+      id: 'period-gap-review', cardLast4: '4321', occurredAt, merchant: '기간 밖 확인 결제', source: 'notification',
     }] });
 
     await renderApp();
@@ -479,7 +514,7 @@ describe('app entry flows', () => {
     const occurredAt = new Date().toISOString();
     const ledger = {
       ...createEmptyLedger(),
-      entries: [{ id: 'paid-1', cardLast4: '3741', occurredAt, amount: 12300, merchant: '취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'paid-1', cardLast4: '4321', occurredAt, amount: 12300, merchant: '취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
     };
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(ledger));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
@@ -487,7 +522,7 @@ describe('app entry flows', () => {
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
-      id: 'cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 12300, merchant: '취소 대상', source: 'notification',
+      id: 'cancel-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 12300, merchant: '취소 대상', source: 'notification',
     }] });
 
     await renderApp();
@@ -502,14 +537,14 @@ describe('app entry flows', () => {
     const occurredAt = new Date().toISOString();
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({
       ...createEmptyLedger(),
-      entries: [{ id: 'paid-partial', cardLast4: '3741', occurredAt, amount: 12300, merchant: '부분 취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
+      entries: [{ id: 'paid-partial', cardLast4: '4321', occurredAt, amount: 12300, merchant: '부분 취소 대상', status: 'classified', bucket: 'resident', category: 'food' }],
     }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
     smsBridge.consumePendingCancellations.mockResolvedValue({ items: [{
-      id: 'partial-cancel-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 3000, merchant: '부분 취소 대상', source: 'notification',
+      id: 'partial-cancel-1', cardLast4: '4321', occurredAt: new Date(Date.now() + 60_000).toISOString(), amount: 3000, merchant: '부분 취소 대상', source: 'notification',
     }] });
 
     await renderApp();
@@ -518,5 +553,40 @@ describe('app entry flows', () => {
     expect(await screen.findByRole('heading', { name: '취소 결제 확인' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /부분 취소 3,000원/ })).toBeInTheDocument();
     expect(smsBridge.acknowledgePendingCancellations).not.toHaveBeenCalled();
+  });
+});
+
+describe('new policy period for an existing user', () => {
+  const plan = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
+  it('keeps the dashboard and confirms the previous plan with one tap instead of repeating onboarding', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+    await renderApp();
+    expect(await screen.findByText('이번 기간 계획표를 확정해 주세요')).toBeInTheDocument();
+    expect(screen.queryByText('지원자인가요?')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '지난 계획 그대로 확정' }));
+    expect(await screen.findByText('지난 계획을 이번 기간 계획으로 확정했습니다.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('이번 기간 계획표를 확정해 주세요')).not.toBeInTheDocument());
+    expect(JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!).versions.map((version: { periodKey: string }) => version.periodKey)).toEqual(['2026-09', '2026-10']);
+  });
+
+  it('opens the plan section when the user wants to edit before confirming', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+    await renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: '수정 후 확정' }));
+    expect(await screen.findByLabelText('계획표 내용')).toBeVisible();
+  });
+});
+
+describe('previous policy period evidence cleanup', () => {
+  it('removes PDF files attached before the new policy period started and keeps newer ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    const record = (id: string, attachedAt: string) => ({ id, section: 'receipt', order: 0, stored: { id, fileName: `${id}.jpg`, mimeType: 'image/jpeg', size: 1, attachedAt } });
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-10', confirmedAt: '2026-10-15T09:00:00+09:00', sourceText: 'plan', plans: { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
+    localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify([record('previous', '2026-10-12T09:00:00+09:00'), record('current', '2026-10-16T09:00:00+09:00')]));
+    await renderApp();
+    expect(await screen.findByText('새 기간이 시작되어 이전 기간 PDF 자료 1개를 정리했습니다.')).toBeInTheDocument();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('shinhanhae-report-evidence-v1')!).map((item: { id: string }) => item.id)).toEqual(['current']));
   });
 });

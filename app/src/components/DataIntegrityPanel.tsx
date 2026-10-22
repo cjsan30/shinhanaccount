@@ -1,6 +1,7 @@
 import type { PolicyPeriod } from '../domain/budget';
 import { useMemo, useState } from 'react';
-import { findSuspectedDuplicates, isEntryInPolicyPeriod, type Ledger } from '../domain/ledger';
+import { findSuspectedDuplicates, type Ledger } from '../domain/ledger';
+import { isInPeriodScope } from '../domain/periodSelectors';
 
 type ResetScope = 'ledger' | 'rules' | 'policy';
 
@@ -17,7 +18,7 @@ export function DataIntegrityPanel({ ledger, periodKey, period, canUndoImport, o
   const checks = useMemo(() => {
     const active = ledger.entries.filter((entry) => entry.status !== 'cancelled');
     const undecided = active.filter((entry) => entry.status === 'undecided').length;
-    const outside = active.filter((entry) => !isEntryInPolicyPeriod(entry, periodKey, period)).length;
+    const outside = active.filter((entry) => !isInPeriodScope(entry, { periodKey, period })).length;
     const duplicates = active.filter((entry) => findSuspectedDuplicates(ledger, entry, entry.id).length > 0).length;
     return { undecided, outside, duplicates };
   }, [ledger, periodKey, period]);

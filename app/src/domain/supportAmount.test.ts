@@ -45,7 +45,7 @@ describe('subsidy portion and cancellation integration', () => {
   });
   it('still reconciles by original amounts and preserves the confirmed subsidy portion', () => {
     const classified = reclassifyUndecided(setSupportAmount(fresh(), entry.id, 30000), entry.id, { bucket: 'resident', category: 'food' }, limits).ledger;
-    const imported = importBankTransactions(classified, [{ source: 'bankCsv', transactionId: 'bank', occurredAt: entry.occurredAt, merchant: '네이버페이', amount: 50000, direction: 'withdrawal', summary: '체크카드', classification: { status: 'undecided' } }], '6789');
+    const imported = importBankTransactions(classified, [{ source: 'bankCsv', transactionId: 'bank', occurredAt: entry.occurredAt, merchant: '네이버페이', amount: 50000, direction: 'withdrawal', summary: '체크카드' }], '6789');
     expect(imported.mergedConfirmed).toBe(1); expect(imported.ledger.entries).toHaveLength(1);
     expect(imported.ledger.entries[0]).toMatchObject({ amount: 50000, supportAmount: 30000, category: 'food' });
   });

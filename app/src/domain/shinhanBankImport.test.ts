@@ -6,7 +6,7 @@ describe('Shinhan Bank CSV import', () => {
     const csv = '거래일자,거래시간,거래내용,출금금액,입금금액,계좌번호\n20260914,13:20:00,카페,5000,0,110-123-456789\n20260914,14:00:00,지원금 입금,0,700000,110-123-456789';
     const records = parseShinhanBankCsv(new TextEncoder().encode(csv).buffer);
     expect(records).toHaveLength(2);
-    expect(records[0]).toMatchObject({ direction: 'withdrawal', amount: 5000, classification: { status: 'undecided' } });
+    expect(records[0]).toMatchObject({ direction: 'withdrawal', amount: 5000 });
     expect(records[1]).toMatchObject({ direction: 'deposit', amount: 700000 });
   });
   it('rejects unreadable header encoding instead of guessing rows', () => {
@@ -17,7 +17,7 @@ describe('Shinhan Bank CSV import', () => {
 describe('Shinhan Bank PDF import', () => {
   it('keeps a PDF withdrawal as an undecided candidate', () => {
     const [row] = parseShinhanBankPdfText('계좌번호 110-123-456789\n2026.09.29 05:36:08 출금 카페 5,000원');
-    expect(row).toMatchObject({ direction: 'withdrawal', amount: 5000, occurredAt: '2026-09-29T05:36:08+09:00', classification: { status: 'undecided' } });
+    expect(row).toMatchObject({ direction: 'withdrawal', amount: 5000, occurredAt: '2026-09-29T05:36:08+09:00' });
   });
   it('rebuilds separated PDF table cells by their visual row and columns', () => {
     const [row] = parseShinhanBankPdfTable([

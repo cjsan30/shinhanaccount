@@ -30,30 +30,30 @@ class SmsApprovalParserTest {
     fun parsesWebOriginatedApprovalWithLineBreaks() {
         val approval = parseApproval(
             """[Web발신]
-                [신한체크승인] 박*석(3741) 08/18 19:20
-                (금액) 8,000원 삼성웰스토리(주)크래프톤정
+                [신한체크승인] 홍*동(4321) 08/18 19:20
+                (금액) 8,000원 테스트 가맹점
             """.trimIndent(),
-            "3741",
+            "4321",
             2026
         )
 
         requireNotNull(approval)
-        assertEquals("3741", approval.cardLast4)
+        assertEquals("4321", approval.cardLast4)
         assertEquals("2026-08-18T19:20:00+09:00", approval.occurredAt)
         assertEquals(8000, approval.amount)
-        assertEquals("삼성웰스토리(주)크래프톤정", approval.merchant)
+        assertEquals("테스트 가맹점", approval.merchant)
     }
 
     @Test
     fun rejectsAnApprovalForAnotherCard() {
-        assertNull(parseApproval("[신한체크승인] 박*석(3741) 08/18 19:20 (금액)8,000원 테스트", "1111", 2026))
+        assertNull(parseApproval("[신한체크승인] 홍*동(4321) 08/18 19:20 (금액)8,000원 테스트", "1111", 2026))
     }
 
     @Test
     fun parsesObservedGs25Approval() {
         val approval = parseApproval(
-            "[Web발신] [신한체크승인] 박*석(3741) 08/19 00:30 (금액)1,700원 지에스(GS)25 울산대점",
-            "3741",
+            "[Web발신] [신한체크승인] 홍*동(4321) 08/19 00:30 (금액)1,700원 지에스(GS)25 울산대점",
+            "4321",
             2026,
         )
 
@@ -65,8 +65,8 @@ class SmsApprovalParserTest {
     @Test
     fun parsesObservedCafeApproval() {
         val approval = parseApproval(
-            "[Web발신] [신한체크승인] 박*석(3741) 08/18 19:18 (금액)4,700원 갈바트카페 울산무거점",
-            "3741",
+            "[Web발신] [신한체크승인] 홍*동(4321) 08/18 19:18 (금액)4,700원 갈바트카페 울산무거점",
+            "4321",
             2026,
         )
 
@@ -79,12 +79,12 @@ class SmsApprovalParserTest {
     fun parsesObservedSolPayApproval() {
         val approval = parseApproval(
             """[신한카드]
-                [신한체크승인] 박*석(3741)
+                [신한체크승인] 홍*동(4321)
                 - 승인일시: 09/18 13:29
                 - 승인금액: 1,230원
                 - 가맹점명: 씨유 양곡빌리지점
                 [신한카드 1544-7000]""".trimIndent(),
-            "3741",
+            "4321",
             2026,
         )
 
@@ -97,11 +97,11 @@ class SmsApprovalParserTest {
     @Test
     fun parsesSolPayApprovalWhenFieldLabelsVary() {
         val approval = parseApproval(
-            """[신한체크승인] 박*석(3741)
+            """[신한체크승인] 홍*동(4321)
                 - 거래시간: 09/18 13:29
                 - 결제금액: 1,230원
                 - 결제처: 씨유 양곡빌리지점""".trimIndent(),
-            "3741",
+            "4321",
             2026,
         )
 
@@ -114,39 +114,39 @@ class SmsApprovalParserTest {
     @Test
     fun rejectsSolPayApprovalWithConflictingAmounts() {
         assertNull(parseApproval(
-            """[신한체크승인] 박*석(3741)
+            """[신한체크승인] 홍*동(4321)
                 - 승인일시: 09/18 13:29
                 - 승인금액: 1,230원
                 - 결제금액: 9,999원
                 - 가맹점명: 씨유 양곡빌리지점""".trimIndent(),
-            "3741",
+            "4321",
             2026,
         ))
     }
 
     @Test
     fun `keeps incomplete approval as review instead of auto registering`() {
-        val review = parseApprovalReview("""[신한체크승인] 박*석(3741) - 승인금액: 1,230원""", "3741", 2026)
+        val review = parseApprovalReview("""[신한체크승인] 홍*동(4321) - 승인금액: 1,230원""", "4321", 2026)
         requireNotNull(review)
         assertEquals(1230, review.amount)
         assertNull(review.occurredAt)
-        assertNull(parseApproval("""[신한체크승인] 박*석(3741) - 승인금액: 1,230원""", "3741", 2026))
+        assertNull(parseApproval("""[신한체크승인] 홍*동(4321) - 승인금액: 1,230원""", "4321", 2026))
     }
 
     @Test
     fun `keeps conflicting structured values as review instead of choosing one`() {
-        val body = """[신한체크승인] 박*석(3741) - 승인일시: 09/18 13:29 - 승인금액: 1,230원 - 결제금액: 9,999원 - 가맹점명: 씨유"""
-        val review = parseApprovalReview(body, "3741", 2026)
+        val body = """[신한체크승인] 홍*동(4321) - 승인일시: 09/18 13:29 - 승인금액: 1,230원 - 결제금액: 9,999원 - 가맹점명: 씨유"""
+        val review = parseApprovalReview(body, "4321", 2026)
         requireNotNull(review)
         assertNull(review.amount)
-        assertNull(parseApproval(body, "3741", 2026))
+        assertNull(parseApproval(body, "4321", 2026))
     }
 
     @Test
     fun `accepts structured approval proof without the legacy marker`() {
         val approval = parseApproval(
-            """신한카드 박*석(3741) 결제일시: 09/18 13:29 결제금액: 1,230원 결제처: 씨유 양곡빌리지점""",
-            "3741",
+            """신한카드 홍*동(4321) 결제일시: 09/18 13:29 결제금액: 1,230원 결제처: 씨유 양곡빌리지점""",
+            "4321",
             2026,
         )
         requireNotNull(approval)
@@ -155,22 +155,22 @@ class SmsApprovalParserTest {
 
     @Test
     fun `rejects structured notice with one field and no marker`() {
-        assertNull(parseApprovalReview("""신한카드 박*석(3741) 결제금액: 1,230원""", "3741", 2026))
+        assertNull(parseApprovalReview("""신한카드 홍*동(4321) 결제금액: 1,230원""", "4321", 2026))
     }
 
     @Test
     fun `rejects invalid approval date instead of guessing`() {
-        assertNull(parseApproval("""[신한체크승인] 박*석(3741) - 승인일시: 02/30 13:29 - 승인금액: 1,230원 - 가맹점명: 씨유""", "3741", 2026))
+        assertNull(parseApproval("""[신한체크승인] 홍*동(4321) - 승인일시: 02/30 13:29 - 승인금액: 1,230원 - 가맹점명: 씨유""", "4321", 2026))
     }
 
     @Test
     fun `does not treat account transfer notice as approval`() {
-        assertNull(parseApprovalReview("""[신한체크승인] 박*석(3741) 출금 1,230원""", "3741", 2026))
+        assertNull(parseApprovalReview("""[신한체크승인] 홍*동(4321) 출금 1,230원""", "4321", 2026))
     }
 
     @Test
     fun `parses observed Shinhan check cancellation`() {
-        val cancellation = parseCancellation("""[Web발신] [신한체크취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "0934", 2026)
+        val cancellation = parseCancellation("""[Web발신] [신한체크취소] 홍*동(8765) 07/09 11:30 (금액)47,800원 SR""", "8765", 2026)
         requireNotNull(cancellation)
         assertEquals("2026-07-09T11:30:00+09:00", cancellation.occurredAt)
         assertEquals(47800, cancellation.amount)
@@ -179,29 +179,29 @@ class SmsApprovalParserTest {
 
     @Test
     fun `does not parse full credit cancellation as check cancellation`() {
-        assertNull(parseCancellation("""[신한체크전액신용취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "0934", 2026))
+        assertNull(parseCancellation("""[신한체크전액신용취소] 홍*동(8765) 07/09 11:30 (금액)47,800원 SR""", "8765", 2026))
     }
 
     @Test
     fun `parses structured SOL Pay cancellation only with every field`() {
         val cancellation = parseCancellation(
-            """[신한체크취소] 박*석(0934) - 취소일시: 07/09 11:30 - 취소금액: 47,800원 - 가맹점명: SR""",
-            "0934",
+            """[신한체크취소] 홍*동(8765) - 취소일시: 07/09 11:30 - 취소금액: 47,800원 - 가맹점명: SR""",
+            "8765",
             2026,
         )
         requireNotNull(cancellation)
         assertEquals("SR", cancellation.merchant)
-        assertNull(parseCancellation("""[신한체크취소] 박*석(0934) - 취소금액: 47,800원 - 가맹점명: SR""", "0934", 2026))
+        assertNull(parseCancellation("""[신한체크취소] 홍*동(8765) - 취소금액: 47,800원 - 가맹점명: SR""", "8765", 2026))
     }
 
     @Test
     fun `rejects cancellation for another card`() {
-        assertNull(parseCancellation("""[신한체크취소] 박*석(0934) 07/09 11:30 (금액)47,800원 SR""", "3741", 2026))
+        assertNull(parseCancellation("""[신한체크취소] 홍*동(8765) 07/09 11:30 (금액)47,800원 SR""", "4321", 2026))
     }
 
     @Test
     fun notificationIdentityKeepsIdenticalSameMinutePaymentsWhenPostedMillisecondsDiffer() {
-        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val approval = Approval("4321", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val first = notificationSourceId(approval, 1000L, "conversation-1")
         val repeated = notificationSourceId(approval, 1000L, "conversation-1")
         val second = notificationSourceId(approval, 2000L, "conversation-1")
@@ -212,7 +212,7 @@ class SmsApprovalParserTest {
 
     @Test
     fun `collapses matching Samsung Messages and Shinhan SOL approvals`() {
-        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val approval = Approval("4321", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val matchId = approvalMatchId(approval)
 
         assertTrue(isCrossSourceApprovalDuplicate(
@@ -228,7 +228,7 @@ class SmsApprovalParserTest {
 
     @Test
     fun `keeps identical repeat approvals from the same app`() {
-        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val approval = Approval("4321", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val matchId = approvalMatchId(approval)
 
         assertFalse(isCrossSourceApprovalDuplicate(
@@ -244,7 +244,7 @@ class SmsApprovalParserTest {
 
     @Test
     fun `does not reuse an already paired approval for a later payment`() {
-        val approval = Approval("3741", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
+        val approval = Approval("4321", "2026-08-19T12:30:00+09:00", 1700, "지에스(GS)25 울산대점")
         val matchId = approvalMatchId(approval)
 
         assertFalse(isCrossSourceApprovalDuplicate(

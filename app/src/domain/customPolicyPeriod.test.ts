@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getPolicyPeriodKey, getPolicyPeriodRange, isDateInPolicyPeriod, normalizePolicyPeriod } from './budget';
-import { filterImportToPolicyPeriod } from './importPolicy';
+import { filterImportToPolicyPeriod } from './periodSelectors';
 import { createEmptyLedger, getCategorySpent, importCardTransactions } from './ledger';
 import { createPolicyBook, getEffectivePolicy, loadPolicyBook, parsePolicyText, savePolicyBook } from './policy';
 import { getReportReadiness } from './reportReadiness';
@@ -14,7 +14,7 @@ describe('custom policy period consistency', () => {
   });
   it('applies identical boundaries to import, budgets and receipt candidates', () => {
     const period = { startDay: 1, endDay: 10 };
-    const records = [1, 10, 11, 15].map((day) => ({ transactionId: `t${day}`, occurredAt: `2026-09-${String(day).padStart(2, '0')}T12:00:00+09:00`, merchant: 'sample', amount: 1000, cardMasked: '****1234', approvalNumber: `0000${day}`, paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' as const } }));
+    const records = [1, 10, 11, 15].map((day) => ({ transactionId: `t${day}`, occurredAt: `2026-09-${String(day).padStart(2, '0')}T12:00:00+09:00`, merchant: 'sample', amount: 1000, cardMasked: '****1234', approvalNumber: `0000${day}`, paymentStatus: '승인', cancellationStatus: '' }));
     expect(filterImportToPolicyPeriod(records, '2026-09', period).included).toHaveLength(2);
     const imported = importCardTransactions(createEmptyLedger(), records, '1234', '2026-09', period);
     expect(imported.imported).toBe(2);

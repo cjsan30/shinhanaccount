@@ -1,5 +1,5 @@
 import { calculateBudgetSummary, getCrossedAlertThresholds, getPolicyPeriodKey, isDateInPolicyPeriod, type BudgetKey, type BudgetSummary, type PolicyPeriod } from './budget';
-import { classifyPayment, type PaymentClassification } from './sms';
+import type { PaymentClassification } from './sms';
 import type { NativeApproval } from '../native/smsBridge';
 import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 import type { ImportedBankTransaction } from './shinhanBankImport';
@@ -54,18 +54,20 @@ function isSameTransaction(left: Pick<LedgerEntry, 'occurredAt' | 'merchant' | '
   return left.occurredAt === right.occurredAt && left.amount === right.amount && normalizedMerchant(left.merchant) === normalizedMerchant(right.merchant);
 }
 
-function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string): LedgerEntry {
+function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string, classify?: (merchant: string, amount: number) => PaymentClassification): LedgerEntry {
   const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
-  const entry = toEntry(payment, transaction.classification);
+  // Without the user's rules an imported payment waits in 미정 for the user to classify.
+  const entry = toEntry(payment, classify ? classify(transaction.merchant, transaction.amount) : { status: 'undecided' });
   return { ...entry, id: `approval-${cardLast4}-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }
 
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod): ImportResult {
+/** `classify` applies the user's merchant rules; bank withdrawals stay undecided candidates (see importBankTransactions). */
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod, classify?: (merchant: string, amount: number) => PaymentClassification): ImportResult {
   const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
-  const result = reconcileImportedEntries(baseline, importable.map((transaction) => transactionToEntry(transaction, cardLast4)));
+  const result = reconcileImportedEntries(baseline, importable.map((transaction) => transactionToEntry(transaction, cardLast4, classify)));
   const added = result.entries.filter((entry) => !baseline.some((existing) => existing.id === entry.id));
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: added.filter((entry) => entry.status === 'excluded').length, undecided: added.filter((entry) => entry.status === 'undecided').length, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
@@ -81,7 +83,7 @@ export function importBankTransactions(ledger: Ledger, transactions: ImportedBan
   const result = reconcileImportedEntries(baseline, incoming);
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: 0, undecided: result.imported, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = classifyPayment, period?: PolicyPeriod): ApplyPaymentResult {
+export function applyPayment(ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}, classifier: (merchant: string, amount: number) => PaymentClassification = () => ({ status: 'undecided' }), period?: PolicyPeriod): ApplyPaymentResult {
   const quickCategories: Record<string, Extract<PaymentClassification, { status: 'classified' }>> = {
     lodging: { status: 'classified', bucket: 'resident', category: 'lodging' }, food: { status: 'classified', bucket: 'resident', category: 'food' }, education: { status: 'classified', bucket: 'resident', category: 'education' }, transport: { status: 'classified', bucket: 'resident', category: 'transport' }, studyCafe: { status: 'classified', bucket: 'studySpace', category: 'studyCafe' }, generalCafe: { status: 'classified', bucket: 'studySpace', category: 'generalCafe' }, readingRoom: { status: 'classified', bucket: 'studySpace', category: 'readingRoom' },
   };
