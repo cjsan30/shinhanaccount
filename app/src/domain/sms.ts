@@ -27,25 +27,3 @@ export function parseApprovalSms(message: string, expectedCardLast4: string, yea
     merchant: merchant.trim(),
   };
 }
-
-function normalizeMerchant(merchant: string) {
-  return merchant.toLowerCase().replace(/[\s().,㈜]/g, '');
-}
-
-export function classifyPayment(merchant: string, amount: number): PaymentClassification {
-  const normalized = normalizeMerchant(merchant);
-
-  if (normalized.includes('아이햅슨')) return { status: 'excluded' };
-  if (normalized.includes('놀유니버스')) return { status: 'classified', bucket: 'resident', category: 'lodging' };
-  if (normalized === 'sr') return { status: 'classified', bucket: 'resident', category: 'transport' };
-  if (normalized.includes('삼성웰스토리')) {
-    return amount === 8000
-      ? { status: 'classified', bucket: 'resident', category: 'food' }
-      : { status: 'classified', bucket: 'studySpace', category: 'generalCafe' };
-  }
-  if (normalized.includes('서브웨이') || normalized.includes('써브웨이') || normalized.includes('맘스터치') || normalized.includes('맥도날드')) {
-    return { status: 'classified', bucket: 'studySpace', category: 'generalCafe' };
-  }
-
-  return { status: 'undecided' };
-}

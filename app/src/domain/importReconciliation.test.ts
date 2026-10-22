@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyLedger, importBankTransactions, importCardTransactions, reclassifyUndecided, saveLedger, loadLedger } from './ledger';
 import { resolveImportDuplicate } from './importReconciliation';
-const card = (id = '123', time = '12:00:00') => ({ occurredAt: `2026-09-20T${time}+09:00`, merchant: '메가커피', amount: 2700, approvalNumber: id, cardMasked: '1234', paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' as const } });
-const bank = (id = 'b1', summary = '체크카드', time = '12:00:23') => ({ source: 'bankCsv' as const, occurredAt: `2026-09-20T${time}+09:00`, merchant: '네이버페이', amount: 2700, transactionId: id, direction: 'withdrawal' as const, summary, classification: { status: 'undecided' as const } });
+const card = (id = '123', time = '12:00:00') => ({ occurredAt: `2026-09-20T${time}+09:00`, merchant: '메가커피', amount: 2700, approvalNumber: id, cardMasked: '1234', paymentStatus: '승인', cancellationStatus: '' });
+const bank = (id = 'b1', summary = '체크카드', time = '12:00:23') => ({ source: 'bankCsv' as const, occurredAt: `2026-09-20T${time}+09:00`, merchant: '네이버페이', amount: 2700, transactionId: id, direction: 'withdrawal' as const, summary });
 describe('cross-source import reconciliation', () => {
   it('merges differing names and seconds into an existing undecided entry in both import orders', () => {
     const first = importCardTransactions(createEmptyLedger(), [card()], '1234');
@@ -25,7 +25,7 @@ describe('cross-source import reconciliation', () => {
     expect(merged.ledger.entries[0]).toMatchObject({ id: classified.entries[0].id, status: 'classified', category: 'food', memo: '보존', amount: 2700 });
   });
   it('requires Yes/No for an unproven transfer and preserves confirmed classification on Yes', () => {
-    const first = importCardTransactions(createEmptyLedger(), [{ ...card(), classification: { status: 'classified', bucket: 'resident', category: 'food' } }], '1234').ledger;
+    const first = importCardTransactions(createEmptyLedger(), [card()], '1234', undefined, undefined, () => ({ status: 'classified', bucket: 'resident', category: 'food' })).ledger;
     const result = importBankTransactions(first, [bank('transfer', '펌뱅킹 이체')], '6789');
     expect(result.reviewNeeded).toBe(1);
     const incoming = result.ledger.entries[1];
