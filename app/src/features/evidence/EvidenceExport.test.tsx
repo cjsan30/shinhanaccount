@@ -185,6 +185,21 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
   });
 
+  it('cancels an export in progress without saving and keeps the selected files', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
+    let release: () => void = () => undefined;
+    exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(() => new Promise<Uint8Array>((resolve) => { release = () => resolve(new Uint8Array([1, 2, 3])); })) });
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await screen.findByText('receipt.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(await screen.findByRole('button', { name: '생성 취소' }));
+    await waitFor(() => expect(exportMocks.create).toHaveBeenCalled());
+    release();
+    expect(await screen.findByText('PDF 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.')).toBeInTheDocument();
+    expect(exportMocks.saveFile).not.toHaveBeenCalled();
+    expect(screen.getByText('receipt.jpg')).toBeInTheDocument();
+  });
+
   it('uses OCR date only to show same-day payments and requires one user click to link', async () => {
     const entries = [
       { id: 'same-day', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '같은 날 결제', amount: 10000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' },
