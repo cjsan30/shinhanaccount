@@ -18,8 +18,8 @@ describe('undecided panel', () => {
   it('classifies selected entries in bulk and only permits a rule for one entry', () => {
     const onClassify = vi.fn();
     const entries = [
-      { id: 'one', cardLast4: '3741', merchant: '메가커피 강남점', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' },
-      { id: 'two', cardLast4: '3741', merchant: '다른 카페', amount: 4000, occurredAt: '2026-08-20T11:00:00+09:00', status: 'undecided' },
+      { id: 'one', cardLast4: '4321', merchant: '메가커피 강남점', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' },
+      { id: 'two', cardLast4: '4321', merchant: '다른 카페', amount: 4000, occurredAt: '2026-08-20T11:00:00+09:00', status: 'undecided' },
     ] as const;
     const { rerender } = render(<UndecidedPanel entries={[...entries]} items={POLICY_ITEMS} onClassify={onClassify} onExclude={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('메가커피 강남점 선택'));
@@ -35,8 +35,8 @@ describe('undecided panel', () => {
 
   it('selects and clears every visible entry without leaving a stale quick action', () => {
     const entries = [
-      { id: 'one', cardLast4: '3741', merchant: 'alpha', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' },
-      { id: 'two', cardLast4: '3741', merchant: 'bravo', amount: 4000, occurredAt: '2026-08-20T11:00:00+09:00', status: 'undecided' },
+      { id: 'one', cardLast4: '4321', merchant: 'alpha', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' },
+      { id: 'two', cardLast4: '4321', merchant: 'bravo', amount: 4000, occurredAt: '2026-08-20T11:00:00+09:00', status: 'undecided' },
     ] as const;
     render(<UndecidedPanel entries={[...entries]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('미정 지출 전체 선택'));
@@ -50,7 +50,7 @@ describe('undecided panel', () => {
 
   it('explains why a custom item cannot be saved as a merchant rule', () => {
     const customItem = { key: 'equipment', label: '장비 대여', bucket: 'resident' as const, ledgerCategories: ['custom:equipment'] };
-    const entry = { id: 'one', cardLast4: '3741', merchant: '대여점', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' } as const;
+    const entry = { id: 'one', cardLast4: '4321', merchant: '대여점', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' } as const;
     render(<UndecidedPanel entries={[entry]} items={[customItem]} onClassify={vi.fn()} onExclude={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('대여점 선택'));
     expect(screen.getByLabelText('이 상호명도 자동 분류 규칙으로 저장')).toBeDisabled();
@@ -64,7 +64,7 @@ describe('undecided panel', () => {
 
   it('lets the user exclude selected business-irrelevant expenses without applying a category', () => {
     const onExclude = vi.fn();
-    const entry = { id: 'one', cardLast4: '3741', merchant: '개인 결제', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' } as const;
+    const entry = { id: 'one', cardLast4: '4321', merchant: '개인 결제', amount: 5000, occurredAt: '2026-08-20T10:00:00+09:00', status: 'undecided' } as const;
     render(<UndecidedPanel entries={[entry]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={onExclude} />);
     fireEvent.click(screen.getByLabelText('개인 결제 선택'));
     fireEvent.click(screen.getByRole('button', { name: '사업 무관 제외' }));

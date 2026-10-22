@@ -5,7 +5,7 @@ import { POLICY_MAX_LIMITS, type BudgetKey } from './budget';
 import type { Ledger } from './ledger';
 import type { NativeApproval } from '../native/smsBridge';
 
-const cafe5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '테스트 카페' };
+const cafe5000 = { cardLast4: '4321', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '테스트 카페' };
 // The user has registered rules for these test merchants; without a rule a payment stays undecided.
 const userRules = [
   createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' }, '2026-07-01T00:00:00.000Z'),
@@ -78,25 +78,25 @@ describe('expense ledger', () => {
   });
 
   it('replaces demo entries once, then merges future exports by approval number', () => {
-    const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '374*', merchant: '테스트 카페', approvalNumber: '00459878', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
-    const first = importCardTransactions(createInitialLedger(), [transaction], '3741');
+    const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '432*', merchant: '테스트 카페', approvalNumber: '00001111', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
+    const first = importCardTransactions(createInitialLedger(), [transaction], '4321');
     expect(first).toMatchObject({ imported: 1, replacedDemo: true });
     expect(first.ledger.entries).toHaveLength(1);
-    expect(first.ledger.entries[0].cardLast4).toBe('3741');
-    const second = importCardTransactions(first.ledger, [transaction], '3741');
+    expect(first.ledger.entries[0].cardLast4).toBe('4321');
+    const second = importCardTransactions(first.ledger, [transaction], '4321');
     expect(second).toMatchObject({ imported: 0, duplicates: 1, replacedDemo: false });
   });
   it('does not duplicate the same transaction when SMS and Excel use different identifiers', () => {
     const smsLedger = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS).ledger;
-    const transaction = { occurredAt: cafe5000.occurredAt, cardMasked: '374*', merchant: cafe5000.merchant, approvalNumber: '00459878', amount: cafe5000.amount, paymentStatus: '승인', cancellationStatus: '' };
+    const transaction = { occurredAt: cafe5000.occurredAt, cardMasked: '432*', merchant: cafe5000.merchant, approvalNumber: '00001111', amount: cafe5000.amount, paymentStatus: '승인', cancellationStatus: '' };
 
-    expect(importCardTransactions(smsLedger, [transaction], '3741')).toMatchObject({ imported: 0, duplicates: 1 });
-    const excelLedger = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741').ledger;
+    expect(importCardTransactions(smsLedger, [transaction], '4321')).toMatchObject({ imported: 0, duplicates: 1 });
+    const excelLedger = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '4321').ledger;
     expect(apply(excelLedger, cafe5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
   });
   it('does not store imported transactions outside the selected policy period', () => {
-    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '374*', merchant: '테스트 카페', approvalNumber: '00459879', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
-    const result = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741', '2026-09');
+    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '432*', merchant: '테스트 카페', approvalNumber: '00001112', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
+    const result = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '4321', '2026-09');
     expect(result.imported).toBe(0);
     expect(result.ledger.entries).toHaveLength(0);
     expect(result.replacedDemo).toBe(false);
@@ -189,9 +189,9 @@ describe('expense ledger', () => {
 it('shows recent payments by occurrence time instead of insertion order', () => {
   const ledger = createInitialLedger();
   ledger.entries = [
-    { id: 'older', cardLast4: '3741', occurredAt: '2026-08-15T12:00:00+09:00', amount: 1, merchant: 'older', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
-    { id: 'newer', cardLast4: '3741', occurredAt: '2026-08-18T12:00:00+09:00', amount: 1, merchant: 'newer', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
-    { id: 'middle', cardLast4: '3741', occurredAt: '2026-08-16T12:00:00+09:00', amount: 1, merchant: 'middle', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'older', cardLast4: '4321', occurredAt: '2026-08-15T12:00:00+09:00', amount: 1, merchant: 'older', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'newer', cardLast4: '4321', occurredAt: '2026-08-18T12:00:00+09:00', amount: 1, merchant: 'newer', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'middle', cardLast4: '4321', occurredAt: '2026-08-16T12:00:00+09:00', amount: 1, merchant: 'middle', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
   ];
   expect(getRecentEntries(ledger, '2026-08').map((entry) => entry.id)).toEqual(['newer', 'middle', 'older']);
 });
@@ -199,8 +199,8 @@ it('shows recent payments by occurrence time instead of insertion order', () => 
 it('shows the full policy period through the selected local day', () => {
   const ledger = createInitialLedger();
   ledger.entries = [
-    { id: 'today', cardLast4: '3741', occurredAt: '2026-08-19T12:00:00+09:00', amount: 1, merchant: 'today', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
-    { id: 'future', cardLast4: '3741', occurredAt: '2026-08-20T12:00:00+09:00', amount: 1, merchant: 'future', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'today', cardLast4: '4321', occurredAt: '2026-08-19T12:00:00+09:00', amount: 1, merchant: 'today', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
+    { id: 'future', cardLast4: '4321', occurredAt: '2026-08-20T12:00:00+09:00', amount: 1, merchant: 'future', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
   ];
   expect(getRecentEntries(ledger, '2026-08', Number.POSITIVE_INFINITY, new Date('2026-08-19T23:59:59+09:00')).map((entry) => entry.id)).toEqual(['today']);
 });
