@@ -20,6 +20,8 @@ type Props = {
   importMessage: string | null;
   hasMaskedCardWarning: boolean;
   policyText: string;
+  /** Opens the plan section, e.g. when the dashboard asks for this period's plan. */
+  openPlan?: boolean;
   policyDraft: SupportPolicy | null;
   policyDraftFocusToken: number;
   merchantRules: MerchantRule[];
@@ -71,7 +73,7 @@ export function DataManagementPanel(props: Props) {
       <div className="data-section__body merchant-rule-card"><p>상호명 포함 또는 정확히 일치하는 조건을 관리합니다.</p><button className="sheet-action" onClick={props.onOpenRules}>규칙 관리</button></div>
     </details>
 
-    <details className="data-section">
+    <details className="data-section" open={props.openPlan || undefined}>
       <summary><strong>계획표</strong><span>텍스트 또는 이미지로 수정</span></summary>
       <div className="data-section__body policy-card">
         {props.budgetAdjustment}

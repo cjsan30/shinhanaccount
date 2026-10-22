@@ -555,3 +555,26 @@ describe('app entry flows', () => {
     expect(smsBridge.acknowledgePendingCancellations).not.toHaveBeenCalled();
   });
 });
+
+describe('new policy period for an existing user', () => {
+  const plan = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
+  it('keeps the dashboard and confirms the previous plan with one tap instead of repeating onboarding', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+    await renderApp();
+    expect(await screen.findByText('이번 기간 계획표를 확정해 주세요')).toBeInTheDocument();
+    expect(screen.queryByText('지원자인가요?')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '지난 계획 그대로 확정' }));
+    expect(await screen.findByText('지난 계획을 이번 기간 계획으로 확정했습니다.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('이번 기간 계획표를 확정해 주세요')).not.toBeInTheDocument());
+    expect(JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!).versions.map((version: { periodKey: string }) => version.periodKey)).toEqual(['2026-09', '2026-10']);
+  });
+
+  it('opens the plan section when the user wants to edit before confirming', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+    await renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: '수정 후 확정' }));
+    expect(await screen.findByLabelText('계획표 내용')).toBeVisible();
+  });
+});
