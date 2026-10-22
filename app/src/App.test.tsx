@@ -576,6 +576,9 @@ describe('new policy period for an existing user', () => {
     await renderApp();
     fireEvent.click(await screen.findByRole('button', { name: '수정 후 확정' }));
     expect(await screen.findByLabelText('계획표 내용')).toBeVisible();
+  });
+});
+
 describe('previous policy period evidence cleanup', () => {
   it('removes PDF files attached before the new policy period started and keeps newer ones', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
