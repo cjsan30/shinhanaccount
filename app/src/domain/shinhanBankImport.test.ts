@@ -23,7 +23,7 @@ describe('Shinhan Bank PDF import', () => {
     const [row] = parseShinhanBankPdfTable([
       // Coordinates mirror the real Shinhan Bank PDF: values are split into
       // individual text items and the merchant/balance begin at 361/466pt.
-      { text: '[신한] 110635330683', x: 162, y: 745 }, { text: '20260928', x: 37, y: 655 }, { text: '21:51:33', x: 107, y: 655 }, { text: '체크카드', x: 170, y: 655 }, { text: '10,000', x: 251, y: 655 }, { text: '0', x: 346, y: 655 }, { text: '주식회사 아성', x: 361, y: 655 }, { text: '325,481', x: 466, y: 655 }, { text: '원신한', x: 522, y: 655 },
+      { text: '[신한] 110000000000', x: 162, y: 745 }, { text: '20260928', x: 37, y: 655 }, { text: '21:51:33', x: 107, y: 655 }, { text: '체크카드', x: 170, y: 655 }, { text: '10,000', x: 251, y: 655 }, { text: '0', x: 346, y: 655 }, { text: '주식회사 아성', x: 361, y: 655 }, { text: '325,481', x: 466, y: 655 }, { text: '원신한', x: 522, y: 655 },
     ]);
     expect(row).toMatchObject({ direction: 'withdrawal', amount: 10000, merchant: '주식회사 아성', summary: '체크카드', balance: 325481, branch: '원신한', occurredAt: '2026-09-28T21:51:33+09:00' });
   });
@@ -32,7 +32,7 @@ describe('Shinhan Bank PDF import', () => {
   });
   it('identifies deposits so the import layer can exclude them from candidates', () => {
     const [row] = parseShinhanBankPdfTable([
-      { text: '110635330683', x: 200, y: 720 }, { text: '20260928', x: 37, y: 500 }, { text: '21:51:33', x: 107, y: 500 }, { text: '타행모바일뱅킹', x: 170, y: 500 }, { text: '0', x: 251, y: 500 }, { text: '3,900', x: 346, y: 500 }, { text: '박민석', x: 352, y: 500 },
+      { text: '110000000000', x: 200, y: 720 }, { text: '20260928', x: 37, y: 500 }, { text: '21:51:33', x: 107, y: 500 }, { text: '타행모바일뱅킹', x: 170, y: 500 }, { text: '0', x: 251, y: 500 }, { text: '3,900', x: 346, y: 500 }, { text: '박민석', x: 352, y: 500 },
     ]);
     expect(row).toMatchObject({ direction: 'deposit', amount: 3900 });
   });
