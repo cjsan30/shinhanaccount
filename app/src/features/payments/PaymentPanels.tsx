@@ -60,7 +60,7 @@ export function PaymentEdit({ entry, onSave }: PaymentEditProps) {
   };
   return <>
     <p>수정한 내역은 수동 입력 내역으로 기록됩니다.</p>
-    <label>결제일시<input id="edit-occurred-at" aria-label="수정 결제일시" type="datetime-local" defaultValue={entry.occurredAt.slice(0, 16)} /></label>
+    <label>결제일시<input id="edit-occurred-at" aria-label="수정 결제일시" type="datetime-local" onClick={(event) => event.currentTarget.showPicker?.()} defaultValue={entry.occurredAt.slice(0, 16)} /></label>
     <label>상호명<input id="edit-merchant" aria-label="수정 상호명" defaultValue={entry.merchant} /></label>
     <label>금액<input id="edit-amount" aria-label="수정 금액" type="number" inputMode="numeric" min="1" defaultValue={entry.amount} /></label>
     <label>분류<select id="edit-category" aria-label="수정 분류" defaultValue={POLICY_ITEMS.find((item) => item.ledgerCategories.includes(String(entry.category)))?.key ?? 'food'}>{POLICY_ITEMS.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>
