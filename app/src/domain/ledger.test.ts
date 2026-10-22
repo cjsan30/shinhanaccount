@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyCancellation, applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
+import { createEmptyLedger, applyCancellation, applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
 import { classifyPayment } from './sms';
+import { classifyWithMerchantRules, createMerchantRule } from './merchantRules';
 import { POLICY_MAX_LIMITS } from './budget';
 
 const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
@@ -194,4 +195,28 @@ it('shows the full policy period through the selected local day', () => {
     { id: 'future', cardLast4: '3741', occurredAt: '2026-08-20T12:00:00+09:00', amount: 1, merchant: 'future', status: 'classified', bucket: 'resident', category: 'food', periodKey: '2026-08' },
   ];
   expect(getRecentEntries(ledger, '2026-08', Number.POSITIVE_INFINITY, new Date('2026-08-19T23:59:59+09:00')).map((entry) => entry.id)).toEqual(['today']);
+});
+
+describe('card import classification', () => {
+  const cardRow = (merchant: string, approvalNumber: string) => ({ occurredAt: '2026-09-20T12:00:00+09:00', cardMasked: '000*', merchant, approvalNumber, amount: 9000, paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' as const } });
+  const rules = [createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' }, '2026-09-01T00:00:00.000Z')];
+  const classify = (merchant: string, amount: number) => classifyWithMerchantRules(merchant, amount, rules);
+
+  it('applies the user merchant rules to imported card payments', () => {
+    const result = importCardTransactions(createEmptyLedger(), [cardRow('테스트 카페 강남점', '00000001'), cardRow('규칙 없는 가게', '00000002')], '0000', '2026-09', undefined, classify);
+    expect(result.ledger.entries.map((entry) => [entry.merchant, entry.status, entry.category])).toEqual([
+      ['테스트 카페 강남점', 'classified', 'generalCafe'],
+      ['규칙 없는 가게', 'undecided', undefined],
+    ]);
+  });
+
+  it('keeps the parsed classification when no classifier is given', () => {
+    const result = importCardTransactions(createEmptyLedger(), [cardRow('테스트 카페 강남점', '00000001')], '0000', '2026-09');
+    expect(result.ledger.entries[0].status).toBe('undecided');
+  });
+
+  it('leaves bank withdrawals as undecided candidates even when a rule matches', () => {
+    const withdrawal = { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', merchant: '테스트 카페 강남점', amount: 9000, transactionId: 't1', direction: 'withdrawal' as const, classification: classify('테스트 카페 강남점', 9000) };
+    expect(importBankTransactions(createEmptyLedger(), [withdrawal], '0000', '2026-09').ledger.entries[0].status).toBe('undecided');
+  });
 });
