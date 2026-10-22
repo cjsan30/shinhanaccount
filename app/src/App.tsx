@@ -61,9 +61,7 @@ import { resolveImportDuplicate } from './domain/importReconciliation';
 import { AppInformationContent, AppInformationNotice } from './components/AppInformation';
 import { APP_INFORMATION_TITLE, hasConfirmedAppInformation } from './domain/appInformation';
 import { loadInformationConfirmation, saveInformationConfirmation } from './native/appInformationPreference';
-import './App.css';
-import './AppFixes.css';
-import './AppOverrides.css';
+import './styles/index.css';
 
 const EvidenceExport = lazy(() => import('./features/evidence/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
 const DataManagementPanel = lazy(() => import('./components/DataManagementPanel').then((module) => ({ default: module.DataManagementPanel })));
