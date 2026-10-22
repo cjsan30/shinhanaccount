@@ -1,4 +1,3 @@
-import { classifyPayment, type PaymentClassification } from './sms';
 // Android System WebView can lag modern browsers. The legacy build ships the
 // Map.getOrInsertComputed polyfill required by protected Shinhan PDFs.
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
@@ -17,7 +16,6 @@ export type ImportedBankTransaction = {
   /** 원본 PDF를 유지한 채 제출용으로 가릴 수 있게 하는 원본 좌표다. */
   sourcePage?: number;
   sourceY?: number;
-  classification: PaymentClassification;
 };
 
 type CsvRow = Record<string, string>;
@@ -77,7 +75,7 @@ export function parseShinhanBankCsv(data: ArrayBuffer): ImportedBankTransaction[
     const amount = withdrawal > 0 ? withdrawal : direction === 'withdrawal' ? Math.abs(genericAmount) : deposit > 0 ? deposit : Math.abs(genericAmount);
     const merchant = valueAt(row, descriptionHeaders);
     if (!occurredAt || !amount || !merchant) return [];
-    return [{ source: 'bankCsv' as const, occurredAt, accountMasked: valueAt(row, accountHeaders), merchant, amount, transactionId: `${occurredAt}|${merchant}|${amount}|${index}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' as const } : classifyPayment(merchant, amount) }];
+    return [{ source: 'bankCsv' as const, occurredAt, accountMasked: valueAt(row, accountHeaders), merchant, amount, transactionId: `${occurredAt}|${merchant}|${amount}|${index}`, direction }];
   });
   if (!parsed.length) throw new Error('읽을 수 있는 입출금 행이 없습니다.');
   return parsed;
@@ -99,7 +97,7 @@ export function parseShinhanBankPdfText(text: string): ImportedBankTransaction[]
     const merchant = detail.replace(/[\d,]+원?/g, '').replace(/\s+/g, ' ').trim() || `${directionText} 내역`;
     const occurredAt = `${date[1]}-${date[2]}-${date[3]}T${time[1].padEnd(8, ':00')}+09:00`;
     const value = amounts[0];
-    return [{ source: 'bankCsv' as const, occurredAt, accountMasked, merchant, amount: value, transactionId: `${occurredAt}|${merchant}|${value}|${index}`, direction, classification: direction === 'withdrawal' ? { status: 'undecided' as const } : classifyPayment(merchant, value) }];
+    return [{ source: 'bankCsv' as const, occurredAt, accountMasked, merchant, amount: value, transactionId: `${occurredAt}|${merchant}|${value}|${index}`, direction }];
   });
   if (!rows.length) throw new Error('신한은행 PDF에서 입출금 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
   return rows;
@@ -137,7 +135,7 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
     const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
     if (!amount) continue;
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
-    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, summary: description, ...(balance ? { balance } : {}), ...(branch ? { branch } : {}), amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, sourcePage: group.page, sourceY: group.y, classification: direction === 'withdrawal' ? { status: 'undecided' } : classifyPayment(merchant, amount) });
+    rows.push({ source: 'bankCsv', occurredAt, accountMasked, merchant, summary: description, ...(balance ? { balance } : {}), ...(branch ? { branch } : {}), amount, transactionId: `${occurredAt}|${merchant}|${amount}|${rows.length}`, direction, sourcePage: group.page, sourceY: group.y });
   }
   if (!rows.length) throw new Error('신한은행 PDF에서 입출금 표 행을 찾지 못했습니다. 입출금내역 PDF인지 확인해 주세요.');
   return rows;

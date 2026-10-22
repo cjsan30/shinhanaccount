@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyLedger, applyCancellation, applyPayment, cancelPayment, createInitialLedger, excludeUndecided, markAsUndecided, removeLedgerEntry, updateLedgerEntry, findCancellationCandidates, findSuspectedDuplicates, getAutoCancellationMatch, getHistoryEntries, getRecentEntries, getSummary, importBankTransactions, importCardTransactions, loadLedger, reclassifyUndecided, saveAsUndecided, saveLedger } from './ledger';
-import { classifyPayment } from './sms';
 import { classifyWithMerchantRules, createMerchantRule } from './merchantRules';
-import { POLICY_MAX_LIMITS } from './budget';
+import { POLICY_MAX_LIMITS, type BudgetKey } from './budget';
+import type { Ledger } from './ledger';
+import type { NativeApproval } from '../native/smsBridge';
 
-const wellstory5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '삼성웰스토리(주)크래프톤정' };
+const cafe5000 = { cardLast4: '3741', occurredAt: '2026-07-24T17:58:00+09:00', amount: 5000, merchant: '테스트 카페' };
+// The user has registered rules for these test merchants; without a rule a payment stays undecided.
+const userRules = [
+  createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' }, '2026-07-01T00:00:00.000Z'),
+  createMerchantRule('테스트 식당', { bucket: 'resident', category: 'food' }, '2026-07-01T00:00:00.000Z'),
+];
+const apply = (ledger: Ledger, payment: NativeApproval, limits: Record<BudgetKey, number>, categoryLimits: Record<string, number> = {}) =>
+  applyPayment(ledger, payment, limits, categoryLimits, (merchant) => classifyWithMerchantRules(merchant, userRules));
 
 describe('expense ledger', () => {
   it('uses a notification quick classification before merchant auto rules', () => {
@@ -15,62 +23,62 @@ describe('expense ledger', () => {
   });
   it('separates spending by the policy period beginning on the 15th', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
-    const first = applyPayment(ledger, { ...wellstory5000, occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
-    const gap = applyPayment(first.ledger, { ...wellstory5000, occurredAt: '2026-08-11T12:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
-    const second = applyPayment(gap.ledger, { ...wellstory5000, occurredAt: '2026-08-15T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const first = apply(ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const gap = apply(first.ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-11T12:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
+    const second = apply(gap.ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-15T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
     expect(getRecentEntries(second.ledger, '2026-07').map((entry) => entry.occurredAt)).toEqual(['2026-08-10T23:59:00+09:00']);
   });
   it('preserves the manual source on a directly entered expense', () => {
-    const result = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'manual-test', source: 'manual' }, POLICY_MAX_LIMITS);
+    const result = apply({ ...createInitialLedger(), entries: [] }, { ...cafe5000, id: 'manual-test', source: 'manual' }, POLICY_MAX_LIMITS);
     expect(result.entry.source).toBe('manual');
   });
   it('keeps two identical same-minute notification payments when their posted milliseconds differ', () => {
-    const first = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'notification-1000', notificationPostedAt: 1000, source: 'notification' }, POLICY_MAX_LIMITS);
-    const second = applyPayment(first.ledger, { ...wellstory5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
-    const repeated = applyPayment(second.ledger, { ...wellstory5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
+    const first = apply({ ...createInitialLedger(), entries: [] }, { ...cafe5000, id: 'notification-1000', notificationPostedAt: 1000, source: 'notification' }, POLICY_MAX_LIMITS);
+    const second = apply(first.ledger, { ...cafe5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
+    const repeated = apply(second.ledger, { ...cafe5000, id: 'notification-2000', notificationPostedAt: 2000, source: 'notification' }, POLICY_MAX_LIMITS);
 
     expect(second.ledger.entries).toHaveLength(2);
     expect(second.ledger.entries.map((entry) => entry.notificationPostedAt)).toEqual([1000, 2000]);
     expect(repeated.ledger.entries).toHaveLength(2);
   });
-  it('stores a 5,000 won Samsung Wellstory approval in study-space general cafe', () => {
-    const result = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS);
+  it('classifies a payment by the user rule into study-space general cafe', () => {
+    const result = apply(createInitialLedger(), cafe5000, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'studySpace', category: 'generalCafe' });
     expect(getSummary(result.ledger, 'studySpace', POLICY_MAX_LIMITS.studySpace)).toMatchObject({ spent: 82700, remaining: 117300 });
   });
 
   it('emits crossed alert thresholds only for the affected budget', () => {
     const ledger = { ...createInitialLedger(), entries: [], alertThresholds: [50, 80] as [number, number] };
-    const result = applyPayment(ledger, { ...wellstory5000, amount: 101000 }, POLICY_MAX_LIMITS);
+    const result = apply(ledger, { ...cafe5000, amount: 101000 }, POLICY_MAX_LIMITS);
     expect(result.alerts).toEqual([50]);
     expect(getSummary(result.ledger, 'resident', POLICY_MAX_LIMITS.resident).spent).toBe(0);
   });
 
   it('uses the selected support-item plan instead of the whole budget for alerts', () => {
     const ledger = { ...createInitialLedger(), entries: [], alertThresholds: [50, 80] as [number, number] };
-    const result = applyPayment(ledger, { ...wellstory5000, amount: 130000 }, { resident: 500000, studySpace: 200000 }, { generalCafe: 250000 });
+    const result = apply(ledger, { ...cafe5000, amount: 130000 }, { resident: 500000, studySpace: 200000 }, { generalCafe: 250000 });
     expect(result.alerts).toEqual([50]);
   });
 
-  it('keeps excluded payments out of budget spending and prevents duplicates', () => {
-    const payment = { ...wellstory5000, merchant: '주식회사 아이햅슨', amount: 12500 };
-    const once = applyPayment(createInitialLedger(), payment, POLICY_MAX_LIMITS);
-    const twice = applyPayment(once.ledger, payment, POLICY_MAX_LIMITS);
-    expect(once.entry.status).toBe('excluded');
+  it('keeps a payment without a matching user rule undecided, out of spending, and deduplicated', () => {
+    const payment = { ...cafe5000, merchant: '규칙 없는 가게', amount: 12500 };
+    const once = apply(createInitialLedger(), payment, POLICY_MAX_LIMITS);
+    const twice = apply(once.ledger, payment, POLICY_MAX_LIMITS);
+    expect(once.entry.status).toBe('undecided');
     expect(getSummary(once.ledger, 'resident', POLICY_MAX_LIMITS.resident).spent).toBe(215700);
     expect(twice.ledger.entries).toHaveLength(once.ledger.entries.length);
   });
 
   it('lets a user store an otherwise classifiable payment as undecided', () => {
-    const result = saveAsUndecided(createInitialLedger(), wellstory5000);
+    const result = saveAsUndecided(createInitialLedger(), cafe5000);
     expect(result.entry.status).toBe('undecided');
     expect(getSummary(result.ledger, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(77700);
   });
 
   it('replaces demo entries once, then merges future exports by approval number', () => {
-    const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '374*', merchant: 'Samsung Wellstory', approvalNumber: '00459878', amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment('Samsung Wellstory', 5000) };
+    const transaction = { occurredAt: '2026-07-24T17:58:00+09:00', cardMasked: '374*', merchant: '테스트 카페', approvalNumber: '00459878', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
     const first = importCardTransactions(createInitialLedger(), [transaction], '3741');
     expect(first).toMatchObject({ imported: 1, replacedDemo: true });
     expect(first.ledger.entries).toHaveLength(1);
@@ -79,15 +87,15 @@ describe('expense ledger', () => {
     expect(second).toMatchObject({ imported: 0, duplicates: 1, replacedDemo: false });
   });
   it('does not duplicate the same transaction when SMS and Excel use different identifiers', () => {
-    const smsLedger = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
-    const transaction = { occurredAt: wellstory5000.occurredAt, cardMasked: '374*', merchant: wellstory5000.merchant, approvalNumber: '00459878', amount: wellstory5000.amount, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment(wellstory5000.merchant, wellstory5000.amount) };
+    const smsLedger = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS).ledger;
+    const transaction = { occurredAt: cafe5000.occurredAt, cardMasked: '374*', merchant: cafe5000.merchant, approvalNumber: '00459878', amount: cafe5000.amount, paymentStatus: '승인', cancellationStatus: '' };
 
     expect(importCardTransactions(smsLedger, [transaction], '3741')).toMatchObject({ imported: 0, duplicates: 1 });
     const excelLedger = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741').ledger;
-    expect(applyPayment(excelLedger, wellstory5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
+    expect(apply(excelLedger, cafe5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
   });
   it('does not store imported transactions outside the selected policy period', () => {
-    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '374*', merchant: 'Samsung Wellstory', approvalNumber: '00459879', amount: 5000, paymentStatus: '승인', cancellationStatus: '', classification: classifyPayment('Samsung Wellstory', 5000) };
+    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '374*', merchant: '테스트 카페', approvalNumber: '00459879', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
     const result = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '3741', '2026-09');
     expect(result.imported).toBe(0);
     expect(result.ledger.entries).toHaveLength(0);
@@ -95,9 +103,9 @@ describe('expense ledger', () => {
   });
   it('imports only policy-period withdrawals from a bank statement as undecided expenses', () => {
     const transactions = [
-      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', accountMasked: '6789', merchant: '카페', amount: 5000, transactionId: 'withdrawal', direction: 'withdrawal' as const, classification: { status: 'undecided' as const } },
-      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:10:00+09:00', accountMasked: '6789', merchant: '지원금 입금', amount: 700000, transactionId: 'deposit', direction: 'deposit' as const, classification: { status: 'undecided' as const } },
-      { source: 'bankCsv' as const, occurredAt: '2026-09-13T12:00:00+09:00', accountMasked: '6789', merchant: '기간 외 지출', amount: 5000, transactionId: 'outside', direction: 'withdrawal' as const, classification: { status: 'undecided' as const } },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', accountMasked: '6789', merchant: '카페', amount: 5000, transactionId: 'withdrawal', direction: 'withdrawal' as const },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:10:00+09:00', accountMasked: '6789', merchant: '지원금 입금', amount: 700000, transactionId: 'deposit', direction: 'deposit' as const },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-13T12:00:00+09:00', accountMasked: '6789', merchant: '기간 외 지출', amount: 5000, transactionId: 'outside', direction: 'withdrawal' as const },
     ];
     const result = importBankTransactions({ ...createInitialLedger(), entries: [] }, transactions, '6789', '2026-09');
     expect(result).toMatchObject({ imported: 1, undecided: 1, skipped: 2 });
@@ -106,75 +114,75 @@ describe('expense ledger', () => {
   it('round-trips the ledger through local storage', () => {
     const values = new Map<string, string>();
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };
-    const ledger = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS).ledger;
+    const ledger = apply(createInitialLedger(), cafe5000, POLICY_MAX_LIMITS).ledger;
     saveLedger(storage, ledger);
     expect(loadLedger(storage)).toEqual(ledger);
   });
   it('updates and removes a ledger entry without affecting other entries', () => {
-    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS);
+    const applied = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS);
     const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: '수정 카페', amount: 7000, occurredAt: '2026-07-25T12:00:00+09:00', bucket: 'studySpace', category: 'generalCafe' });
     expect(updated.entries[0]).toMatchObject({ merchant: '수정 카페', amount: 7000, source: 'manual' });
     expect(removeLedgerEntry(updated, applied.entry.id).entries).toHaveLength(0);
   });
   it('moves an automatically classified payment back to undecided without changing its total history', () => {
-    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS);
+    const applied = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS);
     const reverted = markAsUndecided(applied.ledger, applied.entry.id);
     expect(reverted.entries[0]).toMatchObject({ status: 'undecided', bucket: undefined, category: undefined });
     expect(getSummary(reverted, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(0);
-    expect(reverted.entries[0]).toMatchObject({ merchant: wellstory5000.merchant, amount: wellstory5000.amount });
+    expect(reverted.entries[0]).toMatchObject({ merchant: cafe5000.merchant, amount: cafe5000.amount });
   });
   it('excludes only selected undecided expenses while retaining a reversible history record', () => {
-    const first = saveAsUndecided({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'exclude-me' });
-    const second = saveAsUndecided(first.ledger, { ...wellstory5000, id: 'keep-me', merchant: '사업 결제' });
+    const first = saveAsUndecided({ ...createInitialLedger(), entries: [] }, { ...cafe5000, id: 'exclude-me' });
+    const second = saveAsUndecided(first.ledger, { ...cafe5000, id: 'keep-me', merchant: '사업 결제' });
     const excluded = excludeUndecided(second.ledger, ['exclude-me']);
     expect(excluded.entries.find((entry) => entry.id === 'exclude-me')).toMatchObject({ status: 'excluded', bucket: undefined, category: undefined });
     expect(excluded.entries.find((entry) => entry.id === 'keep-me')).toMatchObject({ status: 'undecided' });
     expect(getHistoryEntries(excluded).map((entry) => entry.id)).toContain('exclude-me');
   });
   it('moves an undecided expense into a user-selected support item', () => {
-    const saved = saveAsUndecided(createInitialLedger(), wellstory5000);
+    const saved = saveAsUndecided(createInitialLedger(), cafe5000);
     const result = reclassifyUndecided(saved.ledger, saved.entry.id, { bucket: 'resident', category: 'transport' }, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'transport', source: 'manual' });
     expect(getSummary(result.ledger, 'resident', POLICY_MAX_LIMITS.resident).spent).toBe(220700);
   });
   it('keeps a memo and finds only nearby same-merchant same-amount duplicates', () => {
-    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS);
-    const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: wellstory5000.merchant, amount: 5000, occurredAt: wellstory5000.occurredAt, bucket: 'studySpace', category: 'generalCafe', memo: '점심 스터디' });
+    const applied = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS);
+    const updated = updateLedgerEntry(applied.ledger, applied.entry.id, { merchant: cafe5000.merchant, amount: 5000, occurredAt: cafe5000.occurredAt, bucket: 'studySpace', category: 'generalCafe', memo: '점심 스터디' });
     expect(updated.entries[0].memo).toBe('점심 스터디');
-    expect(findSuspectedDuplicates(updated, { ...wellstory5000, occurredAt: '2026-07-24T17:59:00+09:00' })).toHaveLength(1);
-    expect(findSuspectedDuplicates(updated, { ...wellstory5000, occurredAt: '2026-07-24T18:05:00+09:00' })).toHaveLength(0);
+    expect(findSuspectedDuplicates(updated, { ...cafe5000, occurredAt: '2026-07-24T17:59:00+09:00' })).toHaveLength(1);
+    expect(findSuspectedDuplicates(updated, { ...cafe5000, occurredAt: '2026-07-24T18:05:00+09:00' })).toHaveLength(0);
     expect(getHistoryEntries(updated).map((entry) => entry.id)).toEqual([updated.entries[0].id]);
   });
   it('matches a cancellation only when amount, merchant, and card all agree', () => {
-    const approved = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
-    const notice = { ...wellstory5000, occurredAt: '2026-07-25T10:00:00+09:00' };
+    const approved = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS).ledger;
+    const notice = { ...cafe5000, occurredAt: '2026-07-25T10:00:00+09:00' };
     expect(findCancellationCandidates(approved, notice)).toHaveLength(1);
     expect(getAutoCancellationMatch(approved, notice)?.id).toContain('2026-07-24');
     expect(getAutoCancellationMatch(approved, { ...notice, merchant: '다른 상호' })).toBeNull();
   });
   it('does not auto-cancel when two exact historical payments are possible', () => {
-    const first = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, id: 'first' }, POLICY_MAX_LIMITS);
-    const second = applyPayment(first.ledger, { ...wellstory5000, id: 'second', occurredAt: '2026-07-24T18:58:00+09:00' }, POLICY_MAX_LIMITS);
-    const notice = { ...wellstory5000, occurredAt: '2026-07-25T10:00:00+09:00' };
+    const first = apply({ ...createInitialLedger(), entries: [] }, { ...cafe5000, id: 'first' }, POLICY_MAX_LIMITS);
+    const second = apply(first.ledger, { ...cafe5000, id: 'second', occurredAt: '2026-07-24T18:58:00+09:00' }, POLICY_MAX_LIMITS);
+    const notice = { ...cafe5000, occurredAt: '2026-07-25T10:00:00+09:00' };
     expect(findCancellationCandidates(second.ledger, notice)).toHaveLength(2);
     expect(getAutoCancellationMatch(second.ledger, notice)).toBeNull();
   });
   it('does not auto-cancel when only amount and merchant match but card differs', () => {
-    const approved = applyPayment({ ...createInitialLedger(), entries: [] }, wellstory5000, POLICY_MAX_LIMITS).ledger;
-    expect(getAutoCancellationMatch(approved, { ...wellstory5000, cardLast4: '9999', occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
+    const approved = apply({ ...createInitialLedger(), entries: [] }, cafe5000, POLICY_MAX_LIMITS).ledger;
+    expect(getAutoCancellationMatch(approved, { ...cafe5000, cardLast4: '9999', occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
   });
   it('removes a confirmed cancellation from the affected budget without deleting its history', () => {
-    const applied = applyPayment(createInitialLedger(), wellstory5000, POLICY_MAX_LIMITS);
+    const applied = apply(createInitialLedger(), cafe5000, POLICY_MAX_LIMITS);
     const cancelled = cancelPayment(applied.ledger, applied.entry.id, '2026-07-25T10:00:00+09:00');
     expect(cancelled.entries.find((entry) => entry.id === applied.entry.id)).toMatchObject({ status: 'cancelled', cancelledAt: '2026-07-25T10:00:00+09:00' });
     expect(getSummary(cancelled, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(77700);
   });
   it('reduces budget spending by only the cancelled amount for a partial cancellation', () => {
-    const applied = applyPayment({ ...createInitialLedger(), entries: [] }, { ...wellstory5000, amount: 10000 }, POLICY_MAX_LIMITS);
+    const applied = apply({ ...createInitialLedger(), entries: [] }, { ...cafe5000, amount: 10000 }, POLICY_MAX_LIMITS);
     const partial = applyCancellation(applied.ledger, applied.entry.id, 3000, '2026-07-25T10:00:00+09:00');
     expect(partial.entries[0]).toMatchObject({ status: 'classified', amount: 10000, cancelledAmount: 3000 });
     expect(getSummary(partial, 'studySpace', POLICY_MAX_LIMITS.studySpace).spent).toBe(7000);
-    expect(getAutoCancellationMatch(applied.ledger, { ...wellstory5000, amount: 3000, occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
+    expect(getAutoCancellationMatch(applied.ledger, { ...cafe5000, amount: 3000, occurredAt: '2026-07-25T10:00:00+09:00' })).toBeNull();
   });
 });
 
@@ -198,9 +206,9 @@ it('shows the full policy period through the selected local day', () => {
 });
 
 describe('card import classification', () => {
-  const cardRow = (merchant: string, approvalNumber: string) => ({ occurredAt: '2026-09-20T12:00:00+09:00', cardMasked: '000*', merchant, approvalNumber, amount: 9000, paymentStatus: '승인', cancellationStatus: '', classification: { status: 'undecided' as const } });
+  const cardRow = (merchant: string, approvalNumber: string) => ({ occurredAt: '2026-09-20T12:00:00+09:00', cardMasked: '000*', merchant, approvalNumber, amount: 9000, paymentStatus: '승인', cancellationStatus: '' });
   const rules = [createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' }, '2026-09-01T00:00:00.000Z')];
-  const classify = (merchant: string, amount: number) => classifyWithMerchantRules(merchant, amount, rules);
+  const classify = (merchant: string) => classifyWithMerchantRules(merchant, rules);
 
   it('applies the user merchant rules to imported card payments', () => {
     const result = importCardTransactions(createEmptyLedger(), [cardRow('테스트 카페 강남점', '00000001'), cardRow('규칙 없는 가게', '00000002')], '0000', '2026-09', undefined, classify);
@@ -216,7 +224,7 @@ describe('card import classification', () => {
   });
 
   it('leaves bank withdrawals as undecided candidates even when a rule matches', () => {
-    const withdrawal = { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', merchant: '테스트 카페 강남점', amount: 9000, transactionId: 't1', direction: 'withdrawal' as const, classification: classify('테스트 카페 강남점', 9000) };
+    const withdrawal = { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', merchant: '테스트 카페 강남점', amount: 9000, transactionId: 't1', direction: 'withdrawal' as const, };
     expect(importBankTransactions(createEmptyLedger(), [withdrawal], '0000', '2026-09').ledger.entries[0].status).toBe('undecided');
   });
 });
