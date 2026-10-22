@@ -31,7 +31,7 @@ class SmsApprovalParserTest {
         val approval = parseApproval(
             """[Web발신]
                 [신한체크승인] 박*석(3741) 08/18 19:20
-                (금액) 8,000원 삼성웰스토리(주)크래프톤정
+                (금액) 8,000원 테스트 가맹점
             """.trimIndent(),
             "3741",
             2026
@@ -41,7 +41,7 @@ class SmsApprovalParserTest {
         assertEquals("3741", approval.cardLast4)
         assertEquals("2026-08-18T19:20:00+09:00", approval.occurredAt)
         assertEquals(8000, approval.amount)
-        assertEquals("삼성웰스토리(주)크래프톤정", approval.merchant)
+        assertEquals("테스트 가맹점", approval.merchant)
     }
 
     @Test

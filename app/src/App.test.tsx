@@ -13,6 +13,7 @@ import App from './App';
 import { previousPanel } from './domain/navigation';
 import { getPolicyPeriodKey } from './domain/budget';
 import { createEmptyLedger } from './domain/ledger';
+import { createMerchantRule, MERCHANT_RULES_STORAGE_KEY } from './domain/merchantRules';
 import { APP_INFORMATION_ACK_KEY, APP_INFORMATION_TITLE } from './domain/appInformation';
 
 let approvalListener: (() => void) | null = null;
@@ -249,14 +250,15 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
+    window.localStorage.setItem(MERCHANT_RULES_STORAGE_KEY, JSON.stringify([createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' })]));
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '새 지출 직접 등록' }));
-    fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '삼성웰스토리' } });
+    fireEvent.change(screen.getByLabelText('상호명'), { target: { value: '테스트 카페' } });
     fireEvent.change(screen.getByLabelText('금액'), { target: { value: '5000' } });
     fireEvent.click(screen.getByRole('button', { name: '지출 등록' }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
-    expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /삼성웰스토리/ }));
+    expect(screen.getByText(/테스트 카페/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /테스트 카페/ }));
     expect(screen.getByRole('heading', { name: '결제 상세' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '수정 · 분류 변경' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '취소 확인' })).toBeInTheDocument();
@@ -353,8 +355,9 @@ describe('app entry flows', () => {
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
     }] }));
+    window.localStorage.setItem(MERCHANT_RULES_STORAGE_KEY, JSON.stringify([createMerchantRule('테스트 카페', { bucket: 'studySpace', category: 'generalCafe' })]));
     smsBridge.consumePendingApprovals.mockResolvedValue({ items: [{
-      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '삼성웰스토리', source: 'notification',
+      id: 'sms-live-1', cardLast4: '3741', occurredAt: new Date(Date.now() + 86_400_000).toISOString(), amount: 5000, merchant: '테스트 카페', source: 'notification',
     }] });
 
     await renderApp();
@@ -362,7 +365,7 @@ describe('app entry flows', () => {
 
     await waitFor(() => expect(smsBridge.acknowledgePendingApprovals).toHaveBeenCalledWith({ ids: ['sms-live-1'] }));
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
-    expect(screen.getByText(/삼성웰스토리/)).toBeInTheDocument();
+    expect(screen.getByText(/테스트 카페/)).toBeInTheDocument();
   });
 
   it('acknowledges but does not store an approval outside the confirmed policy period', async () => {
