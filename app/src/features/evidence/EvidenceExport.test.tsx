@@ -44,7 +44,7 @@ describe('EvidenceExport', () => {
     exportMocks.saveFile.mockResolvedValue({ fileName: 'shinhanhae_report_evidence.pdf', relativePath: 'Downloads' });
     canvasContext.fillRect = vi.fn(); canvasContext.fillText = vi.fn(); canvasContext.strokeRect = vi.fn(); canvasContext.drawImage = vi.fn();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(canvasContext);
-    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })));
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,AQID');
     URL.createObjectURL = vi.fn(() => 'blob:submission-preview');
     URL.revokeObjectURL = vi.fn();
   });
