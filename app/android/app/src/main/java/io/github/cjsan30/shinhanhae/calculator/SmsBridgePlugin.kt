@@ -389,7 +389,7 @@ internal fun postApprovalQueuedNotification(
             .setAction(ApprovalClassificationReceiver.ACTION_UNDECIDED)
             .putExtra(ApprovalClassificationReceiver.EXTRA_APPROVAL_ID, eventId)
         val undecidedPendingIntent = PendingIntent.getBroadcast(context, 2103, undecidedIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        notification.addAction(0, "미정으로", undecidedPendingIntent)
+        notification.addAction(0, "나중에 분류", undecidedPendingIntent)
         NotificationManagerCompat.from(context).notify(2001, notification.build())
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
     } catch (error: Exception) {

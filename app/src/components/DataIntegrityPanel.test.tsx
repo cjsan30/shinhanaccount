@@ -13,7 +13,7 @@ describe('data integrity panel', () => {
 
   it('summarizes undecided and outside-period records and exposes latest import undo', () => {
     const onUndoImport = vi.fn(); render(<DataIntegrityPanel ledger={ledger} periodKey="2026-09" canUndoImport onUndoImport={onUndoImport} onReset={vi.fn()} />);
-    expect(screen.getByText('미정 지출')).toHaveTextContent('1건');
+    expect(screen.getByText('분류 필요')).toHaveTextContent('1건');
     expect(screen.getByText('현재 적용 기간 외 결제')).toHaveTextContent('1건');
     fireEvent.click(screen.getByRole('button', { name: '방금 가져온 내역 실행 취소' }));
     expect(onUndoImport).toHaveBeenCalledOnce();
@@ -23,7 +23,7 @@ describe('data integrity panel', () => {
     const onReset = vi.fn(); render(<DataIntegrityPanel ledger={ledger} periodKey="2026-09" canUndoImport={false} onUndoImport={vi.fn()} onReset={onReset} />);
     const button = screen.getByRole('button', { name: '선택한 데이터 초기화' });
     expect(button).toBeDisabled();
-    fireEvent.click(screen.getByLabelText('결제 내역과 미정 지출'));
+    fireEvent.click(screen.getByLabelText('결제 내역과 분류 필요 결제'));
     fireEvent.click(screen.getByLabelText('확정·예약 정책'));
     vi.mocked(window.confirm).mockReturnValueOnce(false);
     fireEvent.click(button);

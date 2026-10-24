@@ -35,7 +35,7 @@ export function getSupportAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledA
 }
 export function setSupportAmount(ledger: Ledger, entryId: string, amount: number): Ledger {
   const entry = ledger.entries.find((candidate) => candidate.id === entryId);
-  if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('미정 지출에서만 지원금 반영 금액을 변경할 수 있습니다.');
+  if (!entry || entry.status !== 'undecided' || entry.duplicateCandidateIds?.length) throw new Error('분류 필요 결제에서만 지원금 반영 금액을 변경할 수 있습니다.');
   if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getRemainingPaymentAmount(entry)) throw new Error('지원금 반영 금액은 남은 결제 금액 이하의 양의 정수로 입력해 주세요.');
   return { ...ledger, entries: ledger.entries.map((candidate) => candidate.id === entryId ? { ...candidate, supportAmount: amount } : candidate) };
 }
@@ -56,7 +56,7 @@ function isSameTransaction(left: Pick<LedgerEntry, 'occurredAt' | 'merchant' | '
 
 function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: string, classify?: (merchant: string, amount: number) => PaymentClassification): LedgerEntry {
   const payment: NativeApproval = { cardLast4, occurredAt: transaction.occurredAt, merchant: transaction.merchant, amount: transaction.amount };
-  // Without the user's rules an imported payment waits in 미정 for the user to classify.
+  // Without the user's rules an imported payment waits as 분류 필요 for the user to classify.
   const entry = toEntry(payment, classify ? classify(transaction.merchant, transaction.amount) : { status: 'undecided' });
   return { ...entry, id: `approval-${cardLast4}-${transaction.approvalNumber}`, approvalNumber: transaction.approvalNumber, source: 'excel' };
 }

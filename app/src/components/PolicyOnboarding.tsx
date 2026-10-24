@@ -75,7 +75,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
       {message && <p role="alert" className="first-run__error">{message}</p>}
       <section className="first-run__notice">
         <strong>자동 기록 시작 시점</strong>
-        <span>정책 확정 전 승인 알림은 임시 보관됩니다. 정책 확정 후 미정 지출로 불러오거나 삭제할 수 있으며, 분류 전까지 사용액과 예산 경고에는 포함되지 않습니다.</span>
+        <span>정책 확정 전 승인 알림은 임시 보관됩니다. 정책 확정 후 분류 필요 목록으로 불러오거나 삭제할 수 있으며, 분류 전까지 사용액과 예산 경고에는 포함되지 않습니다.</span>
       </section>
     </main>
   );
