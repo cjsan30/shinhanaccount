@@ -30,6 +30,7 @@ PRD·기술 설계·초기 테스트 계획에는 이전 단계의 설명도 남
 | [실기기·릴리스 체크리스트](07-device-release-checklist.md) | 배포 전 공통 검증 절차 |
 | [최신 실기기 확인 체크리스트](10-device-verification-checklist.md) | 변경별 사용자 검증 항목과 실행 결과 |
 | [실기기 검증 후 수정 결과](14-device-audit-remediation.md) | 구현·회귀 테스트·기기 검증의 근거 |
+| [제출 PDF 생성 성능 측정](15-pdf-benchmark.md) | 영수증 압축 방식 변경 전후의 실기기 처리 시간·PDF 크기 원자료 |
 | [제출서류·거래내역 개선 기록](09-pdf-submission-improvement-plan.md) | PDF·OCR·가져오기 피드백과 확정된 동작 |
 | [후속 개선 계획](06-future-enhancements.md) | 과거 보류·제안 항목의 추적; 현재 착수 전 최신 결정과 구현 여부 확인 |
 | [현재 상태와 다음 작업](current_state.md) | 진행 상황·다음 작업 인계의 단일 기준 |
