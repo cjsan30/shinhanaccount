@@ -185,6 +185,26 @@ describe('EvidenceExport', () => {
     expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
   });
 
+  it('keeps the screen on while a PDF is being made and lets it turn off afterwards', async () => {
+    const lock = { release: vi.fn(async () => undefined) };
+    const request = vi.fn(async () => lock);
+    Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true });
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
+    let release: () => void = () => undefined;
+    exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(() => new Promise<Uint8Array>((resolve) => { release = () => resolve(new Uint8Array([1, 2, 3])); })) });
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await screen.findByText('receipt.jpg');
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('screen'));
+    await waitFor(() => expect(exportMocks.create).toHaveBeenCalled());
+    expect(lock.release).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '생성 취소' }));
+    release();
+    await waitFor(() => expect(lock.release).toHaveBeenCalled());
+    Reflect.deleteProperty(navigator, 'wakeLock');
+  });
+
   it('cancels an export in progress without saving and keeps the selected files', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
     let release: () => void = () => undefined;
