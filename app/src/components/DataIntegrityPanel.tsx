@@ -35,7 +35,7 @@ export function DataIntegrityPanel({ ledger, periodKey, period, canUndoImport, o
       <div className="data-section__body data-integrity">
         <p>카드사·은행 원본과 대조하기 전에 앱 안에서 확인할 항목입니다. 실제 누락 여부는 카드 CSV·Excel 또는 은행 PDF를 다시 가져와 확인합니다.</p>
         <ul>
-          <li>미정 지출 <b>{checks.undecided}건</b></li>
+          <li>분류 필요 <b>{checks.undecided}건</b></li>
           <li>현재 적용 기간 외 결제 <b>{checks.outside}건</b></li>
           <li>중복 확인 필요 <b>{checks.duplicates}건</b></li>
         </ul>
@@ -47,7 +47,7 @@ export function DataIntegrityPanel({ ledger, periodKey, period, canUndoImport, o
       <div className="data-section__body data-integrity">
         <p>초기화 전에 암호화 백업을 권장합니다. 카드사·은행의 원본 내역과 기기 알림 권한은 지우지 않습니다.</p>
         <div className="data-reset-options">
-          <label><input aria-label="결제 내역과 미정 지출" type="checkbox" checked={selected.includes('ledger')} onChange={() => toggle('ledger')} /><span><strong>결제 내역과 미정 지출</strong><small>가져온 내역, 직접 등록한 지출, 분류 상태를 지웁니다.</small></span></label>
+          <label><input aria-label="결제 내역과 분류 필요 결제" type="checkbox" checked={selected.includes('ledger')} onChange={() => toggle('ledger')} /><span><strong>결제 내역과 분류 필요 결제</strong><small>가져온 내역, 직접 등록한 지출, 분류 상태를 지웁니다.</small></span></label>
           <label><input aria-label="저장된 분류 규칙" type="checkbox" checked={selected.includes('rules')} onChange={() => toggle('rules')} /><span><strong>저장된 분류 규칙</strong><small>상호명 자동 분류 규칙만 지웁니다.</small></span></label>
           <label><input aria-label="확정·예약 정책" type="checkbox" checked={selected.includes('policy')} onChange={() => toggle('policy')} /><span><strong>확정·예약 정책</strong><small>현재와 다음 기간의 예산 정책을 지웁니다.</small></span></label>
         </div>

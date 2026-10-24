@@ -39,11 +39,11 @@ describe('undecided panel', () => {
       { id: 'two', cardLast4: '4321', merchant: 'bravo', amount: 4000, occurredAt: '2026-08-20T11:00:00+09:00', status: 'undecided' },
     ] as const;
     render(<UndecidedPanel entries={[...entries]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={vi.fn()} />);
-    fireEvent.click(screen.getByLabelText('미정 지출 전체 선택'));
+    fireEvent.click(screen.getByLabelText('분류 필요 결제 전체 선택'));
     expect(screen.getAllByText('2건 선택')).toHaveLength(2);
     expect(screen.queryByLabelText('이 상호명도 자동 분류 규칙으로 저장')).not.toBeInTheDocument();
     expect(document.querySelector('.undecided-list + .undecided-quick-action')).not.toBeNull();
-    fireEvent.click(screen.getByLabelText('미정 지출 전체 선택'));
+    fireEvent.click(screen.getByLabelText('분류 필요 결제 전체 선택'));
     expect(screen.getByText('0건 선택')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '바로 분류' })).not.toBeInTheDocument();
   });
@@ -59,7 +59,7 @@ describe('undecided panel', () => {
 
   it('shows an empty-state message when no undecided entries remain', () => {
     render(<UndecidedPanel entries={[]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={vi.fn()} />);
-    expect(screen.getByText('현재 기간에 미정 지출이 없습니다.')).toBeInTheDocument();
+    expect(screen.getByText('현재 기간에 분류할 결제가 없습니다.')).toBeInTheDocument();
   });
 
   it('lets the user exclude selected business-irrelevant expenses without applying a category', () => {

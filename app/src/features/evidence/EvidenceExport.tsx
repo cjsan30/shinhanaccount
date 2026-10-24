@@ -269,7 +269,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     const currentMessage = item.receiptOcrMessage && !/금액|추천|자동/.test(item.receiptOcrMessage) ? item.receiptOcrMessage : undefined;
     if (item.receiptOcrStatus === 'reading' && adding) return <div className="receipt-link-priority" role="status"><small>결제 날짜 확인 중…</small></div>;
     if (item.receiptOcrStatus === 'reading' && !adding) return <div className="receipt-link-priority"><small>날짜 확인이 중단되었습니다. 다시 읽거나 날짜를 선택해 주세요.</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
-    if (item.linkedEntryId && !payments.some((payment) => payment.id === item.linkedEntryId)) return <div className="receipt-link-priority"><small>연결한 결제가 미정·취소·기간 외 상태입니다. 분류와 기간을 확인하거나 다른 결제를 선택해 주세요.</small></div>;
+    if (item.linkedEntryId && !payments.some((payment) => payment.id === item.linkedEntryId)) return <div className="receipt-link-priority"><small>연결한 결제가 분류 필요·취소·기간 외 상태입니다. 분류와 기간을 확인하거나 다른 결제를 선택해 주세요.</small></div>;
     if (item.linkedEntryId) return <div className="receipt-link-priority"><strong>결제 연결 완료</strong><small>날짜 변경 또는 결제 변경이 필요하면 아래에서 다시 선택해 주세요.</small></div>;
     if (item.receiptDate && !isValidReceiptDate(item.receiptDate)) return <div className="receipt-link-priority"><small>읽은 날짜 형식이 올바르지 않습니다. 날짜를 직접 선택하거나 다시 읽어 주세요.</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
     if (item.receiptOcrStatus === 'failed' || item.receiptOcrStatus === 'needs-input') return <div className="receipt-link-priority"><small>{currentMessage ?? '결제 날짜를 읽지 못했습니다. 날짜를 선택해 주세요.'}</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;

@@ -6,7 +6,7 @@ import { ImportMergeSummary } from './ImportMergeSummary';
 
 const original: LedgerEntry = { id: 'approval-card', cardLast4: '1234', merchant: '메가커피', occurredAt: '2026-09-20T12:00:00+09:00', amount: 2700, status: 'classified', source: 'excel', category: 'food', bucket: 'resident' };
 const pending: LedgerEntry = { id: 'bank-account', cardLast4: '6789', merchant: '네이버페이', occurredAt: original.occurredAt, amount: original.amount, status: 'undecided', source: 'bankCsv', duplicateCandidateIds: [original.id] };
-const summary = '신규 미정 0건 · 중복 후보 1건 · 재등록 제외 0건';
+const summary = '신규 분류 필요 0건 · 중복 후보 1건 · 재등록 제외 0건';
 
 describe('import summary separates historical results from remaining reviews', () => {
   it.each([true, false])('updates after a %s duplicate decision without rewriting the original import counts', (same) => {

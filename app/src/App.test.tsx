@@ -105,13 +105,13 @@ describe('app entry flows', () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [{ id: 'portion', cardLast4: '1234', occurredAt: now, amount: 50000, merchant: '일부 지원금 결제', status: 'undecided' }] }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: now, sourceText: 'plan', plans: { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
     const app = await renderApp();
-    fireEvent.click(screen.getByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요 1건' }));
     fireEvent.click(screen.getByLabelText('일부 지원금 결제 선택'));
     fireEvent.click(screen.getByRole('button', { name: '일부 지원금 결제 지원금 반영 금액 수정' }));
     fireEvent.change(screen.getByLabelText('일부 지원금 결제 지원금 반영 금액'), { target: { value: '30000' } });
-    fireEvent.change(screen.getByLabelText('미정 지출 일괄 분류'), { target: { value: 'food' } });
+    fireEvent.change(screen.getByLabelText('분류 필요 결제 일괄 분류'), { target: { value: 'food' } });
     fireEvent.click(screen.getByRole('button', { name: '바로 분류' }));
-    fireEvent.click(screen.getByRole('button', { name: '미정 지출 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요 닫기' }));
     expect(app.container.querySelector('.summary')).toHaveTextContent('30,000원 사용');
     await waitFor(() => expect(smsBridge.syncBudgetState).toHaveBeenLastCalledWith(expect.objectContaining({ categorySpent: expect.objectContaining({ food: 30000 }) })));
     fireEvent.click(screen.getByRole('button', { name: '결제 내역 확인' }));
@@ -122,14 +122,14 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: '부분 취소 확정' }));
     fireEvent.click(screen.getByRole('button', { name: /일부 지원금 결제/ }));
     expect(screen.getByRole('alert')).toHaveTextContent('부분 취소 · 금액 재확인 필요');
-    fireEvent.click(screen.getByRole('button', { name: '미정으로 되돌리기' }));
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요로 되돌리기' }));
     expect(screen.getByText('이전 지원금 반영 30,000원')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('일부 지원금 결제 선택'));
     fireEvent.click(screen.getByRole('button', { name: '일부 지원금 결제 지원금 반영 금액 수정' }));
     fireEvent.change(screen.getByLabelText('일부 지원금 결제 지원금 반영 금액'), { target: { value: '10000' } });
-    fireEvent.change(screen.getByLabelText('미정 지출 일괄 분류'), { target: { value: 'food' } });
+    fireEvent.change(screen.getByLabelText('분류 필요 결제 일괄 분류'), { target: { value: 'food' } });
     fireEvent.click(screen.getByRole('button', { name: '바로 분류' }));
-    fireEvent.click(screen.getByRole('button', { name: '미정 지출 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요 닫기' }));
     await waitFor(() => expect(app.container.querySelector('.summary')).toHaveTextContent('10,000원 사용'));
     await act(async () => { await Promise.resolve(); }); app.unmount();
     const reopened = await renderApp();
@@ -186,7 +186,7 @@ describe('app entry flows', () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [original, pending] }));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: getPolicyPeriodKey(new Date()), confirmedAt: now, sourceText: 'saved policy', plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
     await renderApp();
-    fireEvent.click(await screen.findByRole('button', { name: '미정 지출 1건' }));
+    fireEvent.click(await screen.findByRole('button', { name: '분류 필요 1건' }));
     expect(screen.getByText('현재 중복 확인 필요 1건')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
     await waitFor(() => {
@@ -428,8 +428,8 @@ describe('app entry flows', () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: /결제 내역 확인/ }));
     fireEvent.click(screen.getByRole('button', { name: /되돌릴 결제/ }));
-    fireEvent.click(screen.getByRole('button', { name: '미정으로 되돌리기' }));
-    expect(await screen.findByRole('heading', { name: '미정 지출' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요로 되돌리기' }));
+    expect(await screen.findByRole('heading', { name: '분류 필요' })).toBeInTheDocument();
     expect(screen.getByText('되돌릴 결제')).toBeInTheDocument();
     expect(screen.getAllByText(/분류 전에는 예산과 경고에 반영되지 않습니다/)).not.toHaveLength(0);
   });
