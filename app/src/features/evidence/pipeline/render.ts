@@ -24,9 +24,14 @@ function drawRowMask(ctx: CanvasRenderingContext2D, rect: LabeledMaskRect) {
   ctx.fillStyle = '#5c6770'; ctx.font = `600 ${Math.max(11, Math.min(16, height * .48))}px Pretendard, "Noto Sans KR", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(rect.label, x + width / 2, y + height / 2); ctx.restore();
 }
 
+// Encode synchronously. toBlob waits for an idle period, and some Android WebViews (Galaxy S25, WebView 155)
+// never grant one while the page is static, so each call stalled about 4 seconds before encoding.
 export async function jpeg(canvas: HTMLCanvasElement, quality: number) {
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지를 압축하지 못했습니다.')), 'image/jpeg', quality));
-  return new Uint8Array(await blob.arrayBuffer());
+  const url = canvas.toDataURL('image/jpeg', quality); const prefix = 'data:image/jpeg;base64,';
+  if (!url.startsWith(prefix)) throw new Error('이미지를 압축하지 못했습니다.');
+  const binary = atob(url.slice(prefix.length)); const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 export async function compressImage(file: File, maxEdge: number, quality: number): Promise<RasterImage[]> {
   const bitmap = await createImageBitmap(file); const width = Math.min(bitmap.width, maxEdge); const result: RasterImage[] = [];
