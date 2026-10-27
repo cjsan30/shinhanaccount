@@ -4,7 +4,6 @@ import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
 import type { SupportPolicy } from '../domain/policy';
 import { SHORT_APP_NOTICE } from '../domain/appInformation';
-import { InformationSourceLink } from './AppInformation';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
@@ -105,7 +104,6 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
         </section>
         <footer className="onboarding-app-notice">
           <p>{SHORT_APP_NOTICE}</p>
-          <InformationSourceLink>사업 정보 출처 확인</InformationSourceLink>
         </footer>
       </main>
     );

@@ -8,7 +8,7 @@ describe('SettingsHub', () => {
   it('opens each destination and hides the internal verification entry outside internal builds', () => {
     const onOpen = vi.fn();
     render(<SettingsHub onOpen={onOpen} />);
-    for (const name of [/운영 설정/, /데이터 관리/, /접근성 · 개인화/, /앱 안내·정보 출처/]) fireEvent.click(screen.getByRole('button', { name }));
+    for (const name of [/운영 설정/, /데이터 관리/, /접근성 · 개인화/, /^앱 안내/]) fireEvent.click(screen.getByRole('button', { name }));
     expect(onOpen.mock.calls.map(([destination]) => destination)).toEqual(['operations', 'data', 'accessibility', 'information']);
     expect(screen.queryByRole('button', { name: /실기기 검증/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /피드백 보내기/ })).toHaveAttribute('href', expect.stringMatching(/^mailto:/));

@@ -13,7 +13,7 @@ export function SettingsHub({ onOpen }: { onOpen: (destination: SettingsDestinat
     <button className="settings-destination" onClick={() => onOpen('data')}><strong>데이터 관리</strong><span>계획표 · 거래내역 · 백업</span><CaretRight size={26} /></button>
     <button className="settings-destination" onClick={() => onOpen('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 고대비 · 진동</span><CaretRight size={26} /></button>
     {import.meta.env.MODE === 'internal' && <button className="settings-destination" onClick={() => onOpen('verification')}><strong>실기기 검증</strong><span>자동 확인 · Yes/No 최종 판정</span><CaretRight size={26} /></button>}
-    <button className="settings-destination" onClick={() => onOpen('information')}><strong>{APP_INFORMATION_TITLE}</strong><span>개인 관리 도구 안내와 공식 사업 정보</span><CaretRight size={26} /></button>
+    <button className="settings-destination" onClick={() => onOpen('information')}><strong>{APP_INFORMATION_TITLE}</strong><span>개인이 만든 비공식 앱이라는 안내</span><CaretRight size={26} /></button>
     <a className="settings-destination settings-feedback" href={FEEDBACK_MAIL}><strong>피드백 보내기</strong><span>불편한 점과 개선 의견을 알려주세요</span><CaretRight size={26} /></a>
     <details className="privacy-notice">
       <summary>개인정보 처리 안내</summary>
