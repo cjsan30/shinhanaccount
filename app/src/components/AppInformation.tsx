@@ -1,29 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { APP_INFORMATION_TITLE, APP_INFORMATION_PARAGRAPHS, INFORMATION_SOURCES, INFORMATION_SOURCE_NOTE, OFFICIAL_PROGRAM_URL } from '../domain/appInformation';
-import { openInformationWebsite } from '../native/externalApp';
-
-export function InformationSourceLink({ url = OFFICIAL_PROGRAM_URL, children = '사업 기준·출처 확인' }: { url?: string; children?: string }) {
-  const [error, setError] = useState<string | null>(null);
-  const open = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!Capacitor.isNativePlatform()) return;
-    event.preventDefault();
-    setError(null);
-    void openInformationWebsite(url).catch(() => setError('홈페이지를 열지 못했습니다. 브라우저 설치와 연결 상태를 확인한 뒤 다시 눌러 주세요.'));
-  };
-  return <div className="information-source-link">
-    <a className="information-source-button" href={url} target="_blank" rel="noopener noreferrer" onClick={open}>{children}</a>
-    {error && <p role="alert">{error}</p>}
-  </div>;
-}
+import { useEffect, useRef } from 'react';
+import { APP_INFORMATION_TITLE, APP_INFORMATION_PARAGRAPHS } from '../domain/appInformation';
 
 export function AppInformationContent() {
   return <section className="app-information-content">
     <h3>이 앱에 대해</h3>
     {APP_INFORMATION_PARAGRAPHS.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-    <h3>사업 정보 출처</h3>
-    {INFORMATION_SOURCES.map((source) => <InformationSourceLink key={source.url} url={source.url}>{source.label}</InformationSourceLink>)}
-    <p>{INFORMATION_SOURCE_NOTE}</p>
   </section>;
 }
 

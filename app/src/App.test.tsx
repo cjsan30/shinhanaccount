@@ -70,9 +70,9 @@ describe('app entry flows', () => {
     expect(screen.queryByRole('dialog', { name: APP_INFORMATION_TITLE })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     expect(screen.queryByText('필요한 설정만 선택해 관리하세요.')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /앱 안내·정보 출처/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^앱 안내/ }));
     expect(screen.getByRole('heading', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
-    expect(screen.getAllByRole('link')).toHaveLength(2);
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: '이전 화면으로 돌아가기' }));
     expect(screen.getByRole('heading', { name: '설정' })).toBeInTheDocument();
   });

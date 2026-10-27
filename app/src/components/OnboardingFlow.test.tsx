@@ -23,14 +23,10 @@ describe('onboarding flow', () => {
     expect(mocks.configure).not.toHaveBeenCalled();
   });
 
-  it('shows a bottom notice and an external homepage link without advancing onboarding', () => {
+  it('shows a bottom unofficial-app notice without links or advancing onboarding', () => {
     const onComplete = vi.fn(); const app = render(<OnboardingFlow onComplete={onComplete} />);
-    const link = screen.getByRole('link', { name: '사업 정보 출처 확인' });
-    expect(link).toHaveAttribute('href', 'https://shinchunghae.co.kr/');
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(app.container.querySelector('.onboarding-app-notice')).toContainElement(link);
-    // Emulate opening an external target; the app itself never changes routes.
-    link.addEventListener('click', (event) => event.preventDefault(), { once: true }); fireEvent.click(link);
+    expect(app.container.querySelector('.onboarding-app-notice')).toHaveTextContent('공식 앱이 아닙니다');
+    expect(screen.queryAllByRole('link')).toHaveLength(0);
     expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled(); expect(mocks.configure).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
