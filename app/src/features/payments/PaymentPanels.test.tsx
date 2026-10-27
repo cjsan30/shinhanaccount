@@ -22,7 +22,7 @@ describe('payment detail', () => {
     const props = detailProps();
     render(<PaymentDetail {...props} />);
     fireEvent.click(screen.getByRole('button', { name: '수정 · 분류 변경' }));
-    fireEvent.click(screen.getByRole('button', { name: '미정으로 되돌리기' }));
+    fireEvent.click(screen.getByRole('button', { name: '분류 필요로 되돌리기' }));
     fireEvent.click(screen.getByRole('button', { name: '취소 확인' }));
     fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     for (const handler of [props.onEdit, props.onMarkUndecided, props.onCancel, props.onDelete]) expect(handler).toHaveBeenCalledWith(props.entry);
@@ -31,7 +31,7 @@ describe('payment detail', () => {
   it('offers only restore and delete for an excluded payment', () => {
     render(<PaymentDetail {...detailProps({ entry: entry({ status: 'excluded' }) })} />);
     expect(screen.getByText('사업 무관 제외')).toBeInTheDocument();
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['미정으로 되돌리기', '삭제']);
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['분류 필요로 되돌리기', '삭제']);
   });
 
   it('notes out-of-period, duplicate and partial-cancellation states', () => {

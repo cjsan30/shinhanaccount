@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { PolicyOcr } from '../native/policyOcr';
-import { InformationSourceLink } from './AppInformation';
 import { DEFAULT_SUPPORT_PROFILE_ID, POLICY_ITEMS, SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, parsePolicyText, validatePolicyAgainstProfile, type CustomPolicyItem, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../domain/policy';
 
 function createBlankPolicy(): SupportPolicy {
@@ -46,7 +45,6 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
       <h1>사용 계획을<br />확정해 주세요</h1>
       <p>이번 달 배정 지원금을 선택한 뒤 계획표를 불러와 주세요.</p>
       <section className="support-profile-picker" aria-label="신청해 지원 유형 선택">{SHINHANHAE_PROFILES.map((candidate) => <button type="button" key={candidate.id} className={profileId === candidate.id ? 'is-selected' : ''} onClick={() => applyProfile(candidate.id)}><strong>{candidate.label}</strong><span>정주비 {candidate.bucketLimits.resident.toLocaleString()}원 · 학습공간비 {candidate.bucketLimits.studySpace.toLocaleString()}원</span></button>)}</section>
-      <InformationSourceLink />
       <section className="first-run__card">
         <img className="onboarding-policy-example" src="/onboarding-policy-example.png" alt="정주비와 학습공간비의 사용처별 예상금액이 담긴 계획표 예시" />
         <button className="first-run__start" type="button" onClick={() => void readImage()}>이미지로 계획표 불러오기</button>
@@ -75,7 +73,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
       {message && <p role="alert" className="first-run__error">{message}</p>}
       <section className="first-run__notice">
         <strong>자동 기록 시작 시점</strong>
-        <span>정책 확정 전 승인 알림은 임시 보관됩니다. 정책 확정 후 미정 지출로 불러오거나 삭제할 수 있으며, 분류 전까지 사용액과 예산 경고에는 포함되지 않습니다.</span>
+        <span>정책 확정 전 승인 알림은 임시 보관됩니다. 정책 확정 후 분류 필요 목록으로 불러오거나 삭제할 수 있으며, 분류 전까지 사용액과 예산 경고에는 포함되지 않습니다.</span>
       </section>
     </main>
   );

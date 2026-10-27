@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { APP_INFORMATION_ACK_KEY, INFORMATION_SOURCES, confirmAppInformation, hasConfirmedAppInformation } from './appInformation';
+import { APP_INFORMATION_ACK_KEY, APP_INFORMATION_PARAGRAPHS, SHORT_APP_NOTICE, confirmAppInformation, hasConfirmedAppInformation } from './appInformation';
 describe('app information confirmation', () => {
   beforeEach(() => localStorage.clear());
   it('records only explicit confirmation and retains it across reopening', () => {
@@ -15,9 +15,9 @@ describe('app information confirmation', () => {
     expect(hasConfirmedAppInformation({ getItem: () => { throw new Error('unavailable'); } })).toBe(false);
     expect(confirmAppInformation({ setItem: () => { throw new Error('full'); } })).toBe(false);
   });
-  it('lists only the two approved HTTPS sources', () => {
-    expect(INFORMATION_SOURCES).toHaveLength(2);
-    expect(INFORMATION_SOURCES.map((source) => new URL(source.url).hostname)).toEqual(['www.shinhanfoundation.or.kr', 'shinchunghae.co.kr']);
-    expect(INFORMATION_SOURCES.every((source) => new URL(source.url).protocol === 'https:')).toBe(true);
+  it('says the app is unofficial without naming organizations or linking to their sites', () => {
+    const notices = [SHORT_APP_NOTICE, ...APP_INFORMATION_PARAGRAPHS].join(' ');
+    expect(SHORT_APP_NOTICE).toContain('공식 앱이 아닙니다');
+    expect(notices).not.toMatch(/신한|재단|정부|고용노동부|사무국|https?:/);
   });
 });

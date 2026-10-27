@@ -36,8 +36,23 @@ const supported = (file: File) => ['image/jpeg', 'image/png', 'image/webp', 'app
 const kindOf = (file: File): EvidenceKind => file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? 'pdf' : 'image';
 
 
-
-
+// Long PDF work stops when the screen turns off and locks, because the WebView pauses JavaScript.
+// Keep the screen on only while it runs; the browser drops the lock when the app is hidden, so take it again on return.
+function useScreenWakeLock(active: boolean) {
+  useEffect(() => {
+    const wakeLock = (navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock;
+    if (!active || !wakeLock) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let stopped = false;
+    const acquire = () => {
+      if (stopped || document.visibilityState !== 'visible') return;
+      void wakeLock.request('screen').then((granted) => { if (stopped) void granted.release(); else { void lock?.release().catch(() => undefined); lock = granted; } }).catch(() => undefined);
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => { stopped = true; document.removeEventListener('visibilitychange', acquire); void lock?.release().catch(() => undefined); };
+  }, [active]);
+}
 
 export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period }: { helpRequest?: number; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
   useEffect(() => { if (helpRequest > 0) setGuideOpen(true); }, [helpRequest]);
@@ -54,6 +69,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   const [expandedReceipts, setExpandedReceipts] = useState(new Set<string>());
   useEffect(() => { if (focusedReceipt) document.getElementById('evidence-' + focusedReceipt)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); }, [focusedReceipt, receiptFilter]);
   const [items, setItems] = useState<Evidence[]>([]); const [message, setMessage] = useState<string | null>(null); const [exporting, setExporting] = useState(false); const [progress, setProgress] = useState<Progress | null>(null); const [resultPreviewUrl, setResultPreviewUrl] = useState<string | null>(null); const [benchmarks, setBenchmarks] = useState<Partial<Record<'legacy' | 'current', BenchmarkResult>>>({}); const [statementPasswords, setStatementPasswords] = useState<Record<string, string>>({}); const [previewReceipt, setPreviewReceipt] = useState<Evidence | null>(null); const [guideOpen, setGuideOpen] = useState(false); const urls = useRef(new Set<string>()); const raster = useRef(new Map<string, RasterImage[]>()); const cancelled = useRef(false);
+  useScreenWakeLock(exporting || Boolean(adding));
   useEffect(() => () => urls.current.forEach((url) => URL.revokeObjectURL(url)), []); useEffect(() => () => { if (resultPreviewUrl) URL.revokeObjectURL(resultPreviewUrl); }, [resultPreviewUrl]);
   useEffect(() => {
     let disposed = false; setLoadingFiles(true);
@@ -269,7 +285,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     const currentMessage = item.receiptOcrMessage && !/금액|추천|자동/.test(item.receiptOcrMessage) ? item.receiptOcrMessage : undefined;
     if (item.receiptOcrStatus === 'reading' && adding) return <div className="receipt-link-priority" role="status"><small>결제 날짜 확인 중…</small></div>;
     if (item.receiptOcrStatus === 'reading' && !adding) return <div className="receipt-link-priority"><small>날짜 확인이 중단되었습니다. 다시 읽거나 날짜를 선택해 주세요.</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
-    if (item.linkedEntryId && !payments.some((payment) => payment.id === item.linkedEntryId)) return <div className="receipt-link-priority"><small>연결한 결제가 미정·취소·기간 외 상태입니다. 분류와 기간을 확인하거나 다른 결제를 선택해 주세요.</small></div>;
+    if (item.linkedEntryId && !payments.some((payment) => payment.id === item.linkedEntryId)) return <div className="receipt-link-priority"><small>연결한 결제가 분류 필요·취소·기간 외 상태입니다. 분류와 기간을 확인하거나 다른 결제를 선택해 주세요.</small></div>;
     if (item.linkedEntryId) return <div className="receipt-link-priority"><strong>결제 연결 완료</strong><small>날짜 변경 또는 결제 변경이 필요하면 아래에서 다시 선택해 주세요.</small></div>;
     if (item.receiptDate && !isValidReceiptDate(item.receiptDate)) return <div className="receipt-link-priority"><small>읽은 날짜 형식이 올바르지 않습니다. 날짜를 직접 선택하거나 다시 읽어 주세요.</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;
     if (item.receiptOcrStatus === 'failed' || item.receiptOcrStatus === 'needs-input') return <div className="receipt-link-priority"><small>{currentMessage ?? '결제 날짜를 읽지 못했습니다. 날짜를 선택해 주세요.'}</small><button type="button" onClick={() => void retryReceiptOcr(item)}>영수증 다시 읽기</button></div>;

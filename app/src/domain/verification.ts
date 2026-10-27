@@ -74,7 +74,7 @@ export const manualChecks = [
   { id: 'import-accuracy', title: '가져오기 정확성', description: '카드 CSV/Excel 또는 은행 PDF의 실제 행과 앱 결과를 대조합니다.' },
   { id: 'backup-roundtrip', title: '백업·복원 왕복', description: '백업 파일을 새 설치 또는 초기화 환경에서 복원해 데이터가 일치하는지 확인합니다.' },
   { id: 'pdf-readability', title: '제출서류 품질', description: 'PDF의 원본 표·가림 처리·영수증이 사람이 읽을 수 있고 5MB 이하인지 확인합니다.' },
-  { id: 'widget-visual', title: '홈 위젯 일치', description: '위젯 잔액·미정 건수·레이아웃이 앱과 일치하는지 확인합니다.' },
+  { id: 'widget-visual', title: '홈 위젯 일치', description: '위젯 잔액·분류 필요 건수·레이아웃이 앱과 일치하는지 확인합니다.' },
   { id: 'play-update', title: 'Play 업데이트 데이터 유지', description: '비공개 테스트 업데이트 뒤 정책·거래·규칙이 유지되는지 확인합니다.' },
 ] as const;
 

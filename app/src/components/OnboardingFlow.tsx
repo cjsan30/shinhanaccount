@@ -4,7 +4,6 @@ import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
 import type { SupportPolicy } from '../domain/policy';
 import { SHORT_APP_NOTICE } from '../domain/appInformation';
-import { InformationSourceLink } from './AppInformation';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
@@ -105,7 +104,6 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
         </section>
         <footer className="onboarding-app-notice">
           <p>{SHORT_APP_NOTICE}</p>
-          <InformationSourceLink>사업 정보 출처 확인</InformationSourceLink>
         </footer>
       </main>
     );
@@ -147,7 +145,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
       {pendingApprovals.length > 0 && (
         <section className="first-run__notice">
           <strong>정책 확정 전 승인 알림 {pendingApprovals.length}건</strong>
-          <span>불러오면 모두 미정 지출로 보관되며, 직접 분류하기 전까지 예산과 경고에는 반영되지 않습니다.</span>
+          <span>불러오면 모두 분류 필요 목록에 보관되며, 직접 분류하기 전까지 예산과 경고에는 반영되지 않습니다.</span>
         </section>
       )}
       <section className="onboarding-decision-list" aria-label="결제내역 등록 여부 선택">
