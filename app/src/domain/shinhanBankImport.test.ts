@@ -50,6 +50,26 @@ describe('Shinhan Bank PDF import', () => {
     ]);
     expect(getMaskedAccountLast4(row.accountMasked)).toBeNull();
   });
+  it('keeps a long 내용 as the merchant in the three layouts of the real statement', () => {
+    const row = (y: number, extra: Array<{ text: string; x: number; y?: number }>) => [
+      { text: '20261020', x: 37, y }, { text: '12:30:00', x: 107, y }, { text: '체크카드', x: 170, y }, { text: '5,000', x: 257, y },
+      ...extra.map((cell) => ({ ...cell, y: cell.y ?? y })),
+    ];
+    const rows = parseShinhanBankPdfTable([
+      // pdf.js joined the deposit 0 and a long 내용 into one item.
+      ...row(655, [{ text: '0 주식회사가나다라마', x: 346 }, { text: '120,000', x: 466 }]),
+      // A long centred 내용 starts just left of the 360pt band.
+      ...row(623, [{ text: '0', x: 346 }, { text: '(주)가나다라마바', x: 359 }, { text: '115,000', x: 466 }]),
+      // A longer 내용 wraps to two lines above and below the row.
+      ...row(456, [{ text: '0 ', x: 346 }, { text: '가나shop(본점)', x: 357, y: 461 }, { text: '_', x: 389, y: 451 }, { text: '110,000', x: 466 }]),
+      // A digit-only 내용 joined to the deposit 0 stays the merchant, not a deposit.
+      ...row(199, [{ text: '0 987654321098', x: 346 }, { text: '105,000', x: 466 }]),
+    ]);
+    expect(rows.map((item) => [item.merchant, item.direction, item.amount])).toEqual([
+      ['주식회사가나다라마', 'withdrawal', 5000], ['(주)가나다라마바', 'withdrawal', 5000], ['가나shop(본점)_', 'withdrawal', 5000], ['987654321098', 'withdrawal', 5000],
+    ]);
+    expect(rows).toHaveLength(4);
+  });
   it('fails closed when a document has no recognizable transaction table', () => {
     expect(() => parseShinhanBankPdfTable([{ text: '거래내역조회', x: 10, y: 10 }])).toThrow('입출금 표 행');
   });
