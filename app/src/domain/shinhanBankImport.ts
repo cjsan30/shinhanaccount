@@ -105,11 +105,27 @@ export function parseShinhanBankPdfText(text: string): ImportedBankTransaction[]
 
 type PdfCell = { text: string; x: number; y: number; page?: number };
 
+// The header prints the account beside its 계좌번호 label, masked by the bank
+// (110-***-*12345), so it never holds ten digits in a row. A transfer row's
+// 내용 can, so only the header above the first transaction row is searched.
+function findStatementAccount(cells: PdfCell[]) {
+  const label = cells.find((cell) => cell.text.replace(/\s/g, '') === '계좌번호');
+  const beside = label && cells
+    .filter((cell) => (cell.page ?? 0) === (label.page ?? 0) && Math.abs(cell.y - label.y) <= 2 && cell.x > label.x && /\d{4}/.test(cell.text))
+    .sort((left, right) => left.x - right.x)[0];
+  if (beside) return beside.text;
+  // Without the label, take an account-shaped number from the header, skipping
+  // issue numbers and timestamps that begin with a date (20261031…).
+  const firstRowY = Math.max(...cells.filter((cell) => (cell.page ?? 0) === 0 && /^20\d{6}$/.test(cell.text)).map((cell) => cell.y));
+  return cells.find((cell) => (cell.page ?? 0) === 0 && cell.y > firstRowY + 2 && /[\d*][\d*-]{5,}\d{4}/.test(cell.text)
+    && !/(^|\D)20\d{2}(0[1-9]|1[0-2])[0-3]\d{7,}/.test(cell.text))?.text ?? '';
+}
+
 // Shinhan Bank's statement is a real table, not a prose PDF. Values on one
 // visual row are separate PDF text items, so rebuild them by their y position
 // and then read the fixed column bands.
 export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransaction[] {
-  const accountMasked = cells.find((cell) => /\d{10,}/.test(cell.text))?.text ?? '';
+  const accountMasked = findStatementAccount(cells);
   // PDF text items in one visual row can differ by one or two pixels. Cluster
   // them with a tolerance instead of concatenating nearby table rows.
   const grouped: Array<{ y: number; page: number; cells: PdfCell[] }> = [];
