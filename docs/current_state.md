@@ -12,7 +12,7 @@
 | --- | --- |
 | 배포 | Play 프로덕션 1.3.9 / code 13 출시됨(2026-10-27 업데이트, 2026-10-31 스토어 페이지 확인). toBlob 수정 #38, 공식 출처 링크 제거 #40 포함 |
 | 버전 | `package.json`·`package-lock.json` 1.3.9 = Android `versionName` 1.3.9, `versionCode` 13 |
-| 웹 테스트 | 548개 통과, 1개 건너뜀(내부 전용) |
+| 웹 테스트 | 551개 통과, 1개 건너뜀(내부 전용) |
 | Android 단위 테스트 | 통과 (2026-10-27, 사이트 열기 테스트 1개 삭제) |
 | `npm audit --omit=dev` | 0건 |
 | 검증 자동화 | pre-push 훅(lint → test:run → build → `npm audit --omit=dev`), GitHub Actions CI(web·android) |
@@ -107,7 +107,7 @@
 
 ## 다음 작업
 
-1. 은행 PDF 계좌 끝 4자리 수정 PR을 병합하고 다음 버전에 담는다. 이 PC는 Node 20이라 전체 웹 테스트는 CI(Node 24)나 Node 24 설치 후 확인한다.
+1. 은행 PDF 계좌 끝 4자리 수정 PR을 병합하고 다음 버전에 담는다.
 2. 휴대폰 검증 앱으로 아래 "확인 대기" 항목을 확인한다.
 3. 보류한 작업(필요할 때 진행)
    - **저장소 계층 분리(리팩터링 계획 P2)**: 저장 경로 6곳(`App.tsx`)을 저장 담당 모듈 하나로 모으고 스키마 버전별 이전 틀을 만든다. 사용자 체감 변화가 없고 데이터 유실 위험이 있어 출시 뒤로 미뤘다(사용자 결정). 다음에 저장 형식이 바뀌는 기능을 만들 때 첫 단계로 한다.
@@ -145,7 +145,7 @@
 ## 환경 메모
 
 - 새 체크아웃에서는 Gradle 전에 `npm run android:sync`가 필요하다. 셸 기본 Java가 8이라 `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`, `ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk`를 지정한다. sync 후 생기는 gradle 파일 줄바꿈 변경은 커밋하지 않는다.
-- **새 PC(2026-10-31)**: Node가 20.20.2(scoop nvm)라 `npm run test:run`이 jsdom 로드 중 `webidl.util.markAsUncloneable is not a function`으로 시작하지 못한다. CI는 Node 24다. 도메인 테스트만 `npx vitest run --environment node <파일>`로 돌릴 수 있다.
+- **새 PC(2026-10-31)**: 기본 Node는 20.20.2(scoop nvm)다. 다른 프로젝트(`init_`)가 Node 20을 고정해 기본값은 바꾸지 않았다. Node 20에서는 `npm run test:run`이 jsdom 로드 중 `webidl.util.markAsUncloneable is not a function`으로 시작하지 못한다. 이 저장소는 CI와 같은 Node 24(24.22.2, nvm으로 설치)를 셸 PATH 앞에 두고 실행한다: `$env:Path = "$env:USERPROFILE\scoop\persist\nvm\nodejs\v24.22.2;$env:Path"`. pre-push 훅도 같은 셸에서 푸시해야 통과한다.
 - pre-push 훅은 로컬 설정이다(`git config core.hooksPath .githooks`). 새로 clone하면 다시 켠다.
 - **이력 재작성(2026-10-22)**: 계좌번호 제거로 모든 커밋 해시가 바뀌었다. 이전에 clone한 체크아웃이나 worktree(예: `.claude/worktrees/exciting-varahamihira-851ef5`의 `fix/onboarding-test-flake`)에는 옛 이력이 남아 있으므로 푸시하지 말고 새로 clone한다.
 - **Kotlin 정규식은 기기에서 확인한다**: Android 정규식 엔진(ICU)은 데스크톱 JVM과 다르다(예: `(?U)` 플래그 미지원). 단위 테스트는 데스크톱 JVM에서 돌아 이런 차이를 잡지 못하고, 최상위 정규식 오류는 `SmsBridgePlugin.kt` 전체 초기화를 실패시킨다(작업 7에서 실제로 발생 후 수정).
