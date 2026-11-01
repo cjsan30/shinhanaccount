@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseShinhanBankCsv, parseShinhanBankPdfTable, parseShinhanBankPdfText } from './shinhanBankImport';
+import { getMaskedAccountLast4, parseShinhanBankCsv, parseShinhanBankPdfTable, parseShinhanBankPdfText } from './shinhanBankImport';
 
 describe('Shinhan Bank CSV import', () => {
   it('keeps withdrawals as undecided candidates and labels deposits separately', () => {
@@ -26,6 +26,29 @@ describe('Shinhan Bank PDF import', () => {
       { text: '[신한] 110000000000', x: 162, y: 745 }, { text: '20260928', x: 37, y: 655 }, { text: '21:51:33', x: 107, y: 655 }, { text: '체크카드', x: 170, y: 655 }, { text: '10,000', x: 251, y: 655 }, { text: '0', x: 346, y: 655 }, { text: '주식회사 아성', x: 361, y: 655 }, { text: '325,481', x: 466, y: 655 }, { text: '원신한', x: 522, y: 655 },
     ]);
     expect(row).toMatchObject({ direction: 'withdrawal', amount: 10000, merchant: '주식회사 아성', summary: '체크카드', balance: 325481, branch: '원신한', occurredAt: '2026-09-28T21:51:33+09:00' });
+  });
+  it('reads the bank-masked account beside its label instead of a number inside the table', () => {
+    const rows = parseShinhanBankPdfTable([
+      // The bank masks the header account; a transfer row's 내용 can hold a longer digit run.
+      { text: '계좌번호', x: 56, y: 745 }, { text: '[신한] 110-***-*51234', x: 158, y: 745 }, { text: '2026.10.01 ~ 2026.10.31', x: 153, y: 728 },
+      { text: '20261020', x: 37, y: 655 }, { text: '12:30:00', x: 107, y: 655 }, { text: '체크카드', x: 170, y: 655 }, { text: '5,000', x: 257, y: 655 }, { text: '0', x: 346, y: 655 }, { text: '카페', x: 377, y: 655 },
+      { text: '20261018', x: 37, y: 199 }, { text: '09:10:00', x: 107, y: 199 }, { text: '이체', x: 175, y: 199 }, { text: '200,000', x: 245, y: 199 }, { text: '1 987654321098', x: 346, y: 199 },
+    ]);
+    expect(rows.map((row) => getMaskedAccountLast4(row.accountMasked))).toEqual(['1234', '1234']);
+  });
+  it('without the label, skips header issue numbers and timestamps for the account', () => {
+    const [row] = parseShinhanBankPdfTable([
+      { text: '발급번호 2026103100098765', x: 430, y: 800 }, { text: '20261031142205', x: 162, y: 760 }, { text: '[신한] 110000001234', x: 162, y: 745 },
+      { text: '20261020', x: 37, y: 655 }, { text: '12:30:00', x: 107, y: 655 }, { text: '체크카드', x: 170, y: 655 }, { text: '5,000', x: 257, y: 655 }, { text: '0', x: 346, y: 655 }, { text: '카페', x: 377, y: 655 },
+    ]);
+    expect(getMaskedAccountLast4(row.accountMasked)).toBe('1234');
+  });
+  it('never takes a digit run from a transaction row as the account', () => {
+    const [row] = parseShinhanBankPdfTable([
+      { text: '거래내역조회', x: 249, y: 777 },
+      { text: '20261018', x: 37, y: 199 }, { text: '09:10:00', x: 107, y: 199 }, { text: '이체', x: 175, y: 199 }, { text: '200,000', x: 245, y: 199 }, { text: '1 987654321098', x: 346, y: 199 },
+    ]);
+    expect(getMaskedAccountLast4(row.accountMasked)).toBeNull();
   });
   it('fails closed when a document has no recognizable transaction table', () => {
     expect(() => parseShinhanBankPdfTable([{ text: '거래내역조회', x: 10, y: 10 }])).toThrow('입출금 표 행');
