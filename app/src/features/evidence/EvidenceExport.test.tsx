@@ -18,7 +18,8 @@ const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load
 vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
 vi.mock('../../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
-vi.mock('../../domain/shinhanBankImport', () => ({
+vi.mock('../../domain/shinhanBankImport', async (importOriginal) => ({
+  getMaskedAccountLast4: (await importOriginal<typeof import('../../domain/shinhanBankImport')>()).getMaskedAccountLast4,
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal' }]),
 }));
 
@@ -282,10 +283,48 @@ describe('EvidenceExport', () => {
     expect(screen.queryByRole('dialog', { name: '영수증 크게 보기' })).not.toBeInTheDocument();
   });
 
+  const attachStatement = async (container: HTMLElement, name = 'statement.pdf') => {
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [new File(['pdf'], name, { type: 'application/pdf' })] } });
+    expect(await screen.findByText('계좌 확인이 필요합니다')).toBeInTheDocument();
+  };
+  const maskedAccountRow = { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', accountMasked: '[신한] 110-***-*51234', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal' as const };
+
+  it('does not read a statement attached here until its account last 4 digits are entered', async () => {
+    const { container } = render(<StatefulEvidenceExport />);
+    await attachStatement(container);
+    expect(parseShinhanBankPdfExport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
+    expect(await screen.findByText('입출금내역의 계좌 끝 4자리를 입력해 주세요.')).toBeInTheDocument();
+    expect(parseShinhanBankPdfExport).not.toHaveBeenCalled();
+  });
+
+  it('refuses a statement whose account differs from the entered last 4 digits', async () => {
+    vi.mocked(parseShinhanBankPdfExport).mockResolvedValueOnce([maskedAccountRow]);
+    const { container } = render(<StatefulEvidenceExport />);
+    await attachStatement(container);
+    fireEvent.change(screen.getByLabelText('statement.pdf 계좌 끝 4자리'), { target: { value: '9999' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
+    expect(await screen.findByText('입력한 계좌 끝 4자리와 파일의 계좌 정보가 다릅니다.')).toBeInTheDocument();
+    expect(screen.queryByText(/입출금 1행/)).not.toBeInTheDocument();
+  });
+
+  it('reads a statement at once when the bank-masked account matches', async () => {
+    vi.mocked(parseShinhanBankPdfExport).mockResolvedValueOnce([maskedAccountRow]);
+    const { container } = render(<StatefulEvidenceExport />);
+    await attachStatement(container);
+    fireEvent.change(screen.getByLabelText('statement.pdf 계좌 끝 4자리'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
+    expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '그래도 첨부' })).not.toBeInTheDocument();
+  });
+
   it('turns a parsed bank statement into a selectable redaction table', async () => {
     const { container } = render(<StatefulEvidenceExport />);
-    const statementInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(statementInput, { target: { files: [new File(['pdf'], 'statement.pdf', { type: 'application/pdf' })] } });
+    await attachStatement(container);
+    fireEvent.change(screen.getByLabelText('statement.pdf 계좌 끝 4자리'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
+    // The mocked file shows no account, so it is attached only after confirmation.
+    fireEvent.click(await screen.findByRole('button', { name: '그래도 첨부' }));
     expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/입출금 1행/));
     expect(screen.getByText(/체크카드/)).toBeInTheDocument();
@@ -297,21 +336,22 @@ describe('EvidenceExport', () => {
     render(<EvidenceExport reportEvidence={[{ id: 'statement-1', stored: { id: 'stored-1', fileName: 'statement.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'statement', statementParseFailed: true, order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
     await screen.findByText('statement.pdf');
     fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
-    expect(await screen.findByText(/원본 개인정보 보호를 위해 비밀번호 입력 후 다시 읽어/)).toBeInTheDocument();
+    expect(await screen.findByText(/원본 개인정보 보호를 위해 계좌 끝 4자리\(비밀번호가 있으면 함께\)를 입력하고 표를 읽어/)).toBeInTheDocument();
   });
 
   it('allows a password retry after a protected bank statement could not be read', async () => {
-    vi.mocked(parseShinhanBankPdfExport).mockRejectedValueOnce(new Error('password required'));
+    vi.mocked(parseShinhanBankPdfExport).mockRejectedValueOnce(new Error('password required')).mockResolvedValueOnce([maskedAccountRow]);
     const { container } = render(<StatefulEvidenceExport />);
-    const statementInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(statementInput, { target: { files: [new File(['protected'], 'protected.pdf', { type: 'application/pdf' })] } });
+    await attachStatement(container, 'protected.pdf');
+    fireEvent.change(screen.getByLabelText('protected.pdf 계좌 끝 4자리'), { target: { value: '1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
+    expect(await screen.findByText('입출금내역 표를 읽지 못했습니다. PDF 비밀번호와 파일 형식을 확인해 주세요.')).toBeInTheDocument();
 
-    expect(await screen.findByText('표를 읽지 못했습니다')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: '950504' } });
-    fireEvent.click(screen.getByRole('button', { name: '표 다시 읽기' }));
+    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'test-pass' } });
+    fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
 
     await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument());
-    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), '950504');
+    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'test-pass');
   });
 
   it('connects additional proof only to eligible housing or transport payments', async () => {
