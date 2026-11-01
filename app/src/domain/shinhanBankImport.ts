@@ -135,19 +135,34 @@ export function parseShinhanBankPdfTable(cells: PdfCell[]): ImportedBankTransact
     if (group) group.cells.push(cell); else grouped.push({ y: cell.y, page, cells: [cell] });
   }
   const rows: ImportedBankTransaction[] = [];
+  const hasDate = (group: { cells: PdfCell[] }) => group.cells.some((cell) => /^20\d{6}$/.test(cell.text));
   for (const group of grouped) {
     const sorted = [...group.cells].sort((left, right) => left.x - right.x); const date = sorted.find((cell) => /^20\d{6}$/.test(cell.text))?.text; const time = sorted.find((cell) => /^\d{2}:\d{2}:\d{2}$/.test(cell.text))?.text;
     if (!date || !time) continue;
+    // A long 내용 is centred, so it starts left of its 360pt band, can wrap to
+    // lines about 5pt above and below the row, and pdf.js may join it to the
+    // deposit cell ("0 상호"). Take the wrapped lines and split that amount off.
+    const wrapped = grouped.filter((other) => other.page === group.page && other !== group && Math.abs(other.y - group.y) <= 6 && !hasDate(other)).flatMap((other) => other.cells);
+    const parts = [...sorted, ...wrapped].flatMap((cell): Array<PdfCell & { textOnly?: boolean }> => {
+      const joined = cell.x >= 300 && cell.x < 360 ? cell.text.match(/^([\d,]+)\s+(\S.*)$/) : null;
+      return joined ? [{ ...cell, text: joined[1] }, { ...cell, x: cell.x + 1, text: joined[2], textOnly: true }] : [cell];
+    });
+    const isAmount = (cell: PdfCell & { textOnly?: boolean }) => !cell.textOnly && /^[\d,]+$/.test(cell.text.trim());
     const inBand = (from: number, to: number) => sorted.filter((cell) => cell.x >= from && cell.x < to).map((cell) => cell.text).join(' ').trim();
-    const amountAt = (from: number, to: number, target: number) => sorted
-      .filter((cell) => cell.x >= from && cell.x < to)
+    const amountAt = (from: number, to: number, target: number) => parts
+      .filter((cell) => cell.x >= from && cell.x < to && isAmount(cell))
       .map((cell) => ({ value: parseAmount(cell.text), distance: Math.abs(cell.x - target) }))
       .filter((cell) => Number.isFinite(cell.value) && cell.value > 0)
       .sort((left, right) => left.distance - right.distance)[0]?.value ?? 0;
+    // Lines of one wrapped name are joined without a space; it breaks mid-word.
+    const contentLines = parts.filter((cell) => cell.x >= 345 && cell.x < 420 && (cell.x >= 360 || !isAmount(cell)))
+      .sort((left, right) => right.y - left.y || left.x - right.x)
+      .reduce<PdfCell[][]>((lines, cell) => { const line = lines.at(-1); if (line && Math.abs(line[0].y - cell.y) <= 2) line.push(cell); else lines.push([cell]); return lines; }, []);
+    const content = contentLines.map((line) => line.map((cell) => cell.text.trim()).join(' ')).join('').trim();
     // Amounts are right-aligned: a large deposit can start near x=313 while
     // withdrawals stay left of x=300. Keeping the bands disjoint prevents a
     // deposit (e.g. support payment) from becoming a false withdrawal.
-    const description = inBand(149, 245); const withdrawal = amountAt(245, 300, 270); const deposit = amountAt(300, 360, 340); const merchant = inBand(360, 420) || description || '입출금 내역'; const balance = amountAt(420, 505, 466); const branch = inBand(505, Number.POSITIVE_INFINITY);
+    const description = inBand(149, 245); const withdrawal = amountAt(245, 300, 270); const deposit = amountAt(300, 360, 340); const merchant = content || description || '입출금 내역'; const balance = amountAt(420, 505, 466); const branch = inBand(505, Number.POSITIVE_INFINITY);
     const direction: ImportedBankTransaction['direction'] = withdrawal > 0 ? 'withdrawal' : 'deposit'; const amount = withdrawal > 0 ? withdrawal : deposit;
     if (!amount) continue;
     const occurredAt = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time}+09:00`;
