@@ -62,11 +62,6 @@
   background: #ffffff0b;
 }
 
-.import-preview span {
-  color: #b9c0c8;
-  font-size: 13px;
-}
-
 .import-file-name {
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -822,9 +817,8 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 .import-reuse-statement {
   display: grid;
   grid-template-columns: 20px minmax(0,1fr);
-  align-items: start;
+  align-items: center;
   column-gap: 10px;
-  row-gap: 2px;
   margin: 2px 0 0;
   font-size: 14px;
   line-height: 1.45;
@@ -832,13 +826,6 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 
 .import-reuse-statement b {
   font-weight: 600;
-}
-
-.import-reuse-statement small {
-  grid-column: 2;
-  color: #b9c0c8;
-  font-size: 13px;
-  line-height: 1.45;
 }
 
 .import-reuse-statement input {
