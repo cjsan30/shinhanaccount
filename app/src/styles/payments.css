@@ -819,19 +819,29 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
   box-sizing: border-box;
 }
 
-.sheet .import-reuse-statement {
+.import-reuse-statement {
   display: grid;
-  grid-template-columns: 22px minmax(0,1fr);
+  grid-template-columns: 20px minmax(0,1fr);
   align-items: start;
-  gap: 8px;
+  column-gap: 10px;
+  row-gap: 2px;
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
-.sheet .import-reuse-statement small {
+.import-reuse-statement b {
+  font-weight: 600;
+}
+
+.import-reuse-statement small {
   grid-column: 2;
-  line-height: 1.5;
+  color: #b9c0c8;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.sheet .import-reuse-statement input {
+.import-reuse-statement input {
   width: 20px;
   height: 20px;
   margin: 0;
