@@ -308,10 +308,21 @@
   background: #2a2930;
 }
 
+.statement-unread small {
+  color: #b9c0c8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .statement-unread label {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  margin: 4px 0 0;
   font-size: 13px;
+}
+
+.sheet .statement-unread label input {
+  margin: 0;
 }
 
 .statement-unread input {
