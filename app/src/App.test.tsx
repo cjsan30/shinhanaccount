@@ -207,15 +207,15 @@ describe('app entry flows', () => {
     expect(screen.getByText('계획표 설정 · 거래내역 가져오기')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(window.localStorage.getItem('shinhanhae-policy-book-v1')).toBe(before);
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(screen.getByRole('button', { name: '사용보고서 작성' }));
     const help = await screen.findByRole('button', { name: '도움말' });
     expect(help.closest('header')).not.toBeNull();
     fireEvent.click(help);
-    expect(await screen.findByRole('dialog', { name: 'PDF 생성 도움말' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: '사용보고서 작성 도움말' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성 닫기' }));
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
-    expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '사용보고서 작성 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '사용보고서 작성' }));
+    expect(screen.queryByRole('dialog', { name: '사용보고서 작성 도움말' })).not.toBeInTheDocument();
   });
   it('routes Android back through nested sheets before leaving the dashboard', () => {
     expect(previousPanel('rules')).toBe('data');

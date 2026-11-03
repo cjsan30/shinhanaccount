@@ -152,7 +152,7 @@ describe('EvidenceExport', () => {
 
   it('opens an anchored PDF guide from the header request and advances only with buttons', () => {
     render(<EvidenceExport helpRequest={1} reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
-    const dialog = screen.getByRole('dialog', { name: 'PDF 생성 도움말' });
+    const dialog = screen.getByRole('dialog', { name: '사용보고서 작성 도움말' });
     expect(screen.getByText('입출금내역을 추가하세요')).toBeInTheDocument();
     fireEvent.pointerDown(dialog, { clientX: 280 });
     fireEvent.pointerUp(dialog, { clientX: 120 });
@@ -160,7 +160,7 @@ describe('EvidenceExport', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음' }));
     expect(screen.getByText('가릴 내역을 확인하세요')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
-    expect(screen.queryByRole('dialog', { name: 'PDF 생성 도움말' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '사용보고서 작성 도움말' })).not.toBeInTheDocument();
   });
 
   it('rejects an oversized evidence file before storing or parsing it', async () => {

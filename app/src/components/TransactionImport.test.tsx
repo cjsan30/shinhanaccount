@@ -162,7 +162,7 @@ describe('optional statement reuse', () => {
     await screen.findByText(/1건의 기간 내 출금 내역/);
     fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
     expect(onImport.mock.calls[0][0].statement).toBeUndefined();
-    fireEvent.click(screen.getByLabelText(/이 파일을 제출 PDF에도 추가/));
+    fireEvent.click(screen.getByLabelText(/이 파일을 사용보고서에도 추가/));
     fireEvent.click(screen.getByRole('button', { name: '내역 가져오기' }));
     const payload = onImport.mock.calls[1][0];
     expect(payload.statement).toEqual({ file, transactions: rows, requiresPassword: true });
