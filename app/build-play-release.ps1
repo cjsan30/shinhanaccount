@@ -1,8 +1,17 @@
+param(
+    [string] $JavaHome,
+    [string] $StoreFile
+)
+
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 
-$androidStudioJbr = 'C:\Program Files\Android\Android Studio\jbr'
-$storeFile = 'C:\Users\lAte\Keys\shinhanhae-release.jks'
+# Use the first JDK and keystore that exist on this PC unless a path is passed.
+# Android Studio is not installed on every development PC.
+$javaCandidates = @($JavaHome, 'C:\Program Files\Android\Android Studio\jbr') + @(Get-ChildItem -Directory 'C:\Program Files\Eclipse Adoptium\jdk-21*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | ForEach-Object FullName)
+$storeCandidates = @($StoreFile, 'C:\Users\lAte\Keys\shinhanhae-release.jks', (Join-Path $HOME 'Keys\shinhanhae-release.jks'))
+$androidStudioJbr = $javaCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+$storeFile = $storeCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 $bundlePath = Join-Path $PSScriptRoot 'android\app\build\outputs\bundle\release\app-release.aab'
 $apkPath = Join-Path $PSScriptRoot 'android\app\build\outputs\apk\release\app-release.apk'
 
@@ -20,8 +29,10 @@ function Get-Sha256Hash([string] $Path) {
     }
 }
 
-if (-not (Test-Path -LiteralPath $androidStudioJbr)) { throw "Android Studio JBR not found: $androidStudioJbr" }
-if (-not (Test-Path -LiteralPath $storeFile)) { throw "Keystore not found: $storeFile" }
+if (-not $androidStudioJbr) { throw 'JDK not found. Pass -JavaHome <path>.' }
+if (-not $storeFile) { throw 'Keystore not found. Pass -StoreFile <path>.' }
+Write-Host "JDK: $androidStudioJbr"
+Write-Host "Keystore: $storeFile"
 
 $storePassword = Read-Host 'Keystore password' -AsSecureString
 $keyPassword = Read-Host 'Key password (same password is allowed)' -AsSecureString
