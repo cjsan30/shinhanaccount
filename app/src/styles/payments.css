@@ -73,6 +73,8 @@
   margin: 4px 0 0;
   font-size: 13px;
   line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .import-preview .import-status {

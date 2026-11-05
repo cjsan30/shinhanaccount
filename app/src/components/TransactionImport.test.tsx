@@ -63,6 +63,18 @@ describe('transaction import', () => {
     expect(screen.getByRole('button', { name: '확인 후 계속 진행' })).toBeInTheDocument();
   });
 
+  it('tells how many card rows matched the first three digits when the file masks the last digit', async () => {
+    const transaction = { occurredAt: '2026-09-20T12:00:00+09:00', cardMasked: '본인111*', merchant: '식당', amount: 8000, approvalNumber: '0003', paymentStatus: '승인', cancellationStatus: '' };
+    mocks.parseCard.mockResolvedValue([transaction, { ...transaction, approvalNumber: '0004' }]);
+    mocks.filterCard.mockReturnValue({ status: 'ready', transactions: [transaction, { ...transaction, approvalNumber: '0004' }], skippedOtherCards: 0, hasMaskedCardWarning: true });
+    const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['csv'], 'card.csv', { type: 'text/csv' })] } });
+    fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
+    expect(await screen.findByText('카드번호 3자리가 동일한 결제내역 2건을 찾았습니다. 다른 카드 내역과 섞이지 않았는지 확인해주세요.')).toBeInTheDocument();
+    expect(screen.queryByText(/파일 안에서 4자리를 확인할 수 없습니다/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '확인 후 계속 진행' })).toBeInTheDocument();
+  });
+
   it('passes a bank PDF password only to the selected-file parser', async () => {
     mocks.parseBankPdf.mockResolvedValue([{ occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal-password', direction: 'withdrawal' }]);
     const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
