@@ -22,6 +22,8 @@ export type ReportEvidenceRecord = {
   excludedStatementRowIds?: string[];
   /** 표를 읽지 못한 입출금 PDF는 원본 노출을 막기 위해 제출서류 생성에서 제외한다. */
   statementParseFailed?: boolean;
+  /** 사용보고서 작성에서 직접 첨부한 입출금 PDF는 계좌 끝 4자리를 확인한 뒤에만 표를 읽는다. 그동안은 표를 읽지 못한 것과 같이 다룬다. */
+  statementNeedsAccount?: boolean;
   /** 원본 은행 PDF를 제출서류에 다시 그릴 때만, 이번 화면에서 비밀번호가 필요하다. 비밀번호 자체는 저장하지 않는다. */
   statementSourceRequiresPassword?: boolean;
   order: number;
