@@ -3,15 +3,15 @@
 이 파일은 진행 상황 인계의 유일한 기준이다. 세션을 끝낼 때마다 갱신한다.
 결정 이력은 [00-latest-decisions.md](00-latest-decisions.md), 구조 개선의 배경은 [08-refactoring-plan.md](08-refactoring-plan.md)에 둔다.
 
-- 마지막 갱신: 2026-10-31
-- 기준 커밋: `dev` `6207159` (1.3.9 버전업 PR #41 병합 후) + 은행 PDF 계좌 끝 4자리 수정 PR
+- 마지막 갱신: 2026-11-15
+- 기준 커밋: `dev` `261170e` (#52 병합 후), `main`은 1.4.0 출시본
 
 ## 현재 상태 요약
 
 | 항목 | 상태 |
 | --- | --- |
-| 배포 | Play 프로덕션 1.3.9 / code 13 출시됨(2026-10-27 업데이트, 2026-10-31 스토어 페이지 확인). toBlob 수정 #38, 공식 출처 링크 제거 #40 포함 |
-| 버전 | `package.json`·`package-lock.json` 1.3.9 = Android `versionName` 1.3.9, `versionCode` 13 |
+| 배포 | Play 프로덕션 1.4.0 / code 14 게시(2026-11, 사용자 게시) |
+| 버전 | `package.json`·`package-lock.json` 1.4.0 = Android `versionName` 1.4.0, `versionCode` 14 |
 | 웹 테스트 | 555개 통과, 1개 건너뜀(내부 전용) |
 | Android 단위 테스트 | 통과 (2026-10-27, 사이트 열기 테스트 1개 삭제) |
 | `npm audit --omit=dev` | 0건 |
@@ -35,6 +35,12 @@
 4. Play Console에서 스토어 전체 설명을 `docs/11` 맨 위 문구로 바꾸고, 프로덕션 출시를 1.3.9 / code 13 AAB로 바꾼 뒤 검토로 보낸다.
 
 ## 진행 상황
+
+### 2026-11-03~15 1.4.0 출시와 다음 작업 정리 (Claude Code)
+
+- #45~#49: 거래내역 가져오기 체크박스·안내 정리, 'PDF 생성' 화면 이름을 '사용보고서 작성'으로, 카드 앞 3자리 일치 경고 문구. #50 1.4.0 / code 14 버전업, #52 릴리스 스크립트가 이 PC의 JDK·서명 키를 찾도록 변경. 1.4.0 / code 14를 사용자가 Play에 게시했다.
+- 영수증·결제 연결 시제품을 최신 `dev` 위에 다시 얹어 휴대폰 검증 앱에서 확인했고, 사용자가 1안("결제별 영수증")을 골랐다(로컬 브랜치만, 푸시 안 함).
+- 계획 등록·정책 시작·사용보고서 개선 결정을 정리했다(`docs/00` 2026-11-15). 구현은 아직 시작하지 않았다.
 
 ### 2026-10-31 1.3.9 출시 확인, 은행 PDF 계좌 끝 4자리 오류 수정 (Claude Code)
 
@@ -111,7 +117,14 @@
 
 ## 다음 작업
 
-1. 은행 PDF 계좌 끝 4자리(#43), 가맹점(#44), PDF 생성 계좌 확인 PR을 차례로 병합하고 다음 버전에 담는다.
+1. **작업 A~G** (결정: `docs/00` 2026-11-15). 묶음마다 `dev`에서 브랜치를 만들어 PR로 병합한다. A는 다음 기간(12월 11일) 전에 필요하다.
+   - A 정책 시작(입금/미입금, 입금 후 첫 결제 선택, 시작 날짜 수정)과 대시보드(새 계획 등록 퀵버튼, 계획 보기 줄, 바로가기, 금액 입력 스크롤)
+   - B 사용보고서 작성 문구 정리와 "모자이크" 용어 통일
+   - C PDF 4.5MB 이하, 앱 안 미리보기 → 이대로 PDF 생성
+   - D 계획표 OCR 정확도(원본: 저장소 밖 `Documents\plan-ocr`, 휴대폰 검증 앱으로 반복 검증)
+   - E 영수증 1안 정식 적용(로컬 시제품 브랜치 `feat/receipt-link-prototype-v2`, 테스트 2개 실패 상태)
+   - F 설정 정리(사용자에게 안을 먼저 보여 준다)
+   - G 도움말 일괄 수정
 2. 휴대폰 검증 앱으로 아래 "확인 대기" 항목을 확인한다.
 3. 보류한 작업(필요할 때 진행)
    - **저장소 계층 분리(리팩터링 계획 P2)**: 저장 경로 6곳(`App.tsx`)을 저장 담당 모듈 하나로 모으고 스키마 버전별 이전 틀을 만든다. 사용자 체감 변화가 없고 데이터 유실 위험이 있어 출시 뒤로 미뤘다(사용자 결정). 다음에 저장 형식이 바뀌는 기능을 만들 때 첫 단계로 한다.
@@ -151,6 +164,7 @@
 
 - 새 체크아웃에서는 Gradle 전에 `npm run android:sync`가 필요하다. 셸 기본 Java가 8이라 `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`, `ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk`를 지정한다. sync 후 생기는 gradle 파일 줄바꿈 변경은 커밋하지 않는다.
 - **새 PC(2026-10-31)**: 기본 Node는 20.20.2(scoop nvm)다. 다른 프로젝트(`init_`)가 Node 20을 고정해 기본값은 바꾸지 않았다. Node 20에서는 `npm run test:run`이 jsdom 로드 중 `webidl.util.markAsUncloneable is not a function`으로 시작하지 못한다. 이 저장소는 CI와 같은 Node 24(24.22.2, nvm으로 설치)를 셸 PATH 앞에 두고 실행한다: `$env:Path = "$env:USERPROFILE\scoop\persist\nvm\nodejs\v24.22.2;$env:Path"`. pre-push 훅도 같은 셸에서 푸시해야 통과한다.
+- **새 노트북(2026-11)**: 에뮬레이터 대신 휴대폰 검증 앱으로 확인한다(무선 디버깅은 mDNS 이름 `adb-<serial>-…._adb-tls-connect._tcp`로 연결). Android SDK는 사용자 터미널에서도 보이도록 `C:\Users\mnshell\Android\Sdk`에 복사했고 `app/android/local.properties`(Git 제외)의 `sdk.dir`이 그곳을 가리킨다. JDK는 `C:\Program Files\Eclipse Adoptium\jdk-21*`, 서명 키는 저장소 밖 `%USERPROFILE%\Keys\`에 있으며 `build-play-release.ps1`이 자동으로 찾는다(`-JavaHome`, `-StoreFile`로 바꿀 수 있음).
 - pre-push 훅은 로컬 설정이다(`git config core.hooksPath .githooks`). 새로 clone하면 다시 켠다.
 - **이력 재작성(2026-10-22)**: 계좌번호 제거로 모든 커밋 해시가 바뀌었다. 이전에 clone한 체크아웃이나 worktree(예: `.claude/worktrees/exciting-varahamihira-851ef5`의 `fix/onboarding-test-flake`)에는 옛 이력이 남아 있으므로 푸시하지 말고 새로 clone한다.
 - **Kotlin 정규식은 기기에서 확인한다**: Android 정규식 엔진(ICU)은 데스크톱 JVM과 다르다(예: `(?U)` 플래그 미지원). 단위 테스트는 데스크톱 JVM에서 돌아 이런 차이를 잡지 못하고, 최상위 정규식 오류는 `SmsBridgePlugin.kt` 전체 초기화를 실패시킨다(작업 7에서 실제로 발생 후 수정).
