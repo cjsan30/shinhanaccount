@@ -1,6 +1,6 @@
 import type { BudgetKey } from './budget';
 import { applyCancellation, applyPayment, getAutoCancellationMatch, type Ledger } from './ledger';
-import { isInPeriodScope, selectInPeriodScope, type PeriodScope } from './periodSelectors';
+import { isInPeriodBounds, selectInPeriodScope, type PeriodScope } from './periodSelectors';
 import type { PaymentClassification } from './sms';
 import type { NativeApproval, NativeApprovalReview, NativeCancellation } from '../native/smsBridge';
 
@@ -32,12 +32,13 @@ export type ApprovalBatchResult = {
 };
 
 /**
- * Applies one batch read from the native queues. Imports already omit dates
- * outside the confirmed policy period; queued notifications follow the same rule
- * so a delayed old approval or a payment during the policy gap never reappears.
+ * Applies one batch read from the native queues. Like imports, approvals between
+ * the period's 11th and 10th are stored even before the deposit (they become
+ * 사업 무관 until the deposit), and a delayed approval of another period is dropped.
+ * Incomplete approvals open a form only when they would count.
  */
 export function applyApprovalBatch(input: ApprovalBatchInput): ApprovalBatchResult {
-  const appliedApprovals = input.approvals.filter((approval) => isInPeriodScope(approval, input.scope));
+  const appliedApprovals = input.approvals.filter((approval) => isInPeriodBounds(approval, input.scope));
   const reviews = selectInPeriodScope(input.reviews, input.scope);
   const skippedReviewIds = input.reviews.filter((review) => !reviews.includes(review)).map((review) => review.id);
   let ledger = input.ledger;

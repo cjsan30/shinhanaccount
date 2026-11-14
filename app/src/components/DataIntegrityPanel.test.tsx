@@ -5,7 +5,7 @@ import { DataIntegrityPanel } from './DataIntegrityPanel';
 
 const ledger: Ledger = { alertThresholds: [50, 80], entries: [
   { id: 'undecided', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '카페', amount: 5000, status: 'undecided' as const },
-  { id: 'outside', cardLast4: '1234', occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 5000, status: 'classified' as const, bucket: 'resident', category: 'food' },
+  { id: 'outside', cardLast4: '1234', occurredAt: '2026-09-10T12:00:00+09:00', merchant: '기간 외', amount: 5000, status: 'classified' as const, bucket: 'resident', category: 'food' },
 ] };
 
 describe('data integrity panel', () => {

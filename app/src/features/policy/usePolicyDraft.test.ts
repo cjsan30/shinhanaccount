@@ -6,7 +6,7 @@ const { policyOcr } = vi.hoisted(() => ({ policyOcr: { pickAndRecognize: vi.fn()
 vi.mock('../../native/policyOcr', () => ({ PolicyOcr: policyOcr }));
 import { usePolicyDraft } from './usePolicyDraft';
 
-const saved: SupportPolicy = { ...emptyPolicy, plans: { ...emptyPolicy.plans, food: 200000, cafe: 100000 }, period: { startDay: 1, endDay: 30 }, profileId: 'shinhanhae-40', alertTargets: ['cafe'] };
+const saved: SupportPolicy = { ...emptyPolicy, plans: { ...emptyPolicy.plans, food: 200000, cafe: 100000 }, profileId: 'shinhanhae-40', alertTargets: ['cafe'] };
 const planText = '식비 300,000\n카페 50,000';
 const setup = () => { const notify = vi.fn(); const view = renderHook(() => usePolicyDraft(saved, notify)); return { notify, view }; };
 
@@ -20,11 +20,11 @@ describe('usePolicyDraft', () => {
     expect(view.result.current.draft).toBeNull();
   });
 
-  it('parses pasted text but keeps the saved period, profile and alert targets', () => {
+  it('parses pasted text but keeps the saved profile and alert targets', () => {
     const { view } = setup();
     act(() => view.result.current.setText(planText));
     act(() => view.result.current.reviewText());
-    expect(view.result.current.draft).toMatchObject({ period: { startDay: 1, endDay: 30 }, profileId: 'shinhanhae-40', alertTargets: ['cafe'] });
+    expect(view.result.current.draft).toMatchObject({ profileId: 'shinhanhae-40', alertTargets: ['cafe'] });
     expect(view.result.current.draft?.plans.food).toBe(300000);
     expect(view.result.current.focusToken).toBe(1);
   });
@@ -56,10 +56,9 @@ describe('usePolicyDraft', () => {
     act(() => view.result.current.updateAmount('food', '-1'));
     act(() => view.result.current.updateAmount('cafe', 'abc'));
     act(() => view.result.current.updateProfile('shinhanhae-70'));
-    act(() => view.result.current.updatePeriod({ startDay: 15, endDay: 10 }));
     act(() => view.result.current.toggleAlertTarget('cafe'));
     act(() => view.result.current.toggleAlertTarget('food'));
-    expect(view.result.current.draft).toMatchObject({ plans: { food: 250000, cafe: 100000 }, profileId: 'shinhanhae-70', period: { startDay: 15, endDay: 10 }, alertTargets: ['food'] });
+    expect(view.result.current.draft).toMatchObject({ plans: { food: 250000, cafe: 100000 }, profileId: 'shinhanhae-70', alertTargets: ['food'] });
     expect(saved.plans.food).toBe(200000);
     expect(saved.alertTargets).toEqual(['cafe']);
   });

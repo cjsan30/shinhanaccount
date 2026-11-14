@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { normalizePolicyPeriod, type PolicyPeriod } from '../../domain/budget';
 import { getAlertTargets, parsePolicyText, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
 import { PolicyOcr } from '../../native/policyOcr';
 
@@ -13,8 +12,8 @@ export function usePolicyDraft(basePolicy: SupportPolicy, notify: (message: stri
   const [draft, setDraft] = useState<SupportPolicy | null>(null);
   const [focusToken, setFocusToken] = useState(0);
   const focusDraft = () => setFocusToken((current) => current + 1);
-  // A parsed plan keeps the saved period, profile and alert choices until the user changes them.
-  const draftFromText = (value: string): SupportPolicy => ({ ...parsePolicyText(value), period: normalizePolicyPeriod(basePolicy.period), profileId: basePolicy.profileId, alertTargets: getAlertTargets(basePolicy) });
+  // A parsed plan keeps the saved profile and alert choices until the user changes them.
+  const draftFromText = (value: string): SupportPolicy => ({ ...parsePolicyText(value), profileId: basePolicy.profileId, alertTargets: getAlertTargets(basePolicy) });
 
   const reviewText = () => {
     if (!text.trim()) { notify('계획표 내용을 붙여넣어 주세요.'); return; }
@@ -40,10 +39,9 @@ export function usePolicyDraft(basePolicy: SupportPolicy, notify: (message: stri
     setDraft((current) => current ? { ...current, plans: { ...current.plans, [item]: Math.floor(amount) } } : current);
   };
   const updateProfile = (profileId: SupportProfileId) => setDraft((current) => current ? { ...current, profileId } : current);
-  const updatePeriod = (period: PolicyPeriod) => setDraft((current) => current ? { ...current, period } : current);
   const toggleAlertTarget = (item: PolicyItem) => setDraft((current) => current ? { ...current, alertTargets: getAlertTargets(current).includes(item) ? getAlertTargets(current).filter((target) => target !== item) : [...getAlertTargets(current), item] } : current);
   const clearDraft = () => setDraft(null);
   const clear = () => { setText(''); setDraft(null); };
 
-  return { text, setText, draft, focusToken, reviewText, readScreenshot, editSaved, updateAmount, updateProfile, updatePeriod, toggleAlertTarget, clearDraft, clear };
+  return { text, setText, draft, focusToken, reviewText, readScreenshot, editSaved, updateAmount, updateProfile, toggleAlertTarget, clearDraft, clear };
 }

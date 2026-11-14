@@ -50,7 +50,7 @@ export function PaymentHistory({ entries, categoryNames, filterOptions, isEntryI
         const date = localDateKey(entry.occurredAt);
         const showDate = date !== previousDate;
         previousDate = date;
-        const subtitle = entry.status === 'cancelled' ? '취소됨' : entry.status === 'excluded' ? '사업 무관 제외' : entry.cancelledAmount ? `부분 취소 · ${won(entry.cancelledAmount)} 취소` : categoryNames[entry.category ?? ''] || '분류 없음';
+        const subtitle = entry.status === 'cancelled' ? '취소됨' : entry.status === 'excluded' ? (entry.beforeDeposit ? '입금 전 결제' : '사업 무관 제외') : entry.cancelledAmount ? `부분 취소 · ${won(entry.cancelledAmount)} 취소` : categoryNames[entry.category ?? ''] || '분류 없음';
         const outsidePeriod = !isEntryInActivePeriod(entry);
         const { isPortion, primaryAmount } = getPaymentAmountDisplay(entry);
         return <div key={entry.id}>{showDate && <h3 className="payment-date">{displayDate(entry.occurredAt)}</h3>}<button className="payment-row" type="button" onClick={() => onOpen(entry)}><span className="payment-row__main"><span className="payment-row__merchant"><strong>{displayMerchant(entry)}</strong><small><time>{displayTime(entry.occurredAt)}</time>{subtitle}{entry.supportAmountReviewRequired && <em>금액 재확인 필요</em>}{outsidePeriod && <em>기간 외</em>}{isSuspectedDuplicate(entry) && <em className="duplicate-badge">중복 의심</em>}</small></span><span className="payment-row__amount"><b>{isPortion && <em>지원금 </em>}{won(primaryAmount)}</b>{isPortion && <span className="payment-original-amount">원결제 {won(entry.amount)}</span>}</span></span><CaretRight size={21} /></button></div>;

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyPolicy } from '../domain/policy';
 import { OnboardingFlow } from './OnboardingFlow';
 
@@ -14,6 +14,7 @@ vi.mock('./PolicyOnboarding', () => ({
 vi.mock('../native/smsBridge', () => ({ SmsBridge: { configure: mocks.configure, consumePendingApprovals: mocks.consumePendingApprovals } }));
 
 describe('onboarding flow', () => {
+  afterEach(() => { vi.useRealTimers(); });
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); mocks.configure.mockResolvedValue(undefined); mocks.consumePendingApprovals.mockResolvedValue({ items: [] }); });
 
   it('sends a non-applicant directly to the dashboard without configuring a card', () => {
@@ -42,15 +43,21 @@ describe('onboarding flow', () => {
   });
 
   it('completes the policy and routes prior-card users to transaction import', async () => {
-    const onComplete = vi.fn(); mocks.consumePendingApprovals.mockResolvedValue({ items: [{ cardLast4: '4321', occurredAt: '2026-09-20T12:00:00+09:00', amount: 5000, merchant: '카페' }] });
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    const onComplete = vi.fn(); mocks.consumePendingApprovals.mockResolvedValue({ items: [{ id: 'cafe', cardLast4: '4321', occurredAt: '2026-09-13T12:00:00+09:00', amount: 5000, merchant: '카페' }] });
     render(<OnboardingFlow onComplete={onComplete} />);
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
     fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
     await screen.findByRole('button', { name: '정책 확정' });
     fireEvent.click(screen.getByRole('button', { name: '정책 확정' }));
+    // The deposit came on the 13th, before the card payment received earlier that day.
+    fireEvent.click(await screen.findByRole('button', { name: '입금됐어요' }));
+    fireEvent.click(screen.getByRole('button', { name: '9월 13일' }));
+    fireEvent.click(screen.getByRole('radio', { name: /카페/ }));
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
     expect(await screen.findByText('정책 확정 전 승인 알림 1건')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /결제한 적이 있어요/ }));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'applicant', cardLast4: '4321', nextAction: 'import', historyAction: 'keep-undecided' })));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ applicantStatus: 'applicant', cardLast4: '4321', nextAction: 'import', historyAction: 'keep-undecided', funding: { status: 'deposited', depositDate: '2026-09-13', startAt: new Date('2026-09-13T12:00:00+09:00').toISOString() } })));
     expect(localStorage.getItem('shinhanhae-onboarding-progress-v1')).toBeNull();
   });
 
@@ -78,9 +85,10 @@ describe('onboarding flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
     fireEvent.click(screen.getByRole('button', { name: '권한 완료' }));
     fireEvent.click(await screen.findByRole('button', { name: '정책 확정' }));
+    fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
     expect(await screen.findByRole('button', { name: /아직 사용 전이에요/ })).toBeInTheDocument();
     expect(screen.queryByText(/정책 확정 전 승인 알림/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /아직 사용 전이에요/ }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ nextAction: 'dashboard', pendingApprovals: [] }));
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ nextAction: 'dashboard', pendingApprovals: [], funding: { status: 'pending' } }));
   });
 });
