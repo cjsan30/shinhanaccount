@@ -13,11 +13,13 @@ type PaymentDetailProps = {
   hasSuspectedDuplicate: boolean;
   onEdit: (entry: LedgerEntry) => void;
   onMarkUndecided: (entry: LedgerEntry) => void;
+  /** Puts a payment left out before the deposit back as it was classified. */
+  onIncludeBeforeDeposit: (entry: LedgerEntry) => void;
   onCancel: (entry: LedgerEntry) => void;
   onDelete: (entry: LedgerEntry) => void;
 };
 
-export function PaymentDetail({ entry, merchantAlias, categoryNames, inActivePeriod, hasSuspectedDuplicate, onEdit, onMarkUndecided, onCancel, onDelete }: PaymentDetailProps) {
+export function PaymentDetail({ entry, merchantAlias, categoryNames, inActivePeriod, hasSuspectedDuplicate, onEdit, onMarkUndecided, onIncludeBeforeDeposit, onCancel, onDelete }: PaymentDetailProps) {
   if (!entry) return <p>결제 내역을 찾지 못했습니다.</p>;
   return <section className="payment-detail">
     <div className="payment-detail__hero">
@@ -40,8 +42,10 @@ export function PaymentDetail({ entry, merchantAlias, categoryNames, inActivePer
       <button className="sheet-action danger-action" onClick={() => onDelete(entry)}>삭제</button>
     </div>}
     {entry.status === 'excluded' && <div className="payment-detail__actions">
-      {/* A payment before the deposit comes back only by moving the policy start. */}
-      {!entry.beforeDeposit && <button className="sheet-action" onClick={() => onMarkUndecided(entry)}>분류 필요로 되돌리기</button>}
+      {/* A payment before the deposit comes back one at a time; the policy start stays. */}
+      {entry.beforeDeposit
+        ? <button className="sheet-action" onClick={() => onIncludeBeforeDeposit(entry)}>이 결제 예산에 포함</button>
+        : <button className="sheet-action" onClick={() => onMarkUndecided(entry)}>분류 필요로 되돌리기</button>}
       <button className="sheet-action danger-action" onClick={() => onDelete(entry)}>삭제</button>
     </div>}
   </section>;

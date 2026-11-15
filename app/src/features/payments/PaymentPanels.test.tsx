@@ -6,7 +6,7 @@ import { CancellationReview, PaymentCancel, PaymentDelete, PaymentDetail, Paymen
 const entry = (patch: Partial<LedgerEntry> = {}): LedgerEntry => ({ id: 'p1', cardLast4: '0000', occurredAt: '2026-09-20T12:00:00+09:00', amount: 12000, merchant: '테스트 식당', status: 'classified', bucket: 'resident', category: 'food', ...patch });
 const detailProps = (patch: Partial<Parameters<typeof PaymentDetail>[0]> = {}) => ({
   entry: entry(), merchantAlias: undefined, categoryNames: { food: '식비' }, inActivePeriod: true, hasSuspectedDuplicate: false,
-  onEdit: vi.fn(), onMarkUndecided: vi.fn(), onCancel: vi.fn(), onDelete: vi.fn(), ...patch,
+  onEdit: vi.fn(), onMarkUndecided: vi.fn(), onIncludeBeforeDeposit: vi.fn(), onCancel: vi.fn(), onDelete: vi.fn(), ...patch,
 });
 
 describe('payment detail', () => {
@@ -32,6 +32,15 @@ describe('payment detail', () => {
     render(<PaymentDetail {...detailProps({ entry: entry({ status: 'excluded' }) })} />);
     expect(screen.getByText('사업 무관 제외')).toBeInTheDocument();
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['분류 필요로 되돌리기', '삭제']);
+  });
+
+  it('offers to count a payment made before the deposit instead of restoring it to 분류 필요', () => {
+    const props = detailProps({ entry: entry({ status: 'excluded', bucket: undefined, category: undefined, beforeDeposit: { status: 'classified', bucket: 'resident', category: 'food' } }) });
+    render(<PaymentDetail {...props} />);
+    expect(screen.getByText('입금 전 결제')).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['이 결제 예산에 포함', '삭제']);
+    fireEvent.click(screen.getByRole('button', { name: '이 결제 예산에 포함' }));
+    expect(props.onIncludeBeforeDeposit).toHaveBeenCalledWith(props.entry);
   });
 
   it('notes out-of-period, duplicate and partial-cancellation states', () => {
