@@ -921,3 +921,25 @@ body.high-contrast .sheet .evidence-missing > div > button {
   background: #000 !important;
   color: #fff !important;
 }
+
+/* Report reset button at the top of the report sheet. Styled by its own class so it
+   does not depend on the surrounding sheet. */
+.evidence-reset {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid #f0a7a777;
+  border-radius: 10px;
+  background: #ff59591a;
+  color: #ffc5c5;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.evidence-reset:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
