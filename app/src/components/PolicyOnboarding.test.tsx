@@ -28,18 +28,14 @@ describe('policy onboarding', () => {
     expect(screen.getByLabelText('주거비 계획 금액')).toHaveValue(0);
   });
 
-  it('reads a plan, lets the user add a custom item, and confirms a valid profile', async () => {
+  it('reads a plan without a custom item field and confirms a valid profile', async () => {
     mocks.recognize.mockResolvedValue({ text: complete70 });
     const onConfirm = vi.fn(); render(<PolicyOnboarding onConfirm={onConfirm} />);
     fireEvent.click(screen.getByRole('button', { name: '스크린샷에서 읽기' }));
     expect(await screen.findByText('스크린샷의 텍스트를 읽었습니다. 검토 후 확정해 주세요.')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('사용자 지원항목 이름'), { target: { value: '장비 대여' } });
-    fireEvent.change(screen.getByLabelText('사용자 지원항목 금액'), { target: { value: '10000' } });
-    fireEvent.click(screen.getByRole('button', { name: '항목 추가' }));
-    expect(screen.getByText('정주비 · 장비 대여')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
+    expect(screen.queryByText('지원항목 직접 추가')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '다음' }));
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ profileId: 'shinhanhae-70', plans: expect.objectContaining({ housing: 300000, food: 200000, cafe: 200000 }), customItems: [] })));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ profileId: 'shinhanhae-70', plans: expect.objectContaining({ housing: 300000, food: 200000, cafe: 200000 }) })));
   });
 
   it('blocks confirmation when the selected profile total is invalid and supports switching to 40만원형', async () => {
@@ -61,12 +57,4 @@ describe('policy onboarding', () => {
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ plans: expect.objectContaining({ housing: 300000 }) })));
   });
 
-  it('reports a user-item validation error instead of adding an incomplete item', async () => {
-    mocks.recognize.mockResolvedValue({ text: complete70 });
-    render(<PolicyOnboarding onConfirm={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '스크린샷에서 읽기' }));
-    await screen.findByText('검토 결과');
-    fireEvent.click(screen.getByRole('button', { name: '항목 추가' }));
-    expect(await screen.findByText('사용자 항목 이름과 금액을 확인해 주세요.')).toBeInTheDocument();
-  });
 });

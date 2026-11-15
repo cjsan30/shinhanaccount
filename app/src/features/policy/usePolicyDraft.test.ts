@@ -50,19 +50,14 @@ describe('usePolicyDraft', () => {
     expect(view.result.current.draft).toMatchObject({ profileId: 'shinhanhae-40', plans: { food: 0, cafe: 0 } });
   });
 
-  it('adds and removes a user item and rejects an incomplete one', () => {
+  it('keeps the amounts already on screen when a screenshot cannot be read', async () => {
     const { notify, view } = setup();
     act(() => view.result.current.editSaved());
-    let added = true;
-    act(() => { added = view.result.current.addCustomItem(' ', 'resident', '1000'); });
-    expect(added).toBe(false);
-    expect(notify).toHaveBeenLastCalledWith('사용자 항목 이름과 금액을 확인해 주세요.');
-    act(() => { added = view.result.current.addCustomItem('장비 대여', 'studySpace', '10,000'); });
-    expect(added).toBe(true);
-    const item = view.result.current.draft?.customItems?.[0];
-    expect(item).toMatchObject({ label: '장비 대여', bucket: 'studySpace', amount: 10000 });
-    act(() => view.result.current.removeCustomItem(item!.id));
-    expect(view.result.current.draft?.customItems).toEqual([]);
+    act(() => view.result.current.updateAmount('food', '250,000'));
+    policyOcr.pickAndRecognize.mockResolvedValueOnce({ text: '' });
+    await act(async () => { await view.result.current.readScreenshot(); });
+    expect(notify).toHaveBeenLastCalledWith('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.');
+    expect(view.result.current.draft?.plans).toMatchObject({ food: 250000, cafe: 100000 });
   });
 
   it('edits a copy of the saved plan without changing the saved one', () => {
