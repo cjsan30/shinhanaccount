@@ -28,9 +28,9 @@ const summary = {
   buckets: [{ key: 'resident' as const, label: '정주비', budget: 500000, used: 10000, items: [{ category: 'food', label: '식비', budget: 200000, used: 10000 }] }, { key: 'studySpace' as const, label: '학습공간비', budget: 200000, used: 0, items: [] }],
 };
 
-function StatefulEvidenceExport({ initialEvidence = [], entries = [] }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries'] }) {
+function StatefulEvidenceExport({ initialEvidence = [], entries = [], onNotify }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries']; onNotify?: (message: string) => void }) {
   const [reportEvidence, setReportEvidence] = useState<ComponentProps<typeof EvidenceExport>['reportEvidence']>(initialEvidence);
-  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} />;
+  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} onNotify={onNotify} />;
 }
 
 describe('EvidenceExport', () => {
@@ -61,14 +61,16 @@ describe('EvidenceExport', () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 10, height: 10, close: vi.fn() })));
     vi.mocked(removeStoredEvidence).mockReset().mockResolvedValue(undefined);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
-    render(<StatefulEvidenceExport initialEvidence={evidence} />);
+    const notify = vi.fn();
+    render(<StatefulEvidenceExport initialEvidence={evidence} onNotify={notify} />);
     const clear = screen.getByRole('button', { name: '보고서 초기화' });
     expect(clear.nextElementSibling?.textContent).toMatch(/^지원금 사용 요약/);
     fireEvent.click(clear);
     expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요? 첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다. 되돌릴 수 없습니다.');
     expect(removeStoredEvidence).not.toHaveBeenCalled();
     fireEvent.click(clear);
-    expect(await screen.findByText('사용보고서를 초기화했습니다.')).toBeInTheDocument();
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('사용보고서를 초기화했습니다.'));
+    expect(screen.queryByText('사용보고서를 초기화했습니다.')).not.toBeInTheDocument();
     expect(vi.mocked(removeStoredEvidence).mock.calls.map(([file]) => file.id)).toEqual(['statement', 'proof', 'receipt']);
     expect(screen.queryByRole('button', { name: '보고서 초기화' })).not.toBeInTheDocument();
   });

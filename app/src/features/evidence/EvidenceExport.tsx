@@ -54,7 +54,7 @@ function useScreenWakeLock(active: boolean) {
   }, [active]);
 }
 
-export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period }: { helpRequest?: number; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
+export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period, onNotify }: { helpRequest?: number; onNotify?: (message: string) => void; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
   useEffect(() => { if (helpRequest > 0) setGuideOpen(true); }, [helpRequest]);
   const [adding, setAdding] = useState<{ current: number; total: number } | null>(null);
   const [addingSection, setAddingSection] = useState<ReportEvidenceSection>('receipt');
@@ -229,7 +229,9 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     const stored = reportEvidence.map((record) => record.stored);
     onReportEvidenceChange([]);
     void Promise.all(stored.map((file) => removeStoredEvidence(file).catch(() => undefined)));
-    setMessage('사용보고서를 초기화했습니다.');
+    // The reset button sits at the top, so confirm with a short toast instead of a note above [PDF 생성].
+    setMessage(null);
+    onNotify?.('사용보고서를 초기화했습니다.');
   };
   const exportPdf = async (qualityComparison = false) => {
     if (addingRef.current || loadingFiles || missingFiles.length) { setMessage('처리 중이거나 원본을 찾지 못한 파일이 있습니다. 원본 파일을 다시 추가한 뒤 생성해 주세요.'); return; }
