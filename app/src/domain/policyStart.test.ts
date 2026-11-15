@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isDateInPolicyPeriod } from './budget';
 import type { Ledger, LedgerEntry } from './ledger';
-import { excludePaymentsBeforeDeposit, getDepositDateChoices, getPaymentsOnDate, getReinclusionCandidates, hasCountedPayments, resolveDepositStart, restoreBeforeDeposit } from './policyStart';
+import { excludePaymentsBeforeDeposit, getDepositDateChoices, getPaymentsOnDate, getReinclusionCandidates, hasCountedPayments, includeBeforeDepositPayment, resolveDepositStart, restoreBeforeDeposit } from './policyStart';
 
 const entry = (id: string, occurredAt: string, patch: Partial<LedgerEntry> = {}): LedgerEntry => ({ id, cardLast4: '', occurredAt, merchant: `가맹점${id}`, amount: 1000, status: 'classified', bucket: 'resident', category: 'food', ...patch });
 const ledger = (...entries: LedgerEntry[]): Ledger => ({ entries, alertThresholds: [50, 80] });
@@ -102,6 +102,14 @@ describe('payments before the deposit', () => {
     const restored = restoreBeforeDeposit(excluded, ['food', 'unsorted']);
     expect(restored.entries.map((item) => [item.id, item.status, item.category])).toEqual([['food', 'classified', 'food'], ['unsorted', 'undecided', undefined], ['manual', 'excluded', undefined]]);
     expect(restored.entries[2].beforeDeposit).toEqual({ status: 'excluded', bucket: undefined, category: undefined });
+  });
+
+  it('counts one payment before the deposit as it was and never leaves it out again', () => {
+    const excluded = excludePaymentsBeforeDeposit(ledger(entry('gap', '2026-12-11T09:00:00+09:00'), entry('other', '2026-12-11T10:00:00+09:00')), '2026-12', funding);
+    const included = includeBeforeDepositPayment(excluded, 'gap');
+    expect(included.entries.map((item) => [item.id, item.status, item.category, item.includedBeforeDeposit])).toEqual([['gap', 'classified', 'food', true], ['other', 'excluded', undefined, undefined]]);
+    expect(excludePaymentsBeforeDeposit(included, '2026-12', funding)).toBe(included);
+    expect(includeBeforeDepositPayment(included, 'missing')).toBe(included);
   });
 
   it('tells whether any payment already counts', () => {

@@ -70,7 +70,7 @@ export function excludePaymentsBeforeDeposit(ledger: Ledger, periodKey: string, 
   const start = Date.parse(funding.startAt);
   let changed = false;
   const entries = ledger.entries.map((entry) => {
-    if (!countable(entry) || entry.beforeDeposit || !inPeriodBounds(entry, periodKey) || Date.parse(entry.occurredAt) >= start) return entry;
+    if (!countable(entry) || entry.beforeDeposit || entry.includedBeforeDeposit || !inPeriodBounds(entry, periodKey) || Date.parse(entry.occurredAt) >= start) return entry;
     // Imported bank rows are 분류 필요 already; the user decides them like any other.
     if (hasUnknownTime(entry, funding.depositDate)) return entry;
     changed = true;
@@ -102,6 +102,13 @@ export function restoreBeforeDeposit(ledger: Ledger, entryIds: string[]): Ledger
       return status === 'classified' && !(bucket && category) ? { ...restored, status: 'undecided' as const } : restored;
     }),
   };
+}
+
+/** Counts one payment made before the deposit, as it was classified, without moving the policy start. */
+export function includeBeforeDepositPayment(ledger: Ledger, entryId: string): Ledger {
+  if (!ledger.entries.some((entry) => entry.id === entryId && entry.beforeDeposit)) return ledger;
+  const restored = restoreBeforeDeposit(ledger, [entryId]);
+  return { ...restored, entries: restored.entries.map((entry) => entry.id === entryId ? { ...entry, includedBeforeDeposit: true } : entry) };
 }
 
 /** Whether anything already counts in the period: then an old plan is kept without asking. */
