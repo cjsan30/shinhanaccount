@@ -1,3 +1,5 @@
+// Must run before any other module reads the date (verification build only).
+import './verifyClock'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
