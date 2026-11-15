@@ -64,7 +64,7 @@ describe('EvidenceExport', () => {
     const notify = vi.fn();
     render(<StatefulEvidenceExport initialEvidence={evidence} onNotify={notify} />);
     const clear = screen.getByRole('button', { name: '보고서 초기화' });
-    expect(clear.nextElementSibling?.textContent).toMatch(/^지원금 사용 요약/);
+    expect(clear.parentElement?.firstElementChild).toBe(clear);
     fireEvent.click(clear);
     expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요? 첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다. 되돌릴 수 없습니다.');
     expect(removeStoredEvidence).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ describe('EvidenceExport', () => {
     fireEvent.pointerUp(dialog, { clientX: 120 });
     expect(screen.getByText('입출금내역을 추가하세요')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '다음' }));
-    expect(screen.getByText('가릴 내역을 확인하세요')).toBeInTheDocument();
+    expect(screen.getByText('모자이크할 내역을 확인하세요')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(screen.queryByRole('dialog', { name: '사용보고서 작성 도움말' })).not.toBeInTheDocument();
   });
@@ -351,7 +351,7 @@ describe('EvidenceExport', () => {
     await attachStatement(container);
     fireEvent.change(screen.getByLabelText('statement.pdf 계좌 끝 4자리'), { target: { value: '1234' } });
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
-    expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
+    expect(await screen.findByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '그래도 첨부' })).not.toBeInTheDocument();
   });
 
@@ -362,11 +362,11 @@ describe('EvidenceExport', () => {
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
     // The mocked file shows no account, so it is attached only after confirmation.
     fireEvent.click(await screen.findByRole('button', { name: '그래도 첨부' }));
-    expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
+    expect(await screen.findByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/입출금 1행/));
     expect(screen.getByText(/체크카드/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
-    await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 1행/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/입출금 1행 · 모자이크 1행/)).toBeInTheDocument());
   });
 
   it('blocks export when a bank PDF could not be converted into a maskable table', async () => {
@@ -387,7 +387,7 @@ describe('EvidenceExport', () => {
     fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'test-pass' } });
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
 
-    await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument());
     expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'test-pass');
   });
 
