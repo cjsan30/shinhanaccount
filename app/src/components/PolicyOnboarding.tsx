@@ -32,7 +32,7 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
       <section className="support-profile-picker" aria-label="신청해 지원 유형 선택">{SHINHANHAE_PROFILES.map((candidate) => <button type="button" key={candidate.id} className={selected === candidate.id ? 'is-selected' : ''} onClick={() => applyProfile(candidate.id)}><strong>{candidate.label}</strong><span>정주비 {candidate.bucketLimits.resident.toLocaleString()}원 · 학습공간비 {candidate.bucketLimits.studySpace.toLocaleString()}원</span></button>)}</section>
       <section className="first-run__card">
         <img className="onboarding-policy-example" src="/onboarding-policy-example.png" alt="정주비와 학습공간비의 사용처별 예상금액이 담긴 계획표 예시" />
-        <PlanEditor text={plan.text} draft={draft} focusToken={plan.focusToken} submitLabel="다음" onTextChange={plan.setText} onReviewText={plan.reviewText} onReadScreenshot={() => void plan.readScreenshot()} onUpdateAmount={plan.updateAmount} onUpdateProfile={applyProfile} onToggleAlertTarget={plan.toggleAlertTarget} onAddCustomItem={plan.addCustomItem} onRemoveCustomItem={plan.removeCustomItem} onSubmit={confirm} />
+        <PlanEditor text={plan.text} draft={draft} focusToken={plan.focusToken} submitLabel="다음" onTextChange={plan.setText} onReviewText={plan.reviewText} onReadScreenshot={() => void plan.readScreenshot()} onUpdateAmount={plan.updateAmount} onUpdateProfile={applyProfile} onToggleAlertTarget={plan.toggleAlertTarget} onSubmit={confirm} />
       </section>
       {message && <p role="alert" className="first-run__error">{message}</p>}
       <section className="first-run__notice">

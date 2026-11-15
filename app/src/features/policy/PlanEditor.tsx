@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { SHINHANHAE_PROFILES, type CustomPolicyItem, getAlertTargets, getPolicyLimit, getSupportProfile, POLICY_ITEMS, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
+import { useEffect, useRef } from 'react';
+import { SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, POLICY_ITEMS, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
 
 type Props = {
   text: string;
@@ -13,9 +13,6 @@ type Props = {
   onUpdateAmount: (item: PolicyItem, value: string) => void;
   onUpdateProfile: (profileId: SupportProfileId) => void;
   onToggleAlertTarget: (item: PolicyItem) => void;
-  /** Returns false when the item was not added, so the fields keep what was typed. */
-  onAddCustomItem: (label: string, bucket: CustomPolicyItem['bucket'], amount: string) => boolean;
-  onRemoveCustomItem: (id: string) => void;
   onSubmit: () => void;
 };
 
@@ -24,10 +21,6 @@ const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 /** Reads a plan from pasted text or a screenshot and lets the user correct the amounts. */
 export function PlanEditor(props: Props) {
   const draftRef = useRef<HTMLDivElement>(null);
-  const [customLabel, setCustomLabel] = useState('');
-  const [customBucket, setCustomBucket] = useState<CustomPolicyItem['bucket']>('resident');
-  const [customAmount, setCustomAmount] = useState('');
-  const addCustomItem = () => { if (props.onAddCustomItem(customLabel, customBucket, customAmount)) { setCustomLabel(''); setCustomAmount(''); } };
   const { focusToken } = props;
   useEffect(() => {
     if (!focusToken) return;
@@ -51,7 +44,6 @@ export function PlanEditor(props: Props) {
         <strong>총 한도 {won(getPolicyLimit(draft, 'resident') + getPolicyLimit(draft, 'studySpace'))} / {won(getSupportProfile(draft.profileId).totalLimit)}</strong>
       </div>
       <section className="policy-alert-targets policy-alert-targets--review"><strong>잔액 경고 대상</strong><span>선택한 항목만 공통 경고 기준에 따라 알려드립니다.</span>{POLICY_ITEMS.filter((item) => draft.plans[item.key] > 0).map((item) => <label key={item.key}><input type="checkbox" checked={getAlertTargets(draft).includes(item.key)} onChange={() => props.onToggleAlertTarget(item.key)} /><b>{item.label}</b><small>{won(draft.plans[item.key])}</small></label>)}</section>
-      <section className="policy-custom-items"><strong>지원항목 직접 추가</strong><span>직접 등록·가져온 내역·증빙 연결에만 사용합니다. 알림 자동 분류에는 사용하지 않습니다.</span><div><input aria-label="사용자 지원항목 이름" value={customLabel} onChange={(event) => setCustomLabel(event.target.value)} placeholder="예: 장비 대여" maxLength={30} /><select aria-label="사용자 지원항목 구분" value={customBucket} onChange={(event) => setCustomBucket(event.target.value as CustomPolicyItem['bucket'])}><option value="resident">정주비</option><option value="studySpace">학습공간비</option></select><input aria-label="사용자 지원항목 금액" type="number" min="0" step="1000" value={customAmount} onChange={(event) => setCustomAmount(event.target.value)} placeholder="금액" /></div><button type="button" onClick={addCustomItem}>항목 추가</button>{(draft.customItems ?? []).map((item) => <p key={item.id}><b>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</b><span>{won(item.amount)}</span><button type="button" onClick={() => props.onRemoveCustomItem(item.id)}>삭제</button></p>)}</section>
       <button className="sheet-action" onClick={props.onSubmit}>{props.submitLabel}</button>
     </div>}
   </div>;
