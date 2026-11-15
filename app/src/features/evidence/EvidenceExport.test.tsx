@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadEvidence } from '../../native/evidenceVault';
+import { loadEvidence, removeStoredEvidence } from '../../native/evidenceVault';
 import { ReceiptOcr } from '../../native/receiptOcr';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from './pipeline/assemble';
@@ -28,9 +28,9 @@ const summary = {
   buckets: [{ key: 'resident' as const, label: '정주비', budget: 500000, used: 10000, items: [{ category: 'food', label: '식비', budget: 200000, used: 10000 }] }, { key: 'studySpace' as const, label: '학습공간비', budget: 200000, used: 0, items: [] }],
 };
 
-function StatefulEvidenceExport({ initialEvidence = [], entries = [] }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries'] }) {
+function StatefulEvidenceExport({ initialEvidence = [], entries = [], onNotify }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries']; onNotify?: (message: string) => void }) {
   const [reportEvidence, setReportEvidence] = useState<ComponentProps<typeof EvidenceExport>['reportEvidence']>(initialEvidence);
-  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} />;
+  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} onNotify={onNotify} />;
 }
 
 describe('EvidenceExport', () => {
@@ -50,6 +50,30 @@ describe('EvidenceExport', () => {
     URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('clears every attachment of all three sections only after the user confirms', async () => {
+    const stored = (id: string) => ({ id, fileName: `${id}.jpg`, mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' });
+    const evidence = [
+      { id: 'statement', stored: stored('statement'), section: 'statement' as const, order: 0 },
+      { id: 'proof', stored: stored('proof'), section: 'transactionProof' as const, order: 0 },
+      { id: 'receipt', stored: stored('receipt'), section: 'receipt' as const, order: 0 },
+    ];
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 10, height: 10, close: vi.fn() })));
+    vi.mocked(removeStoredEvidence).mockReset().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const notify = vi.fn();
+    render(<StatefulEvidenceExport initialEvidence={evidence} onNotify={notify} />);
+    const clear = screen.getByRole('button', { name: '보고서 초기화' });
+    expect(clear.nextElementSibling?.textContent).toMatch(/^지원금 사용 요약/);
+    fireEvent.click(clear);
+    expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요? 첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다. 되돌릴 수 없습니다.');
+    expect(removeStoredEvidence).not.toHaveBeenCalled();
+    fireEvent.click(clear);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('사용보고서를 초기화했습니다.'));
+    expect(screen.queryByText('사용보고서를 초기화했습니다.')).not.toBeInTheDocument();
+    expect(vi.mocked(removeStoredEvidence).mock.calls.map(([file]) => file.id)).toEqual(['statement', 'proof', 'receipt']);
+    expect(screen.queryByRole('button', { name: '보고서 초기화' })).not.toBeInTheDocument();
+  });
 
   it('shows stored receipts before batch OCR completes and only fills dates without auto-linking', async () => {
     let finishFirst!: (value: unknown) => void;
