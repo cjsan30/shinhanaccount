@@ -39,7 +39,7 @@ public class EvidenceVaultPlugin extends Plugin {
         try {
             String id = safeId(call.getString("id"));
             File file = new File(vault(), id);
-            if (!file.exists()) { call.reject("보관된 증빙 파일을 찾지 못했습니다."); return; }
+            if (!file.exists()) { call.reject("보관된 증빙 파일을 찾지 못했습니다.", "EVIDENCE_NOT_FOUND"); return; }
             byte[] bytes = new byte[(int) file.length()];
             try (FileInputStream input = new FileInputStream(file)) {
                 int offset = 0; while (offset < bytes.length) { int read = input.read(bytes, offset, bytes.length - offset); if (read < 0) break; offset += read; }

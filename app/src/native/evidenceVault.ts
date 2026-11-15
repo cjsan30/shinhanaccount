@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { bytesToBase64 } from './fileExport';
+import { EVIDENCE_NOT_FOUND } from '../domain/lostEvidence';
 
 type NativeVault = {
   save(options: { id: string; base64Data: string }): Promise<{ id: string; size: number }>;
@@ -21,7 +22,7 @@ export async function storeEvidence(file: File): Promise<StoredEvidence> {
 
 export async function loadEvidence(stored: StoredEvidence): Promise<File> {
   if (!Capacitor.isNativePlatform() && webFiles.has(stored.id)) return webFiles.get(stored.id)!;
-  if (!Capacitor.isNativePlatform()) throw new Error('웹 미리보기에서는 앱을 다시 열면 증빙 파일을 다시 선택해 주세요.');
+  if (!Capacitor.isNativePlatform()) throw Object.assign(new Error('웹 미리보기에서는 앱을 다시 열면 증빙 파일을 다시 선택해 주세요.'), { code: EVIDENCE_NOT_FOUND });
   const result = await EvidenceVault.read({ id: stored.id });
   const binary = atob(result.base64Data);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));

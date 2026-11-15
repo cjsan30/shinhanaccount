@@ -92,16 +92,29 @@ describe('EvidenceExport', () => {
     expect(screen.getAllByRole('button', { name: /후보 결제/ })).toHaveLength(2);
   });
 
-  it('lists missing originals and blocks incomplete generation until reattached', async () => {
-    vi.mocked(loadEvidence).mockRejectedValueOnce(new Error('missing'));
-    const { container } = render(<StatefulEvidenceExport initialEvidence={[{ id: 'missing', stored: { id: 'lost', fileName: 'lost.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
-    expect(await screen.findByText('원본 파일 1개를 찾지 못했습니다')).toBeInTheDocument();
-    expect(screen.getByText('lost.jpg')).toBeInTheDocument();
+  it('drops attachments whose stored copy is gone and marks the payment whose receipt link was lost', async () => {
+    window.localStorage.clear();
+    const entries = [{ id: 'pay', amount: 5000, merchant: '연결 결제', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, bucket: 'resident' as const, category: 'food' }];
+    vi.mocked(loadEvidence).mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'EVIDENCE_NOT_FOUND' }));
+    const { unmount } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'missing', stored: { id: 'lost', fileName: 'lost.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'pay' }]} />);
+    expect(await screen.findByText('원본을 찾지 못해 연결이 풀린 결제 1건')).toBeInTheDocument();
+    expect(screen.queryByText('lost.jpg')).not.toBeInTheDocument();
+    expect(screen.queryByText(/찾지 못했습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '보고서 초기화' })).not.toBeInTheDocument();
+    unmount();
+    render(<StatefulEvidenceExport entries={entries} />);
+    expect(await screen.findByText('원본을 찾지 못해 연결이 풀린 결제 1건')).toBeInTheDocument();
+    window.localStorage.clear();
+  });
+
+  it('keeps an attachment that could not be read for another reason and blocks generation', async () => {
+    window.localStorage.clear();
+    vi.mocked(loadEvidence).mockRejectedValueOnce(new Error('read failed'));
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'busy', stored: { id: 'busy', fileName: 'busy.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    expect(await screen.findByText('첨부 1개를 읽지 못했습니다. 사용보고서를 닫았다가 다시 열어 주세요.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '보고서 초기화' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'PDF 생성' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('lost.jpg 원본 다시 추가'), { target: { files: [new File(['restored'], 'restored.jpg', { type: 'image/jpeg' })] } });
-    expect(await screen.findByText('restored.jpg')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('원본 파일 1개를 찾지 못했습니다')).not.toBeInTheDocument());
-    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(3);
+    expect(screen.queryByText(/연결이 풀린 결제/)).not.toBeInTheDocument();
   });
 
   it('filters receipt tasks, keeps source order controls correct and collapses completed cards', async () => {
