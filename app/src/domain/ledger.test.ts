@@ -21,13 +21,14 @@ describe('expense ledger', () => {
     }, POLICY_MAX_LIMITS);
     expect(result.entry).toMatchObject({ status: 'classified', bucket: 'resident', category: 'food' });
   });
-  it('separates spending by the policy period beginning on the 15th', () => {
+  it('separates spending by the period opening on the 11th and counts from its deposit', () => {
     const ledger = { ...createInitialLedger(), entries: [] };
     const first = apply(ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-10T23:59:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     const gap = apply(first.ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-11T12:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     const second = apply(gap.ledger, { ...cafe5000, merchant: '테스트 식당', occurredAt: '2026-08-15T00:00:00+09:00', amount: 8000 }, POLICY_MAX_LIMITS);
     expect(getSummary(second.ledger, 'resident', 500000, '2026-07').spent).toBe(8000);
-    expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(8000);
+    expect(getSummary(second.ledger, 'resident', 500000, '2026-08').spent).toBe(16000);
+    expect(getSummary(second.ledger, 'resident', 500000, '2026-08', { startDay: 11, endDay: 10, start: { periodKey: '2026-08', at: '2026-08-15T00:00:00+09:00' } }).spent).toBe(8000);
     expect(getRecentEntries(second.ledger, '2026-07').map((entry) => entry.occurredAt)).toEqual(['2026-08-10T23:59:00+09:00']);
   });
   it('preserves the manual source on a directly entered expense', () => {
@@ -95,7 +96,7 @@ describe('expense ledger', () => {
     expect(apply(excelLedger, cafe5000, POLICY_MAX_LIMITS).ledger.entries).toHaveLength(1);
   });
   it('does not store imported transactions outside the selected policy period', () => {
-    const transaction = { occurredAt: '2026-09-13T12:00:00+09:00', cardMasked: '432*', merchant: '테스트 카페', approvalNumber: '00001112', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
+    const transaction = { occurredAt: '2026-09-10T12:00:00+09:00', cardMasked: '432*', merchant: '테스트 카페', approvalNumber: '00001112', amount: 5000, paymentStatus: '승인', cancellationStatus: '' };
     const result = importCardTransactions({ ...createInitialLedger(), entries: [] }, [transaction], '4321', '2026-09');
     expect(result.imported).toBe(0);
     expect(result.ledger.entries).toHaveLength(0);
@@ -105,7 +106,7 @@ describe('expense ledger', () => {
     const transactions = [
       { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:00:00+09:00', accountMasked: '6789', merchant: '카페', amount: 5000, transactionId: 'withdrawal', direction: 'withdrawal' as const },
       { source: 'bankCsv' as const, occurredAt: '2026-09-20T12:10:00+09:00', accountMasked: '6789', merchant: '지원금 입금', amount: 700000, transactionId: 'deposit', direction: 'deposit' as const },
-      { source: 'bankCsv' as const, occurredAt: '2026-09-13T12:00:00+09:00', accountMasked: '6789', merchant: '기간 외 지출', amount: 5000, transactionId: 'outside', direction: 'withdrawal' as const },
+      { source: 'bankCsv' as const, occurredAt: '2026-09-10T12:00:00+09:00', accountMasked: '6789', merchant: '기간 외 지출', amount: 5000, transactionId: 'outside', direction: 'withdrawal' as const },
     ];
     const result = importBankTransactions({ ...createInitialLedger(), entries: [] }, transactions, '6789', '2026-09');
     expect(result).toMatchObject({ imported: 1, undecided: 1, skipped: 2 });

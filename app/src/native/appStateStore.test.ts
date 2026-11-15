@@ -17,6 +17,9 @@ const migratedState: PersistedAppState = {
       ...version,
       profileId: 'shinhanhae-70',
       alertTargets: [],
+      // Plans saved before the deposit start keep their old 15th start.
+      period: { startDay: 11, endDay: 10 },
+      funding: { status: 'deposited', depositDate: '2026-08-15', startAt: '2026-08-15T00:00:00+09:00', migrated: true },
     })),
   },
 };

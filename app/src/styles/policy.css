@@ -1,0 +1,220 @@
+/* Plan registration, the deposit start and the dashboard state before the deposit. */
+
+/* Dashboard: replaces the budget while nothing of the period counts yet. */
+.dashboard-status .summary-heading {
+  gap: 12px;
+}
+
+.dashboard-status .summary-heading p {
+  flex: 1;
+  min-width: 0;
+  font-size: 19px;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.dashboard-status .new-payment {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dashboard-status>span {
+  display: block;
+  margin-top: 14px;
+  color: #b7c7df;
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.dashboard-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.dashboard-status__actions button {
+  flex: 1 1 140px;
+  padding: 13px 14px;
+  border: 0;
+  border-radius: 12px;
+  color: #071f27;
+  background: var(--color-accent);
+  font-size: 16px;
+  font-weight: 700;
+  word-break: keep-all;
+}
+
+.dashboard-status__actions button.secondary {
+  color: #eef0f2;
+  border: 1px solid var(--color-divider-strong);
+  background: var(--color-fill);
+}
+
+/* "이번 기간 ○ ~ ○ · 계획 보기" under the total. */
+.period-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-divider);
+  border-radius: 14px;
+  color: var(--color-text-secondary);
+  background: var(--color-fill);
+  font-size: 14px;
+  text-align: left;
+}
+
+.period-line span {
+  flex: 1;
+  min-width: 0;
+}
+
+.period-line b {
+  color: var(--color-accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Deposit start: whether it arrived, the date, then the first payment after it. */
+.deposit-start h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.deposit-start__actions .sheet-action:first-child {
+  margin-top: 18px;
+}
+
+.deposit-start__dates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.deposit-start__dates button,
+.deposit-start__calendar-toggle {
+  padding: 12px 6px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-fill);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.deposit-start__calendar-toggle {
+  margin-top: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.sheet .deposit-start__calendar {
+  margin-top: 12px;
+}
+
+.deposit-start__payments,
+.reinclude__list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.sheet .deposit-start__payments label,
+.sheet .reinclude__list label {
+  display: grid;
+  grid-template-columns: 20px auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.sheet .deposit-start__payments label b,
+.sheet .reinclude__list label b {
+  float: none;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The last choice ("입금 후 결제 없음") has only a label. */
+.sheet .deposit-start__payments label:last-child b {
+  grid-column: 2 / -1;
+  white-space: normal;
+}
+
+.deposit-start__payments span,
+.reinclude__list span {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.deposit-start__payments em,
+.reinclude__list em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sheet inputs are full-width text fields by default; these are plain choices. */
+.sheet .deposit-start__payments input,
+.sheet .reinclude__list input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+}
+
+.sheet-action:disabled {
+  opacity: .45;
+}
+
+/* The period's plan. */
+.plan-view__period {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.plan-view__period strong {
+  display: block;
+  font-size: 18px;
+}
+
+.plan-view .policy-group {
+  margin-top: 18px;
+}
+
+.sheet .plan-view__item {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--color-text);
+  font-size: 15px;
+}
+
+.reinclude h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+}
+
+.reinclude__clear {
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  font-size: 13px;
+}

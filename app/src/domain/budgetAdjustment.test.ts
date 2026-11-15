@@ -86,7 +86,8 @@ describe('same-bucket budget adjustment', () => {
     const active = getEffectivePolicy(reloaded, new Date('2026-09-20T12:00:00+09:00'));
     expect(active.confirmed).toBe(true);
     expect(active.policy.plans).toMatchObject({ housing: 50000, transport: 50000 });
-    expect(reloaded.versions[1]).toEqual(scheduled);
+    // Loading adds the deposit state an older plan did not have; nothing else changes.
+    expect(reloaded.versions[1]).toEqual({ ...scheduled, funding: expect.objectContaining({ status: 'deposited', migrated: true }) });
     const ledger = createEmptyLedger();
     expect(denormalizeAppState(normalizeAppState({ policyBook: updated, ledger, merchantRules: [] })).policyBook).toEqual(updated);
     expect(active.policy).not.toHaveProperty('adjustments');

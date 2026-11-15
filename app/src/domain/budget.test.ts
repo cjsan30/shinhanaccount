@@ -3,23 +3,39 @@ import {
   POLICY_MAX_LIMITS,
   calculateBudgetSummary,
   getCrossedAlertThresholds,
+  getNativeAlertRange,
   getPolicyPeriodKey,
+  getPolicyPeriodRange,
   isDateInPolicyPeriod,
+  normalizePolicyPeriod,
   roundUsagePercent,
 } from './budget';
 
 describe('policy period', () => {
-  it('runs from the 15th through the 10th of the next month in Korea time', () => {
-    expect(getPolicyPeriodKey(new Date('2026-08-14T14:59:59.000Z'))).toBe('2026-07');
-    expect(getPolicyPeriodKey(new Date('2026-08-14T15:00:00.000Z'))).toBe('2026-08');
+  it('opens on the 11th and ends on the 10th of the next month in Korea time', () => {
+    expect(getPolicyPeriodKey(new Date('2026-08-10T14:59:59.000Z'))).toBe('2026-07');
+    expect(getPolicyPeriodKey(new Date('2026-08-10T15:00:00.000Z'))).toBe('2026-08');
     expect(isDateInPolicyPeriod(new Date('2026-09-10T14:59:59.000Z'), '2026-08')).toBe(true);
     expect(isDateInPolicyPeriod(new Date('2026-09-10T15:00:00.000Z'), '2026-08')).toBe(false);
   });
 
-  it('keeps the 11th through the 14th outside every policy period', () => {
-    expect(isDateInPolicyPeriod(new Date('2026-08-11T12:00:00+09:00'))).toBe(false);
-    expect(isDateInPolicyPeriod(new Date('2026-08-13T23:59:59+09:00'))).toBe(false);
-    expect(isDateInPolicyPeriod(new Date('2026-08-14T23:59:59+09:00'))).toBe(false);
+  it('counts the 11th through the 14th only after the deposit of that period', () => {
+    const pending = { startDay: 11, endDay: 10, start: { periodKey: '2026-08', at: null } };
+    const deposited = { startDay: 11, endDay: 10, start: { periodKey: '2026-08', at: '2026-08-13T00:00:00+09:00' } };
+    expect(isDateInPolicyPeriod(new Date('2026-08-12T12:00:00+09:00'), '2026-08', pending)).toBe(false);
+    expect(isDateInPolicyPeriod(new Date('2026-08-12T23:59:59+09:00'), '2026-08', deposited)).toBe(false);
+    expect(isDateInPolicyPeriod(new Date('2026-08-13T00:00:00+09:00'), '2026-08', deposited)).toBe(true);
+    expect(getPolicyPeriodRange('2026-08', deposited)).toEqual({ start: '2026-08-13', end: '2026-09-10' });
+  });
+
+  it('gives the native listener an empty range while the deposit is pending', () => {
+    expect(getNativeAlertRange('2026-08', { startDay: 11, endDay: 10, start: { periodKey: '2026-08', at: null } })).toEqual({ periodStart: '9999-12-31', periodEnd: '2026-09-10' });
+    expect(getNativeAlertRange('2026-08', { startDay: 11, endDay: 10, start: { periodKey: '2026-08', at: '2026-08-13T09:00:00+09:00' } })).toEqual({ periodStart: '2026-08-13', periodEnd: '2026-09-10' });
+  });
+
+  it('ignores custom start and end days saved by older versions', () => {
+    expect(normalizePolicyPeriod({ startDay: 1, endDay: 31 })).toEqual({ startDay: 11, endDay: 10 });
+    expect(getPolicyPeriodRange('2026-08', { startDay: 1, endDay: 31 })).toEqual({ start: '2026-08-11', end: '2026-09-10' });
   });
 
   it('uses December of the previous year before January 10th', () => {

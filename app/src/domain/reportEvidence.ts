@@ -1,4 +1,4 @@
-import { getPolicyPeriodRange, type PolicyPeriod } from './budget';
+import { getPeriodBounds, type PolicyPeriod } from './budget';
 import type { StoredEvidence } from '../native/evidenceVault';
 import type { StatementRow } from './statementRedaction';
 
@@ -30,11 +30,13 @@ export type ReportEvidenceRecord = {
 };
 
 /**
- * Files attached before the current policy period began were gathered for an earlier report.
- * Records whose attachment time cannot be read are kept, so nothing is removed by mistake.
+ * Files attached before the current policy period opened (its 11th) were gathered for an
+ * earlier report, whose deadline is the 10th. Files attached between the 11th and the deposit
+ * belong to this period. Records whose attachment time cannot be read are kept, so nothing is
+ * removed by mistake.
  */
-export function splitEvidenceByPolicyPeriod(records: ReportEvidenceRecord[], periodKey: string, period?: PolicyPeriod) {
-  const { start } = getPolicyPeriodRange(periodKey, period);
+export function splitEvidenceByPolicyPeriod(records: ReportEvidenceRecord[], periodKey: string, _period?: PolicyPeriod) {
+  const { open: start } = getPeriodBounds(periodKey);
   const startsAt = start ? new Date(`${start}T00:00:00+09:00`).getTime() : Number.NaN;
   const isPrevious = (record: ReportEvidenceRecord) => {
     const attachedAt = new Date(record.stored.attachedAt).getTime();

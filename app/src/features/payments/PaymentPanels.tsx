@@ -28,7 +28,7 @@ export function PaymentDetail({ entry, merchantAlias, categoryNames, inActivePer
       <small>지원금 반영 {won(getSupportAmount(entry))}</small>
       {entry.supportAmountReviewRequired && entry.status !== 'cancelled' && <p role="alert" className="import-warning">부분 취소 · 금액 재확인 필요<br />분류 필요로 되돌려 지원금 반영 금액과 분류를 다시 확인해 주세요. 다시 분류하기 전까지 기존 분류를 유지하며, 반영 금액은 남은 결제 금액을 넘지 않습니다.</p>}
       {entry.cancelledAmount ? <small>취소 {won(entry.cancelledAmount)} · 남은 결제 {won(getRemainingPaymentAmount(entry))}</small> : null}
-      <small>{entry.status === 'cancelled' ? '취소됨' : entry.status === 'excluded' ? '사업 무관 제외' : `${entry.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[entry.category ?? ''] || '분류 없음'}`}</small>
+      <small>{entry.status === 'cancelled' ? '취소됨' : entry.status === 'excluded' ? (entry.beforeDeposit ? '입금 전 결제' : '사업 무관 제외') : `${entry.bucket === 'resident' ? '정주비' : '학습공간비'} · ${categoryNames[entry.category ?? ''] || '분류 없음'}`}</small>
       {!inActivePeriod && <p className="period-outside-note">현재 적용 기간 외 결제입니다. 보존되지만 예산·경고·위젯에는 반영되지 않습니다.</p>}
       {hasSuspectedDuplicate && <p className="duplicate-note">같은 상호명과 금액의 유사 결제가 있습니다. 실제 중복인지 확인해 주세요.</p>}
       {entry.memo && <p className="payment-memo">메모 · {entry.memo}</p>}
@@ -40,7 +40,8 @@ export function PaymentDetail({ entry, merchantAlias, categoryNames, inActivePer
       <button className="sheet-action danger-action" onClick={() => onDelete(entry)}>삭제</button>
     </div>}
     {entry.status === 'excluded' && <div className="payment-detail__actions">
-      <button className="sheet-action" onClick={() => onMarkUndecided(entry)}>분류 필요로 되돌리기</button>
+      {/* A payment before the deposit comes back only by moving the policy start. */}
+      {!entry.beforeDeposit && <button className="sheet-action" onClick={() => onMarkUndecided(entry)}>분류 필요로 되돌리기</button>}
       <button className="sheet-action danger-action" onClick={() => onDelete(entry)}>삭제</button>
     </div>}
   </section>;

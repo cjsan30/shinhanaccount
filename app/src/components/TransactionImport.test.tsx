@@ -20,7 +20,7 @@ describe('transaction import', () => {
 
   it('imports only current-period card CSV rows and reports excluded rows', async () => {
     const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '' };
-    const outside = { ...current, occurredAt: '2026-09-13T12:00:00+09:00', approvalNumber: '0002' };
+    const outside = { ...current, occurredAt: '2026-09-10T12:00:00+09:00', approvalNumber: '0002' };
     mocks.parseCard.mockResolvedValue([current, outside]);
     mocks.filterCard.mockReturnValue({ status: 'ready', transactions: [current, outside], hasMaskedCardWarning: false });
     const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
@@ -36,7 +36,7 @@ describe('transaction import', () => {
     mocks.parseBankPdf.mockResolvedValue([
       { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal', direction: 'withdrawal' },
       { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'deposit', direction: 'deposit' },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal' },
+      { occurredAt: '2026-09-10T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal' },
     ]);
     const onImport = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
@@ -161,7 +161,7 @@ describe('optional statement reuse', () => {
     const rows = [
       { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '출금', amount: 5000, accountMasked: '6789', transactionId: 'w', direction: 'withdrawal' },
       { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'd', direction: 'deposit' },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal' },
+      { occurredAt: '2026-09-10T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal' },
     ];
     mocks.parseBankPdf.mockResolvedValue(rows);
     const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
