@@ -196,6 +196,11 @@
   box-shadow: 0 8px 14px #101820aa;
 }
 
+/* Every sheet keeps the same gap under its title divider, whatever comes first. */
+.sheet > header {
+  margin-bottom: 16px;
+}
+
 .undecided-quick-action__buttons .sheet-action {
   width: 100%;
   min-width: 0;

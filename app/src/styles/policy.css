@@ -218,3 +218,94 @@
   background: transparent;
   font-size: 13px;
 }
+
+/*
+ * Plan editor: one look wherever it is shown (onboarding page or bottom sheet).
+ * Styled by the editor's own class, never by its container, so moving the
+ * editor cannot drop or change these rules.
+ */
+.plan-editor label {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.plan-editor .policy-preview > label {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
+.plan-editor select,
+.plan-editor input:not([type="checkbox"]) {
+  box-sizing: border-box;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-fill);
+  font: inherit;
+}
+
+.plan-editor select {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  background: #253548;
+  font-weight: 400;
+}
+
+.plan-editor .policy-amount input {
+  width: 108px !important;
+  margin: 0 !important;
+  padding: 7px 8px !important;
+  text-align: right;
+  letter-spacing: 0 !important;
+  font-size: 13px;
+}
+
+.plan-editor .policy-lines > strong {
+  display: block;
+}
+
+.plan-editor .policy-alert-targets--review label {
+  display: grid;
+  grid-template-columns: 20px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #ffffff08;
+}
+
+.plan-editor .policy-alert-targets--review input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #59d9d1;
+}
+
+.plan-editor .policy-alert-targets--review label b {
+  font-size: 14px;
+}
+
+.plan-editor .policy-alert-targets--review label small {
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.plan-editor > p {
+  margin: 14px 0 0;
+  color: #b9c0c8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Scrolling to the review result stops below a sheet's sticky title. */
+.plan-editor .policy-preview {
+  scroll-margin-top: 96px;
+}
