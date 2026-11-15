@@ -37,34 +37,70 @@ function getKoreaDateParts(date: Date) {
   };
 }
 
-export type PolicyPeriod = { startDay: number; endDay: number };
-export const DEFAULT_POLICY_PERIOD: PolicyPeriod = { startDay: 15, endDay: 10 };
+/**
+ * A policy period is keyed by the month in which it can start. Since 2026-11 the
+ * end is fixed to the 10th of the next month and the start is the moment the
+ * subsidy was deposited (on or after the 11th), chosen by the user. `start` is
+ * that moment for one period key: `at: null` means the plan is confirmed but the
+ * subsidy has not arrived, so nothing counts yet.
+ */
+export type PeriodStart = { periodKey: string; at: string | null };
+export type PolicyPeriod = { startDay: number; endDay: number; start?: PeriodStart };
+/** Earliest day a period can start; payments from this day wait for the deposit. */
+export const PERIOD_OPEN_DAY = 11;
+export const PERIOD_END_DAY = 10;
+export const DEFAULT_POLICY_PERIOD: PolicyPeriod = { startDay: PERIOD_OPEN_DAY, endDay: PERIOD_END_DAY };
+/** Custom start/end days were removed (2026-11-15); only the deposit start is kept. */
 export function normalizePolicyPeriod(value?: Partial<PolicyPeriod>): PolicyPeriod {
-  const valid = (day: unknown) => typeof day === 'number' && Number.isInteger(day) && day >= 1 && day <= 31;
-  return valid(value?.startDay) && valid(value?.endDay) ? { startDay: value!.startDay!, endDay: value!.endDay! } : { ...DEFAULT_POLICY_PERIOD };
+  const start = value?.start;
+  const validStart = start && /^\d{4}-\d{2}$/.test(start.periodKey) && (start.at === null || Number.isFinite(Date.parse(start.at)));
+  return { ...DEFAULT_POLICY_PERIOD, ...(validStart ? { start: { periodKey: start.periodKey, at: start.at } } : {}) };
 }
-const monthDay = (year: number, month: number, day: number) => Math.min(day, new Date(Date.UTC(year, month, 0)).getUTCDate());
-export function getPolicyPeriodRange(periodKey: string, period?: PolicyPeriod) {
-  const { startDay, endDay } = normalizePolicyPeriod(period);
-  const [year, month] = periodKey.split('-').map(Number);
-  if (!/^\d{4}-\d{2}$/.test(periodKey) || month < 1 || month > 12) return { start: '', end: '' };
-  const endMonth = new Date(Date.UTC(year, month - 1 + (endDay < startDay ? 1 : 0), 1));
-  const iso = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(monthDay(y, m, d)).padStart(2, '0')}`;
-  return { start: iso(year, month, startDay), end: iso(endMonth.getUTCFullYear(), endMonth.getUTCMonth() + 1, endDay) };
-}
-export function getPolicyPeriodKey(date: Date, period?: PolicyPeriod): string {
+const pad = (value: number) => String(value).padStart(2, '0');
+/** Korea calendar date (YYYY-MM-DD) of an instant. */
+export function koreaDate(date: Date) {
   const { year, month, day } = getKoreaDateParts(date);
-  const periodStart = day >= monthDay(year, month, normalizePolicyPeriod(period).startDay) ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
-
-  return `${periodStart.year}-${String(periodStart.month).padStart(2, '0')}`;
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+/** The first day the period can open and its fixed last day, before any deposit. */
+export function getPeriodBounds(periodKey: string) {
+  const [year, month] = periodKey.split('-').map(Number);
+  if (!/^\d{4}-\d{2}$/.test(periodKey) || month < 1 || month > 12) return { open: '', end: '' };
+  const endMonth = new Date(Date.UTC(year, month, 1));
+  return { open: `${year}-${pad(month)}-${pad(PERIOD_OPEN_DAY)}`, end: `${endMonth.getUTCFullYear()}-${pad(endMonth.getUTCMonth() + 1)}-${pad(PERIOD_END_DAY)}` };
+}
+/** Display range: starts on the deposit date once it is known. */
+export function getPolicyPeriodRange(periodKey: string, period?: PolicyPeriod) {
+  const { open, end } = getPeriodBounds(periodKey);
+  if (!open) return { start: '', end: '' };
+  const start = period?.start?.periodKey === periodKey && period.start.at ? koreaDate(new Date(period.start.at)) : open;
+  return { start, end };
+}
+export function getPolicyPeriodKey(date: Date, _period?: PolicyPeriod): string {
+  const { year, month, day } = getKoreaDateParts(date);
+  const periodStart = day >= PERIOD_OPEN_DAY ? { year, month } : month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+  return `${periodStart.year}-${pad(periodStart.month)}`;
 }
 
+/**
+ * Dates sent to the native listener, which only compares calendar dates. While the deposit is
+ * pending (or no plan exists) the start lies after the end, so no immediate alert is raised.
+ */
+export function getNativeAlertRange(periodKey: string, period?: PolicyPeriod) {
+  const { start, end } = getPolicyPeriodRange(periodKey, period);
+  const pending = period?.start?.periodKey === periodKey && period.start.at === null;
+  return { periodStart: pending ? '9999-12-31' : start, periodEnd: end };
+}
+
+/** A payment counts only inside the bounds and, for the deposit's period, from the deposit on. */
 export function isDateInPolicyPeriod(date: Date, periodKey?: string, period?: PolicyPeriod): boolean {
   if (!Number.isFinite(date.getTime())) return false;
-  const { year, month, day } = getKoreaDateParts(date);
-  const value = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const range = getPolicyPeriodRange(periodKey ?? getPolicyPeriodKey(date, period), period);
-  return Boolean(range.start) && value >= range.start && value <= range.end;
+  const key = periodKey ?? getPolicyPeriodKey(date, period);
+  const { open, end } = getPeriodBounds(key);
+  const value = koreaDate(date);
+  if (!open || value < open || value > end) return false;
+  if (period?.start?.periodKey !== key) return true;
+  return period.start.at !== null && date.getTime() >= Date.parse(period.start.at);
 }
 
 export function calculateBudgetSummary(limit: number, spent: number): BudgetSummary {

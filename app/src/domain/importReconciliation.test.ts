@@ -43,7 +43,7 @@ describe('cross-source import reconciliation', () => {
     expect(importBankTransactions(oneCard, [bank('a'), bank('b', '체크카드', '12:00:40')], '6789')).toMatchObject({ mergedUndecided: 0, reviewNeeded: 2 });
   });
   it('keeps bank-only withdrawals, ignores deposits/out-of-period, and rejects invalid merge targets', () => {
-    const result = importBankTransactions(createEmptyLedger(), [bank(), { ...bank('deposit'), direction: 'deposit' }, { ...bank('outside'), occurredAt: '2026-09-13T12:00:00+09:00' }], '6789', '2026-09');
+    const result = importBankTransactions(createEmptyLedger(), [bank(), { ...bank('deposit'), direction: 'deposit' }, { ...bank('outside'), occurredAt: '2026-09-10T12:00:00+09:00' }], '6789', '2026-09');
     expect(result).toMatchObject({ imported: 1, undecided: 1, skipped: 2 });
     expect(resolveImportDuplicate(result.ledger, result.ledger.entries[0].id, 'nonexistent', true)).toBe(result.ledger);
     const values = new Map<string, string>(); const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) };

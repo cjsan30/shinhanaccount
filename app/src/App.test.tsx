@@ -79,7 +79,8 @@ describe('app entry flows', () => {
   it.each(['dashboard', 'import'])('defers the notice until the actual dashboard after normal onboarding: %s', async (route) => {
     localStorage.setItem('shinhanhae-onboarding-progress-v1', JSON.stringify({ step: 'policy', policy: { plans: { housing: 300000, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 }, sourceText: 'saved plan', profileId: 'shinhanhae-70', alertTargets: [] } }));
     await renderApp(false);
-    fireEvent.click(await screen.findByRole('button', { name: '정책 확정' }));
+    fireEvent.click(await screen.findByRole('button', { name: '다음' }));
+    fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
     fireEvent.click(await screen.findByRole('button', { name: route === 'import' ? /결제한 적이 있어요/ : /아직 사용 전이에요/ }));
     if (route === 'import') {
       await screen.findByRole('button', { name: '나중에 등록하기' });
@@ -87,6 +88,22 @@ describe('app entry flows', () => {
       fireEvent.click(screen.getByRole('button', { name: '나중에 등록하기' }));
     }
     expect(await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
+  });
+  it('lets a user who skipped the plan register it later from the dashboard', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [], mode: 'not-applicant' }));
+    await renderApp();
+    expect(await screen.findByText('새 기간 계획을 등록해 주세요')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '새 계획 등록' }));
+    expect(screen.queryByRole('button', { name: '지난 계획 그대로 쓰기' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '식비 200,000원 교육비 200,000원 교통비 100,000원 카페 200,000원' } });
+    fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
+    fireEvent.click(await screen.findByRole('button', { name: '다음' }));
+    fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
+    expect(await screen.findByText('지원금 입금 대기')).toBeInTheDocument();
+    const book = JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!);
+    expect(book.mode).toBeUndefined();
+    expect(book.versions[0]).toMatchObject({ periodKey: '2026-10', funding: { status: 'pending' } });
   });
   it('shows the notice to existing users until explicitly confirmed, without replacing their plan', async () => {
     const book = { versions: [], mode: 'not-applicant' };
@@ -161,7 +178,8 @@ describe('app entry flows', () => {
     await screen.findByText(/예산을 조정했습니다/);
     const saved = JSON.parse(window.localStorage.getItem('shinhanhae-policy-book-v1')!);
     expect(saved.versions.find((version: { periodKey: string }) => version.periodKey === periodKey).plans).toMatchObject({ housing: 50000, transport: 50000 });
-    expect(saved.versions.find((version: { periodKey: string }) => version.periodKey === '2099-10')).toEqual(nextVersion);
+    // Loading adds the deposit state an older plan did not have; nothing else changes.
+    expect(saved.versions.find((version: { periodKey: string }) => version.periodKey === '2099-10')).toEqual({ ...nextVersion, period: { startDay: 11, endDay: 10 }, funding: expect.objectContaining({ status: 'deposited', migrated: true }) });
     expect(JSON.parse(window.localStorage.getItem('shinhanhae-ledger-v1')!)).toEqual(ledger);
     expect(JSON.parse(window.localStorage.getItem('shinhanhae-report-evidence-v1')!)).toEqual(evidence);
     await waitFor(() => expect(smsBridge.syncBudgetState).toHaveBeenLastCalledWith(expect.objectContaining({ categoryLimits: expect.objectContaining({ lodging: 50000, transport: 50000 }), categorySpent: expect.objectContaining({ transport: 20000 }) })));
@@ -172,9 +190,8 @@ describe('app entry flows', () => {
     expect(housingRow).toHaveTextContent('50,000원');
     expect(transportRow).toHaveTextContent('50,000원20,000원30,000원');
     fireEvent.click(screen.getByRole('button', { name: '정주비 상세 닫기' }));
-    fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
-    fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
-    expect(await screen.findByText('예산 조정')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /계획 보기/ }));
+    expect(screen.getByText('주거비', { selector: '.plan-view__item span' }).closest('p')).toHaveTextContent('50,000원');
   });
   it('resolves a cross-source duplicate from undecided expenses without changing confirmed spending', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -277,7 +294,8 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
 
     const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원|누락 가능성 점검|데이터 초기화)$/);
-    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '계획표', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
+    // The plan moved to the dashboard ("계획 보기").
+    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
     expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   });
 
@@ -338,14 +356,44 @@ describe('app entry flows', () => {
     expect(screen.getByRole('link', { name: '전체 개인정보처리방침 보기' })).toHaveAttribute('href', 'https://cjsan30.github.io/shinhanaccount/privacy-policy.html');
   });
   it('preserves a confirmed policy and opens the dashboard for an existing user', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
-      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      periodKey: '2026-09', confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
       plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+      funding: { status: 'deposited', depositDate: '2026-09-13', startAt: '2026-09-13T10:00:00+09:00' },
     }] }));
     await renderApp();
     expect(screen.getByRole('heading', { name: '지원금 관리' })).toBeInTheDocument();
     expect(screen.getByText('700,000원')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /이번 기간 9월 13일 ~ 10월 10일/ })).toBeInTheDocument();
+  });
+
+  it('asks once whether the subsidy arrived for a plan saved before the deposit start', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    await renderApp();
+    expect(screen.getByText('지원금이 입금됐나요?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '아직이에요' }));
+    expect(await screen.findByText('지원금 입금 대기')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!).versions[0].funding).toEqual({ status: 'pending' });
+  });
+
+  it('keeps an older plan without asking once a payment already counts', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
+    window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [{ id: 'food', cardLast4: '0000', occurredAt: '2026-09-16T12:00:00+09:00', amount: 5000, merchant: '식당', status: 'classified', bucket: 'resident', category: 'food' }] }));
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: '2026-09', confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    await renderApp();
+    expect(screen.queryByText('지원금이 입금됐나요?')).not.toBeInTheDocument();
+    expect(screen.getByText('695,000원')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /이번 기간 9월 15일 ~ 10월 10일/ })).toBeInTheDocument();
   });
 
   it('keeps an automatically classified approval visible in history after the app remains open across midnight', async () => {
@@ -393,7 +441,8 @@ describe('app entry flows', () => {
     vi.setSystemTime(new Date('2026-09-20T12:00:00+09:00'));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: '2026-09', confirmedAt: '2026-09-14T00:00:00+09:00', sourceText: 'saved policy',
-      plans: { housing: 0, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+      // Only a complete plan counts payments, so both buckets add up to their limits.
+      plans: { housing: 0, food: 200000, education: 150000, transport: 150000, studyCafe: 0, cafe: 100000, readingRoom: 0 },
       customItems: [{ id: 'gym', label: '운동비', bucket: 'studySpace', amount: 100000 }],
     }] }));
     const classified = (id: string, bucket: string, category: string, amount: number) => ({ id, cardLast4: '0000', occurredAt: '2026-09-18T10:00:00+09:00', amount, merchant: id, status: 'classified', bucket, category });
@@ -558,23 +607,70 @@ describe('app entry flows', () => {
 
 describe('new policy period for an existing user', () => {
   const plan = { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 };
-  it('keeps the dashboard and confirms the previous plan with one tap instead of repeating onboarding', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
-    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+  const previousOnly = () => localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+
+  it('shows a register card from the 11th and reuses the previous plan before the deposit', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00+09:00'));
+    previousOnly();
     await renderApp();
-    expect(await screen.findByText('이번 기간 계획표를 확정해 주세요')).toBeInTheDocument();
+    expect(await screen.findByText('새 기간 계획을 등록해 주세요')).toBeInTheDocument();
     expect(screen.queryByText('지원자인가요?')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '지난 계획 그대로 확정' }));
-    expect(await screen.findByText('지난 계획을 이번 기간 계획으로 확정했습니다.')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('이번 기간 계획표를 확정해 주세요')).not.toBeInTheDocument());
-    expect(JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!).versions.map((version: { periodKey: string }) => version.periodKey)).toEqual(['2026-09', '2026-10']);
+    expect(screen.queryByText('총 잔액')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '새 계획 등록' }));
+    fireEvent.click(await screen.findByRole('button', { name: '지난 계획 그대로 쓰기' }));
+    fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
+    expect(await screen.findByText('지원금 입금 대기')).toBeInTheDocument();
+    const versions = JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!).versions;
+    expect(versions.map((version: { periodKey: string }) => version.periodKey)).toEqual(['2026-09', '2026-10']);
+    expect(versions[1].funding).toEqual({ status: 'pending' });
   });
 
-  it('opens the plan section when the user wants to edit before confirming', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
-    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-09', confirmedAt: '2026-09-15T09:00:00+09:00', sourceText: 'plan', plans: plan }] }));
+  it('starts the period at the first payment after the deposit and excludes earlier ones', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-13T18:00:00+09:00'));
+    previousOnly();
+    const payment = (id: string, occurredAt: string) => ({ id, cardLast4: '0000', occurredAt, amount: 5000, merchant: id, status: 'classified', bucket: 'resident', category: 'food' });
+    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [payment('morning', '2026-10-13T09:00:00+09:00'), payment('evening', '2026-10-13T17:00:00+09:00'), payment('gap', '2026-10-11T12:00:00+09:00')] }));
     await renderApp();
-    fireEvent.click(await screen.findByRole('button', { name: '수정 후 확정' }));
+    fireEvent.click(await screen.findByRole('button', { name: '새 계획 등록' }));
+    fireEvent.click(await screen.findByRole('button', { name: '지난 계획 그대로 쓰기' }));
+    fireEvent.click(await screen.findByRole('button', { name: '입금됐어요' }));
+    expect(screen.getAllByRole('button', { name: /^10월 1[1-3]일$/ })).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: '10월 13일' }));
+    fireEvent.click(screen.getByRole('radio', { name: /evening/ }));
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
+    expect(await screen.findByText('695,000원')).toBeInTheDocument();
+    const entries = JSON.parse(localStorage.getItem('shinhanhae-ledger-v1')!).entries as Array<{ id: string; status: string; beforeDeposit?: unknown }>;
+    expect(entries.map((entry) => [entry.id, entry.status])).toEqual([['morning', 'excluded'], ['evening', 'classified'], ['gap', 'excluded']]);
+    expect(entries[0].beforeDeposit).toEqual({ status: 'classified', bucket: 'resident', category: 'food' });
+  });
+
+  it('asks before bringing back payments when the start moves earlier', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-10', confirmedAt: '2026-10-13T09:00:00+09:00', sourceText: 'plan', plans: plan, funding: { status: 'deposited', depositDate: '2026-10-13', startAt: '2026-10-13T00:00:00+09:00' } }] }));
+    localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify({ ...createEmptyLedger(), entries: [
+      { id: 'early', cardLast4: '0000', occurredAt: '2026-10-12T12:00:00+09:00', amount: 5000, merchant: '빵집', status: 'excluded', beforeDeposit: { status: 'classified', bucket: 'resident', category: 'food' } },
+      { id: 'other', cardLast4: '0000', occurredAt: '2026-10-12T13:00:00+09:00', amount: 3000, merchant: '편의점', status: 'excluded', beforeDeposit: { status: 'undecided' } },
+    ] }));
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: /계획 보기/ }));
+    fireEvent.click(screen.getByRole('button', { name: '정책 시작 날짜 수정' }));
+    fireEvent.click(screen.getByRole('button', { name: '10월 12일' }));
+    fireEvent.click(screen.getByRole('radio', { name: /빵집/ }));
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
+    expect(await screen.findByText('다시 포함할 결제 2건')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox').every((box) => (box as HTMLInputElement).checked)).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: /편의점/ }));
+    fireEvent.click(screen.getByRole('button', { name: '확인' }));
+    expect(await screen.findByText('1건을 다시 포함했습니다.')).toBeInTheDocument();
+    const entries = JSON.parse(localStorage.getItem('shinhanhae-ledger-v1')!).entries as Array<{ id: string; status: string }>;
+    expect(entries.map((entry) => [entry.id, entry.status])).toEqual([['early', 'classified'], ['other', 'excluded']]);
+  });
+
+  it('opens the plan editor when the user registers a new plan', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
+    previousOnly();
+    await renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: '새 계획 등록' }));
     expect(await screen.findByLabelText('계획표 내용')).toBeVisible();
   });
 });
@@ -584,7 +680,7 @@ describe('previous policy period evidence cleanup', () => {
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T12:00:00+09:00'));
     const record = (id: string, attachedAt: string) => ({ id, section: 'receipt', order: 0, stored: { id, fileName: `${id}.jpg`, mimeType: 'image/jpeg', size: 1, attachedAt } });
     localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{ periodKey: '2026-10', confirmedAt: '2026-10-15T09:00:00+09:00', sourceText: 'plan', plans: { housing: 0, food: 200000, education: 200000, transport: 100000, studyCafe: 0, cafe: 200000, readingRoom: 0 } }] }));
-    localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify([record('previous', '2026-10-12T09:00:00+09:00'), record('current', '2026-10-16T09:00:00+09:00')]));
+    localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify([record('previous', '2026-10-10T09:00:00+09:00'), record('current', '2026-10-12T09:00:00+09:00')]));
     await renderApp();
     expect(await screen.findByText('새 기간이 시작되어 이전 기간 PDF 자료 1개를 정리했습니다.')).toBeInTheDocument();
     await waitFor(() => expect(JSON.parse(localStorage.getItem('shinhanhae-report-evidence-v1')!).map((item: { id: string }) => item.id)).toEqual(['current']));

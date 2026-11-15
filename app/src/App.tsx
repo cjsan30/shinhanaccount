@@ -6,12 +6,16 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { BottomSheet } from './components/BottomSheet';
 import { Toast } from './components/Toast';
 import { previousPanel, type Panel } from './domain/navigation';
-import { calculateBudgetSummary, clampAlertThreshold, roundUsagePercent, getPolicyPeriodKey, getPolicyPeriodRange, type BudgetKey } from './domain/budget';
+import { calculateBudgetSummary, clampAlertThreshold, roundUsagePercent, getNativeAlertRange, getPolicyPeriodRange, type BudgetKey } from './domain/budget';
 import { applyCancellation, applyPayment, excludeUndecided, findSuspectedDuplicates, getHistoryEntries, getRemainingPaymentAmount, setSupportAmount, markAsUndecided, removeLedgerEntry, updateLedgerEntry, importBankTransactions, importCardTransactions, reclassifyUndecided, saveAsUndecided, type ImportResult, type Ledger, type LedgerEntry } from './domain/ledger';
 import { isInPeriodScope, selectClassifiedInPeriod, selectItemUsage, selectSpentByBucket, selectSpentByCategory, selectUndecidedByPeriod, sumSupportAmounts } from './domain/periodSelectors';
 import { CancellationReview, PaymentCancel, PaymentDelete, PaymentDetail, PaymentEdit } from './features/payments/PaymentPanels';
 import { useApprovalSync } from './features/payments/useApprovalSync';
 import { usePolicyDraft } from './features/policy/usePolicyDraft';
+import { PlanEditor } from './features/policy/PlanEditor';
+import { DepositStart } from './features/policy/DepositStart';
+import { NewPlan, PlanView, ReincludePayments } from './features/policy/PlanScreen';
+import { excludePaymentsBeforeDeposit, getReinclusionCandidates, hasCountedPayments, restoreBeforeDeposit } from './domain/policyStart';
 import { RuleManager } from './features/rules/RuleManager';
 import { OperationsSettings, SettingsHub } from './features/settings/SettingsPanels';
 import { applyApprovalBatch } from './domain/approvalSync';
@@ -27,7 +31,9 @@ import {
   getCategoryLimit,
   getAlertTargets,
   getPolicyItems,
-  getNextPolicyPeriodKey,
+  setPolicyFunding,
+  type PolicyBook,
+  type PolicyFunding,
   getPolicyLimit,
   POLICY_ITEMS,
   validatePolicyAgainstProfile,
@@ -304,7 +310,7 @@ function App() {
   const widgetDetailRows = useMemo(() => itemUsage.map(({ item, spent, count }) => ({ label: item.label, limit: getCategoryLimit(policy, item.ledgerCategories[0]), spent, count })).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [itemUsage, policy]);
   const nativeRules = useMemo(() => buildNativeRuleSnapshot(merchantRules, allPolicyItems), [merchantRules, allPolicyItems]);
   useEffect(() => {
-    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, periodStart: getPolicyPeriodRange(activePolicy.periodKey, policy.period).start, periodEnd: getPolicyPeriodRange(activePolicy.periodKey, policy.period).end, quickCategories, rules: nativeRules }).catch(() => undefined);
+    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, ...getNativeAlertRange(activePolicy.periodKey, policy.period), quickCategories, rules: nativeRules }).catch(() => undefined);
   }, [policy.period, activePolicy.periodKey, alertCategories, categoryLimits, categorySpent, ledger.alertThresholds, quickCategories, nativeRules]);
 
   useEffect(() => {
@@ -367,12 +373,14 @@ function App() {
     batch.crossedAlerts.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
     if (batch.appliedApprovals.length || batch.autoCancelled.length) show(`${batch.appliedApprovals.length}건의 승인 결제를 자동 반영했습니다.${batch.autoCancelled.length ? ` 취소 ${batch.autoCancelled.length}건도 반영했습니다.` : ''}`);
   }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
-  useApprovalSync(activePolicy.confirmed, processPendingApprovals);
+  // Payments of a new period are stored before its plan exists; they count only after the deposit.
+  useApprovalSync(activePolicy.confirmed || (policyBook.versions.length > 0 && policyBook.mode !== 'not-applicant'), processPendingApprovals);
   const completeOnboarding = async (
     payload: {
       applicantStatus: 'applicant' | 'not-applicant';
       cardLast4: string;
       policy: SupportPolicy | null;
+      funding?: PolicyFunding;
       pendingApprovals: NativeApproval[];
       historyAction: 'keep-undecided' | 'discard';
       nextAction: 'dashboard' | 'import';
@@ -380,7 +388,7 @@ function App() {
   ) => {
     const policyForPeriod = payload.applicantStatus === 'applicant' && payload.policy ? payload.policy : emptyPolicy;
     const confirmed = payload.applicantStatus === 'applicant'
-      ? confirmPolicyForPeriod(policyBook, policyForPeriod, activePolicy.periodKey)
+      ? confirmPolicyForPeriod(policyBook, policyForPeriod, activePolicy.periodKey, new Date().toISOString(), payload.funding)
       : { versions: [], mode: 'not-applicant' as const };
     let nextLedger = ledgerRef.current;
     if (
@@ -407,7 +415,7 @@ function App() {
         await acknowledgeApprovals(payload.pendingApprovals);
         show(payload.historyAction === 'keep-undecided' && payload.pendingApprovals.length ? `${payload.pendingApprovals.length}건을 분류 필요 목록으로 불러왔습니다.` : '정책을 확정했습니다.');
       } else {
-        show('초기 설정을 건너뛰었습니다. 계획표는 설정에서 나중에 등록할 수 있어요.');
+        show('초기 설정을 건너뛰었습니다. 계획표는 대시보드에서 나중에 등록할 수 있어요.');
       }
     } catch { setStorageError('정책을 암호화 저장소에 저장하지 못했습니다. 다시 실행해 주세요.'); }
   };
@@ -542,46 +550,86 @@ function App() {
     setPolicyBook(nextBook);
     policyDraft.clearDraft();
   };
-  const confirmPolicy = async (applyTo: 'current' | 'next') => {
+  /** Persists a new plan book (and ledger) before showing it, like every other policy change. */
+  const savePolicyChange = async (nextBook: PolicyBook, nextLedger: Ledger = ledgerRef.current) => {
+    const previousBook = policyBookRef.current;
+    // Notification handling can finish while this screen is open. Point every
+    // concurrent persistence path to the new book before awaiting I/O.
+    policyBookRef.current = nextBook;
+    try {
+      await persistAppState(window.localStorage, { ledger: nextLedger, policyBook: nextBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
+    } catch {
+      if (policyBookRef.current === nextBook) policyBookRef.current = previousBook;
+      show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
+      return false;
+    }
+    ledgerRef.current = nextLedger;
+    setLedger(nextLedger);
+    setPolicyBook(nextBook);
+    return true;
+  };
+  // An existing user whose new period opened (from the 11th) without a plan yet, or one who
+  // skipped the plan in onboarding: both register it from the dashboard.
+  const notApplicant = policyBook.mode === 'not-applicant';
+  const planMissing = notApplicant || (!activePolicy.confirmed && policyBook.versions.length > 0);
+  const [planToRegister, setPlanToRegister] = useState<SupportPolicy | null>(null);
+  const [depositMode, setDepositMode] = useState<'register' | 'deposited' | 'change'>('register');
+  const [reincludeEntries, setReincludeEntries] = useState<LedgerEntry[]>([]);
+  const [planEditing, setPlanEditing] = useState(false);
+  const beginRegistration = (plan: SupportPolicy | null) => {
+    if (!plan) return;
+    const issues = validatePolicyAgainstProfile(plan);
+    if (issues.length) { show(issues[0]); return; }
+    setPlanToRegister(plan);
+    setDepositMode('register');
+    setPanel('deposit');
+  };
+  const openDeposit = (mode: 'deposited' | 'change') => { setDepositMode(mode); setPanel('deposit'); };
+  const applyFunding = async (funding: PolicyFunding) => {
+    const periodKey = activePolicy.periodKey;
+    const registering = depositMode === 'register';
+    if (registering && !planToRegister) return;
+    const nextBook = registering && planToRegister ? confirmPolicyForPeriod(policyBookRef.current, planToRegister, periodKey, new Date().toISOString(), funding) : setPolicyFunding(policyBookRef.current, periodKey, funding);
+    const nextLedger = excludePaymentsBeforeDeposit(ledgerRef.current, periodKey, funding);
+    if (!await savePolicyChange(nextBook, nextLedger)) return;
+    if (registering) { setPlanToRegister(null); policyDraft.clear(); }
+    const candidates = getReinclusionCandidates(nextLedger, periodKey, funding);
+    if (candidates.length) { setReincludeEntries(candidates); setPanel('reinclude'); return; }
+    setPanel(null);
+    show(funding.status === 'pending' ? '계획을 확정했습니다. 지원금이 입금되면 대시보드에서 알려 주세요.' : '입금 후 결제부터 예산에 반영합니다.');
+  };
+  const confirmReinclusion = async (entryIds: string[]) => {
+    if (!await savePolicyChange(policyBookRef.current, restoreBeforeDeposit(ledgerRef.current, entryIds))) return;
+    setReincludeEntries([]);
+    setPanel(null);
+    show(entryIds.length ? `${entryIds.length}건을 다시 포함했습니다.` : '선택한 결제가 없어 그대로 두었습니다.');
+  };
+  const savePlanEdit = async () => {
     const draft = policyDraft.draft;
     if (!draft) return;
     const issues = validatePolicyAgainstProfile(draft);
     if (issues.length) { show(issues[0]); return; }
-    const periodKey = applyTo === 'current' ? getPolicyPeriodKey(now, draft.period) : getNextPolicyPeriodKey(now, draft.period);
-    const nextPolicyBook = confirmPolicyForPeriod(policyBook, draft, periodKey);
-    // Notification handling can finish while this screen is open. Point every
-    // concurrent persistence path to the confirmed book before awaiting I/O.
-    policyBookRef.current = nextPolicyBook;
-    try {
-      await persistAppState(window.localStorage, { ledger: ledgerRef.current, policyBook: nextPolicyBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
-    } catch {
-      show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
-      return;
-    }
-    setPolicyBook(nextPolicyBook);
+    if (!await savePolicyChange(confirmPolicyForPeriod(policyBookRef.current, draft, activePolicy.periodKey))) return;
     policyDraft.clear();
-    show(applyTo === 'current'
-      ? '이번 적용 기간 정책을 반영했습니다. 대시보드와 위젯 사용률을 다시 계산합니다.'
-      : `${periodKey} 기간 정책을 예약했습니다.`);
+    setPlanEditing(false);
+    show('이번 적용 기간 정책을 반영했습니다. 대시보드와 위젯 사용률을 다시 계산합니다.');
   };
-  // An existing user starts a new period without a plan: offer the previous one instead of onboarding.
-  const planPending = !activePolicy.confirmed && policyBook.versions.length > 0;
-  const confirmPreviousPlan = async () => {
-    const previousBook = policyBookRef.current;
-    const nextBook = confirmPolicyForPeriod(previousBook, activePolicy.policy, activePolicy.periodKey);
-    policyBookRef.current = nextBook;
-    try {
-      await persistAppState(window.localStorage, { ledger: ledgerRef.current, policyBook: nextBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
-    } catch {
-      if (policyBookRef.current === nextBook) policyBookRef.current = previousBook;
-      show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
-      return;
-    }
-    setPolicyBook(nextBook);
-    show('지난 계획을 이번 기간 계획으로 확정했습니다.');
-  };
-  const [planEditRequested, setPlanEditRequested] = useState(false);
-  useEffect(() => { if (!planPending) setPlanEditRequested(false); }, [planPending]);
+  const answerNotYet = async () => { await savePolicyChange(setPolicyFunding(policyBookRef.current, activePolicy.periodKey, { status: 'pending' })); };
+  // Plans confirmed before the deposit start are asked once, only when nothing counts yet.
+  const askDeposit = activePolicy.funding?.status === 'deposited' && Boolean(activePolicy.funding.migrated) && !hasCountedPayments(ledger, (entry) => isInPeriodScope(entry, periodScope));
+  const dashboardStatus = planMissing
+    ? { kind: 'no-plan' as const, onRegister: () => { policyDraft.clear(); setPanel('plan-new'); } }
+    : activePolicy.funding?.status === 'pending'
+      ? { kind: 'pending' as const, onDeposited: () => openDeposit('deposited') }
+      : askDeposit ? { kind: 'ask' as const, onDeposited: () => openDeposit('deposited'), onNotYet: () => { void answerNotYet(); } } : undefined;
+  const periodRange = getPolicyPeriodRange(activePolicy.periodKey, policy.period);
+  const shortDate = (date: string) => { const [, month, day] = date.split('-').map(Number); return `${month}월 ${day}일`; };
+  // Payments made before the deposit, including ones that arrive later, stay recorded as 사업 무관.
+  useEffect(() => {
+    if (!storageReady) return;
+    const next = excludePaymentsBeforeDeposit(ledger, activePolicy.periodKey, activePolicy.funding);
+    if (next !== ledger) { ledgerRef.current = next; setLedger(next); }
+  }, [storageReady, ledger, activePolicy.periodKey, activePolicy.funding]);
   const openSettings = () => {
     policyDraft.clear();
     setPanel('settings');
@@ -682,7 +730,7 @@ function App() {
   let content: ReactNode;
   if (panel === 'resident') content = <><Table rows={rowsFor('resident')} />{activePolicy.confirmed && policyBook.mode !== 'not-applicant' && <BudgetAdjustment policy={policy} spent={categorySpent} bucket="resident" onApply={applyBudgetAdjustment} />}</>;
   else if (panel === 'study') content = <><Table rows={rowsFor('studySpace')} />{activePolicy.confirmed && policyBook.mode !== 'not-applicant' && <BudgetAdjustment policy={policy} spent={categorySpent} bucket="studySpace" onApply={applyBudgetAdjustment} />}</>;
-  else if (panel === 'undecided') content = <><button className="sheet-action secondary-action" onClick={() => setPanel('import')}>거래내역 가져오기</button><ImportMergeSummary summary={latestImportSummary} entries={ledger.entries} /><p className="undecided-summary">분류 필요 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p><UndecidedPanel entries={currentUndecided} items={allPolicyItems} allEntries={ledger.entries} onResolveDuplicate={(incomingId, existingId, same) => { const updated = resolveImportDuplicate(ledger, incomingId, existingId, same); if (updated === ledger) return; setLedger(updated); if (same) setReportEvidence((current) => current.map((evidence) => evidence.linkedEntryId === incomingId ? { ...evidence, linkedEntryId: existingId } : evidence)); }} onSupportAmountChange={changeSupportAmount} onClassify={applyUndecidedBatch} onExclude={(ids) => { if (!window.confirm(`선택한 ${ids.length}건을 사업 무관 지출로 제외할까요? 제외한 내역은 결제 상세에서 분류 필요로 되돌릴 수 있습니다.`)) return false; setLedger((current) => excludeUndecided(current, ids)); show(`${ids.length}건을 사업 무관 지출로 제외했습니다.`); return true; }} />{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 분류 필요 {previousUndecided.length}건</summary><UndecidedPanel entries={previousUndecided} items={allPolicyItems} allEntries={ledger.entries} onResolveDuplicate={(incomingId, existingId, same) => { const updated = resolveImportDuplicate(ledger, incomingId, existingId, same); if (updated === ledger) return; setLedger(updated); if (same) setReportEvidence((current) => current.map((evidence) => evidence.linkedEntryId === incomingId ? { ...evidence, linkedEntryId: existingId } : evidence)); }} onSupportAmountChange={changeSupportAmount} onClassify={applyUndecidedBatch} onExclude={(ids) => { if (!window.confirm(`선택한 ${ids.length}건을 사업 무관 지출로 제외할까요? 제외한 내역은 결제 상세에서 분류 필요로 되돌릴 수 있습니다.`)) return false; setLedger((current) => excludeUndecided(current, ids)); show(`${ids.length}건을 사업 무관 지출로 제외했습니다.`); return true; }} /></details>}</>;
+  else if (panel === 'undecided') content = <><ImportMergeSummary summary={latestImportSummary} entries={ledger.entries} /><p className="undecided-summary">분류 필요 {undecidedCount}건 · 분류 전에는 예산과 경고에 반영되지 않습니다.</p><UndecidedPanel entries={currentUndecided} items={allPolicyItems} allEntries={ledger.entries} onResolveDuplicate={(incomingId, existingId, same) => { const updated = resolveImportDuplicate(ledger, incomingId, existingId, same); if (updated === ledger) return; setLedger(updated); if (same) setReportEvidence((current) => current.map((evidence) => evidence.linkedEntryId === incomingId ? { ...evidence, linkedEntryId: existingId } : evidence)); }} onSupportAmountChange={changeSupportAmount} onClassify={applyUndecidedBatch} onExclude={(ids) => { if (!window.confirm(`선택한 ${ids.length}건을 사업 무관 지출로 제외할까요? 제외한 내역은 결제 상세에서 분류 필요로 되돌릴 수 있습니다.`)) return false; setLedger((current) => excludeUndecided(current, ids)); show(`${ids.length}건을 사업 무관 지출로 제외했습니다.`); return true; }} />{previousUndecided.length > 0 && <details className="previous-undecided"><summary>이전 기간 분류 필요 {previousUndecided.length}건</summary><UndecidedPanel entries={previousUndecided} items={allPolicyItems} allEntries={ledger.entries} onResolveDuplicate={(incomingId, existingId, same) => { const updated = resolveImportDuplicate(ledger, incomingId, existingId, same); if (updated === ledger) return; setLedger(updated); if (same) setReportEvidence((current) => current.map((evidence) => evidence.linkedEntryId === incomingId ? { ...evidence, linkedEntryId: existingId } : evidence)); }} onSupportAmountChange={changeSupportAmount} onClassify={applyUndecidedBatch} onExclude={(ids) => { if (!window.confirm(`선택한 ${ids.length}건을 사업 무관 지출로 제외할까요? 제외한 내역은 결제 상세에서 분류 필요로 되돌릴 수 있습니다.`)) return false; setLedger((current) => excludeUndecided(current, ids)); show(`${ids.length}건을 사업 무관 지출로 제외했습니다.`); return true; }} /></details>}</>;
   else if (panel === 'recent') content = <PaymentHistory view={historyView} onViewChange={setHistoryView} entries={recent} categoryNames={{ ...categoryNames, ...Object.fromEntries((policy.customItems ?? []).map((item) => [`custom:${item.id}`, item.label])) }} filterOptions={allPolicyItems.map((item) => ({ key: item.ledgerCategories[0], label: item.label }))} isEntryInActivePeriod={(entry) => isInPeriodScope(entry, periodScope)} displayMerchant={(entry) => getMerchantAlias(entry.merchant, merchantRules) || entry.merchant} isSuspectedDuplicate={(entry) => findSuspectedDuplicates(ledger, entry, entry.id).length > 0} onOpen={beginDetail} />;
   else if (panel === 'detail') content = <PaymentDetail entry={detailTarget} merchantAlias={detailTarget ? getMerchantAlias(detailTarget.merchant, merchantRules) : undefined} categoryNames={categoryNames} inActivePeriod={detailTarget ? isInPeriodScope(detailTarget, periodScope) : true} hasSuspectedDuplicate={detailTarget ? findSuspectedDuplicates(ledger, detailTarget, detailTarget.id).length > 0 : false} onEdit={beginEdit} onMarkUndecided={(entry) => { setLedger(markAsUndecided(ledger, entry.id)); setDetailTargetId(null); setPanel('undecided'); show('분류 필요로 되돌렸습니다. 분류 전에는 예산과 경고에 반영되지 않습니다.'); }} onCancel={(entry) => { setCancellationTarget(entry); setCancellationAmount(String(getRemainingPaymentAmount(entry))); setPanel('cancel'); }} onDelete={(entry) => { setDeleteTarget(entry); setPanel('delete'); }} />;
   else if (panel === 'edit') content = <PaymentEdit entry={editTarget} onSave={saveEditedEntry} />;
@@ -697,12 +745,18 @@ function App() {
   else if (panel === 'information') content = <AppInformationContent />;
   else if (panel === 'operations') content = <OperationsSettings card={card} showCard={showCard} onToggleShowCard={() => setShowCard((current) => !current)} onCardChange={changeCard} paymentAlertsEnabled={paymentAlertsEnabled} budgetAlertsEnabled={budgetAlertsEnabled} onTogglePaymentAlerts={() => void togglePaymentNotifications()} onToggleBudgetAlerts={() => void toggleBudgetNotifications()} thresholds={[first, second]} onThresholdChange={updateAlertThreshold} notify={show} />;
   else if (panel === 'verification' && VerificationPanel) content = <VerificationPanel storageReady={storageReady} storageError={Boolean(storageError)} policyBook={policyBook} ledger={ledger} evidence={reportEvidence} value={verification} onChange={setVerification} notify={show} />;
-  else if (panel === 'data') content = <DataManagementPanel now={now} openPlan={planEditRequested} budgetAdjustment={activePolicy.confirmed && policyBook.mode !== 'not-applicant' ? <BudgetAdjustment policy={policy} spent={categorySpent} onApply={applyBudgetAdjustment} /> : undefined} importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} policyText={policyDraft.text} policyDraft={policyDraft.draft} policyDraftFocusToken={policyDraft.focusToken} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} period={policy.period} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onPolicyTextChange={policyDraft.setText} onReviewPolicy={policyDraft.reviewText} onReadPolicyScreenshot={() => void policyDraft.readScreenshot()} onEditPolicy={policyDraft.editSaved} onUpdatePolicyPeriod={policyDraft.updatePeriod} onUpdatePolicyDraft={policyDraft.updateAmount} onUpdatePolicyProfile={policyDraft.updateProfile} onUpdatePolicyAlertTarget={policyDraft.toggleAlertTarget} onConfirmPolicy={confirmPolicy} onOpenRules={() => setPanel('rules')} onRestore={restoreBackup} notify={show} />;
+  else if (panel === 'plan') content = planEditing
+    ? <PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="계획 저장" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onSubmit={() => { void savePlanEdit(); }} />
+    : <PlanView policy={policy} funding={activePolicy.funding} range={periodRange} onEditPlan={() => { policyDraft.editSaved(); setPlanEditing(true); }} onEditStart={() => openDeposit('change')} onDeposited={() => openDeposit('deposited')} />;
+  else if (panel === 'plan-new') content = <NewPlan canReuse={validatePolicyAgainstProfile(activePolicy.policy).length === 0} onReuse={() => beginRegistration(structuredClone(activePolicy.policy))} editor={<PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="다음" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onSubmit={() => beginRegistration(policyDraft.draft)} />} />;
+  else if (panel === 'deposit') content = <DepositStart periodKey={activePolicy.periodKey} now={now} ledger={ledger} askDeposited={depositMode === 'register'} onConfirm={(funding) => { void applyFunding(funding); }} />;
+  else if (panel === 'reinclude') content = <ReincludePayments entries={reincludeEntries} onConfirm={(ids) => { void confirmReinclusion(ids); }} />;
+  else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} period={policy.period} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onOpenRules={() => setPanel('rules')} onRestore={restoreBackup} notify={show} />;
   else content = <><p>{approvalReview ? '알림에서 일부 결제 정보만 확인했습니다. 빈 항목을 보완하고 등록해 주세요. 확인 전에는 예산과 경고에 반영되지 않습니다.' : '직접 입력한 지출은 자동 인식된 승인 내역과 별도로 저장됩니다. 같은 결제를 중복 등록하지 않도록 확인해 주세요.'}</p><label>결제일시<input aria-label="결제일시" type="datetime-local" onClick={(event) => event.currentTarget.showPicker?.()} value={manualPayment.occurredAt} onChange={(event) => setManualPayment((current) => ({ ...current, occurredAt: event.target.value }))} /></label><label>상호명<input aria-label="상호명" value={manualPayment.merchant} onChange={(event) => setManualPayment((current) => ({ ...current, merchant: event.target.value }))} placeholder="예: 스타벅스" /></label><label>금액<input aria-label="금액" type="number" inputMode="numeric" min="1" step="1" value={manualPayment.amount} onChange={(event) => setManualPayment((current) => ({ ...current, amount: event.target.value }))} placeholder="0" /></label><label>분류<select aria-label="지출 분류" value={manualClassification} onChange={(event) => setManualClassification(event.target.value as ManualClassificationChoice)}><option value="auto">자동 분류</option><option value="undecided">분류 필요로 저장</option>{allPolicyItems.map((item) => <option key={item.key} value={item.key}>{item.bucket === 'resident' ? '정주비' : '학습공간비'} · {item.label}</option>)}</select></label>{manualClassification === 'auto' && <p className="prediction">{manualPayment.merchant.trim() && Number(manualPayment.amount) > 0 ? <>자동 분류 예상: <strong>{classificationText(classifyWithMerchantRules(manualPayment.merchant, merchantRules))}</strong></> : '상호명과 금액을 입력하면 예상 분류를 보여드립니다.'}</p>}<button className="sheet-action" onClick={submitManualPayment}>{approvalReview ? '확인 후 등록' : '지출 등록'}</button></>;
-  const title = panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '분류 필요' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'cancel-review' ? '취소 결제 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'information' ? APP_INFORMATION_TITLE : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'accessibility' ? '접근성 · 개인화' : panel === 'verification' ? '실기기 검증' : panel === 'evidence' ? '사용보고서 작성' : panel === 'import' ? '거래내역 등록' : approvalReview ? '결제 정보 확인' : '직접 지출 등록';
+  const title = panel === 'plan' ? (planEditing ? '계획 수정' : '이번 기간 계획') : panel === 'plan-new' ? '새 계획 등록' : panel === 'deposit' ? (depositMode === 'change' ? '정책 시작 날짜 수정' : depositMode === 'deposited' ? '지원금 입금' : '계획 확정') : panel === 'reinclude' ? '다시 포함할 결제' : panel === 'resident' ? '정주비 상세' : panel === 'study' ? '학습공간비 상세' : panel === 'undecided' ? '분류 필요' : panel === 'recent' ? '결제 내역 확인' : panel === 'detail' ? '결제 상세' : panel === 'cancel' ? '취소 확인' : panel === 'cancel-review' ? '취소 결제 확인' : panel === 'edit' ? '결제 내역 수정' : panel === 'delete' ? '결제 내역 삭제' : panel === 'settings' ? '설정' : panel === 'information' ? APP_INFORMATION_TITLE : panel === 'operations' ? '운영 설정' : panel === 'data' ? '데이터 관리' : panel === 'rules' ? '자동 분류 규칙' : panel === 'accessibility' ? '접근성 · 개인화' : panel === 'verification' ? '실기기 검증' : panel === 'evidence' ? '사용보고서 작성' : panel === 'import' ? '거래내역 등록' : approvalReview ? '결제 정보 확인' : '직접 지출 등록';
   if (storageError) return <main className="storage-status"><h1>데이터를 열지 못했습니다</h1><p>{storageError}</p><button onClick={() => window.location.reload()}>다시 시도</button></main>;
   if (!storageReady) return <main className="storage-status"><h1>데이터를 안전하게 불러오는 중</h1><p>암호화 저장소를 확인하고 있습니다.</p></main>;
-  if (!activePolicy.confirmed && !planPending) return <Suspense fallback={<main className="storage-status"><LoadingPanel /></main>}><OnboardingFlow onComplete={completeOnboarding} /></Suspense>;
+  if (!activePolicy.confirmed && !planMissing) return <Suspense fallback={<main className="storage-status"><LoadingPanel /></main>}><OnboardingFlow onComplete={completeOnboarding} /></Suspense>;
   if (!informationReady) return <main className="storage-status"><LoadingPanel /></main>;
   if (panel === 'import') return <main className="import-page">
     <header className="import-page__header"><span>지원금 관리</span><button type="button" onClick={leaveImport}>나중에 등록하기</button></header>
@@ -730,7 +784,8 @@ function App() {
       resident={{ remaining: resident.remaining, usage: resident.usagePercent }}
       study={{ remaining: study.remaining, usage: study.usagePercent }}
       undecidedCount={undecidedCount}
-      planPending={planPending ? { canReuse: validatePolicyAgainstProfile(activePolicy.policy).length === 0, onReuse: () => { void confirmPreviousPlan(); }, onEdit: () => { setPlanEditRequested(true); setPanel('data'); } } : undefined}
+      status={dashboardStatus}
+      period={activePolicy.confirmed && policyBook.mode !== 'not-applicant' && !dashboardStatus ? { label: `${shortDate(periodRange.start)} ~ ${shortDate(periodRange.end)}`, onOpen: () => { setPlanEditing(false); policyDraft.clear(); setPanel('plan'); } } : undefined}
       forceStopRecovery={forceStopRecovery && card.length === 4 && paymentAlertsEnabled}
       onOpenHelp={() => setAppGuideOpen(true)}
       onImportTransactions={() => { setInitialImportRoute(false); setPanel('import'); }}

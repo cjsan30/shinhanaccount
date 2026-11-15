@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FirstRunPermission } from './FirstRunPermission';
 import { PolicyOnboarding } from './PolicyOnboarding';
 import { SmsBridge, type NativeApproval } from '../native/smsBridge';
-import type { SupportPolicy } from '../domain/policy';
+import type { PolicyFunding, SupportPolicy } from '../domain/policy';
+import { getPolicyPeriodKey } from '../domain/budget';
+import { createEmptyLedger, saveAsUndecided } from '../domain/ledger';
+import { DepositStart } from '../features/policy/DepositStart';
 import { SHORT_APP_NOTICE } from '../domain/appInformation';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
 type ApplicantStatus = 'applicant' | 'not-applicant';
-type SavedProgress = { step: 'permissions' | 'policy' | 'history'; policy?: SupportPolicy };
+type SavedProgress = { step: 'permissions' | 'policy' | 'deposit' | 'history'; policy?: SupportPolicy; funding?: PolicyFunding };
 const PROGRESS_KEY = 'shinhanhae-onboarding-progress-v1';
 function loadProgress(): SavedProgress | null { try { const saved = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) || 'null') as SavedProgress | null; return saved?.step ? saved : null; } catch { return null; } }
 
@@ -16,6 +19,7 @@ type CompletePayload = {
   applicantStatus: ApplicantStatus;
   cardLast4: string;
   policy: SupportPolicy | null;
+  funding?: PolicyFunding;
   pendingApprovals: NativeApproval[];
   historyAction: HistoryAction;
   nextAction: NextAction;
@@ -23,7 +27,8 @@ type CompletePayload = {
 
 export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompletePayload) => void }) {
   const [progress] = useState(loadProgress);
-  const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'history'>(progress?.step ?? 'applicant');
+  const [step, setStep] = useState<'applicant' | 'permissions' | 'policy' | 'deposit' | 'history'>(progress?.step ?? 'applicant');
+  const [funding, setFunding] = useState<PolicyFunding | undefined>(progress?.funding);
   const [cardLast4, setCardLast4] = useState('');
   const [policy, setPolicy] = useState<SupportPolicy | null>(progress?.policy ?? null);
   const [pendingApprovals, setPendingApprovals] = useState<NativeApproval[]>([]);
@@ -37,8 +42,10 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     // Onboarding can resume the non-sensitive policy step, but a card suffix
     // must be entered again after an interruption instead of being kept in
     // browser storage.
-    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined }));
-  }, [policy, step]);
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, policy: policy ?? undefined, funding }));
+  }, [funding, policy, step]);
+  // Approvals received before the plan, shown when choosing the first payment after the deposit.
+  const pendingLedger = useMemo(() => pendingApprovals.reduce((ledger, approval) => saveAsUndecided(ledger, approval).ledger, createEmptyLedger()), [pendingApprovals]);
 
   const skipToDashboard = (messageOverride?: string) => {
     finished.current = true;
@@ -73,7 +80,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     } catch {
       setPendingApprovals([]);
     }
-    setStep('history');
+    setStep('deposit');
   };
 
   const complete = (nextAction: NextAction, historyAction: HistoryAction = 'keep-undecided') => {
@@ -86,6 +93,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
       applicantStatus: 'applicant',
       cardLast4,
       policy,
+      funding,
       pendingApprovals,
       historyAction,
       nextAction,
@@ -136,6 +144,16 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
   }
 
   if (!policy) return null;
+
+  if (step === 'deposit') {
+    return (
+      <main className="first-run">
+        <div className="first-run__mark">지원금 관리 · 2단계</div>
+        <h1>사용 계획을<br />확정해 주세요</h1>
+        <section className="first-run__card"><DepositStart periodKey={getPolicyPeriodKey(new Date())} now={new Date()} ledger={pendingLedger} askDeposited onConfirm={(value) => { setFunding(value); setStep('history'); }} /></section>
+      </main>
+    );
+  }
 
   return (
     <main className="first-run">

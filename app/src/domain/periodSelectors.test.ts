@@ -14,23 +14,23 @@ import {
   sumSupportAmounts,
 } from './periodSelectors';
 
-const scope = { periodKey: '2026-09' };
+// The subsidy for this period arrived on the 15th; the 11th to the 14th waited for it.
+const scope = { periodKey: '2026-09', period: { startDay: 11, endDay: 10, start: { periodKey: '2026-09', at: '2026-09-15T00:00:00+09:00' } } };
 const entry = (id: string, occurredAt: string, patch: Partial<LedgerEntry> = {}): LedgerEntry => ({ id, occurredAt, amount: 10000, merchant: id, cardLast4: '0000', status: 'classified', bucket: 'resident', category: 'food', ...patch });
 const ledger = (...entries: LedgerEntry[]): Ledger => ({ entries, alertThresholds: [50, 80] });
 const items = getPolicyItems({ customItems: [{ id: 'gym', label: '운동비', bucket: 'studySpace', amount: 100000 }] });
 
 describe('period selectors', () => {
-  it('uses the policy period edges and excludes the gap between periods', () => {
+  it('counts from the deposit to the 10th and excludes the days before the deposit', () => {
     expect(isInPeriodScope({ occurredAt: '2026-09-15T00:00:00+09:00' }, scope)).toBe(true);
     expect(isInPeriodScope({ occurredAt: '2026-10-10T23:59:00+09:00' }, scope)).toBe(true);
     expect(isInPeriodScope({ occurredAt: '2026-10-12T12:00:00+09:00' }, scope)).toBe(false);
     expect(isInPeriodScope({ occurredAt: '2026-09-14T23:59:00+09:00' }, scope)).toBe(false);
   });
 
-  it('honours a custom policy period', () => {
-    const custom = { periodKey: '2026-09', period: { startDay: 1, endDay: 30 } };
-    expect(isInPeriodScope({ occurredAt: '2026-09-01T00:00:00+09:00' }, custom)).toBe(true);
-    expect(isInPeriodScope({ occurredAt: '2026-10-01T00:00:00+09:00' }, custom)).toBe(false);
+  it('counts nothing while the deposit is pending', () => {
+    const pending = { periodKey: '2026-09', period: { startDay: 11, endDay: 10, start: { periodKey: '2026-09', at: null } } };
+    expect(isInPeriodScope({ occurredAt: '2026-09-20T00:00:00+09:00' }, pending)).toBe(false);
   });
 
   it('keeps undated queued records and drops dated ones outside the period', () => {
@@ -39,9 +39,9 @@ describe('period selectors', () => {
   });
 
   it('derives the current period range from the given now', () => {
-    expect(getCurrentPeriodRange(new Date('2026-10-12T12:00:00+09:00'))).toEqual({ start: '2026-09-15', end: '2026-10-10' });
-    expect(getCurrentPeriodRange(new Date('2026-10-15T00:00:00+09:00'))).toEqual({ start: '2026-10-15', end: '2026-11-10' });
-    expect(getCurrentPeriodRange(new Date('2027-01-05T12:00:00+09:00'))).toEqual({ start: '2026-12-15', end: '2027-01-10' });
+    expect(getCurrentPeriodRange(new Date('2026-10-10T12:00:00+09:00'))).toEqual({ start: '2026-09-11', end: '2026-10-10' });
+    expect(getCurrentPeriodRange(new Date('2026-10-12T12:00:00+09:00'))).toEqual({ start: '2026-10-11', end: '2026-11-10' });
+    expect(getCurrentPeriodRange(new Date('2027-01-05T12:00:00+09:00'))).toEqual({ start: '2026-12-11', end: '2027-01-10' });
   });
 
   it('counts only classified payments in the period by their support amount', () => {
@@ -103,15 +103,16 @@ describe('period selectors', () => {
 });
 
 describe('import period filtering', () => {
-  it('does not retain entries outside the active 15th-to-10th policy period', () => {
+  it('keeps entries from the 11th, before the deposit too, and drops those after the 10th', () => {
     const result = filterImportToPolicyPeriod([
       { occurredAt: '2026-09-15T12:00:00+09:00' },
       { occurredAt: '2026-10-10T23:59:00+09:00' },
       { occurredAt: '2026-09-13T12:00:00+09:00' },
       { occurredAt: '2026-09-14T12:00:00+09:00' },
       { occurredAt: '2026-10-11T00:00:00+09:00' },
-    ], '2026-09');
-    expect(result.included).toHaveLength(2);
-    expect(result.excludedOutsidePeriod).toBe(3);
+      { occurredAt: '2026-09-10T23:59:00+09:00' },
+    ], '2026-09', scope.period);
+    expect(result.included).toHaveLength(4);
+    expect(result.excludedOutsidePeriod).toBe(2);
   });
 });
