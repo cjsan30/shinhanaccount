@@ -7,6 +7,8 @@ import { paymentDateInKorea } from '../../domain/receiptMatching';
 import { toStatementRows } from '../../domain/statementImport';
 import type { LedgerEntry } from '../../domain/ledger';
 import { getReportReadiness } from '../../domain/reportReadiness';
+import { addLostReceiptLinks, isEvidenceNotFound, pendingLostReceiptLinks } from '../../domain/lostEvidence';
+import { loadLostReceiptLinks, saveLostReceiptLinks } from '../../native/lostReceiptLinksStore';
 import { getMaskedAccountLast4, parseShinhanBankPdfExport } from '../../domain/shinhanBankImport';
 import type { PolicyPeriod } from '../../domain/budget';
 import { isValidReceiptDate } from '../../domain/receiptOcr';
@@ -54,6 +56,8 @@ function useScreenWakeLock(active: boolean) {
   }, [active]);
 }
 
+const UNREADABLE_MESSAGE = (count: number) => `첨부 ${count}개를 읽지 못했습니다. 사용보고서를 닫았다가 다시 열어 주세요.`;
+
 export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period, onNotify }: { helpRequest?: number; onNotify?: (message: string) => void; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
   useEffect(() => { if (helpRequest > 0) setGuideOpen(true); }, [helpRequest]);
   const [adding, setAdding] = useState<{ current: number; total: number } | null>(null);
@@ -64,6 +68,9 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   const loadedFiles = useRef(new Map<string, Evidence>());
   const [missingFiles, setMissingFiles] = useState<ReportEvidenceRecord[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(true);
+  /** Payments whose linked receipt was dropped because the app's copy of the file is gone. */
+  const [lostLinks, setLostLinks] = useState(loadLostReceiptLinks);
+  useEffect(() => { saveLostReceiptLinks(lostLinks); }, [lostLinks]);
   const [receiptFilter, setReceiptFilter] = useState<'all' | 'unlinked' | 'date'>('all');
   const [focusedReceipt, setFocusedReceipt] = useState<string | null>(null);
   const [expandedReceipts, setExpandedReceipts] = useState(new Set<string>());
@@ -84,14 +91,22 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
           loadedFiles.current.set(record.id, loaded);
         }
         return { ...loaded, ...record };
-      } catch { return null; }
+      } catch (error) { return { failed: true as const, notFound: isEvidenceNotFound(error) }; }
     })).then((loaded) => {
       if (disposed) return;
-      setItems(loaded.filter((item): item is Evidence => item !== null));
-      setMissingFiles(reportEvidence.filter((_, index) => loaded[index] === null)); setLoadingFiles(false);
+      setItems(loaded.filter((item): item is Evidence => item !== null && !('failed' in item)));
+      const failed = loaded.flatMap((item, index) => item && 'failed' in item ? [{ record: reportEvidence[index], notFound: item.notFound }] : []);
+      // A file confirmed gone is dropped; a read error that may be temporary keeps the attachment.
+      setMissingFiles(failed.filter((item) => !item.notFound).map((item) => item.record)); setLoadingFiles(false);
+      const lost = failed.filter((item) => item.notFound).map((item) => item.record);
+      if (!lost.length) return;
+      const lostIds = new Set(lost.map((record) => record.id));
+      const lostLinkIds = lost.flatMap((record) => record.section === 'receipt' && record.linkedEntryId ? [record.linkedEntryId] : []);
+      if (lostLinkIds.length) setLostLinks((current) => addLostReceiptLinks(current, lostLinkIds));
+      onReportEvidenceChange((current) => current.filter((record) => !lostIds.has(record.id)));
     });
     return () => { disposed = true; };
-  }, [reportEvidence]);
+  }, [reportEvidence, onReportEvidenceChange]);
   useEffect(() => { let disposed = false; const pending = items.filter((item) => item.kind === 'pdf' && !item.pages); void Promise.all(pending.map(async (item) => { let pages = 1; try { pages = await pdfPages(item.file); } catch { /* export will give a readable error */ } if (!disposed) { const cached = loadedFiles.current.get(item.id); if (cached) loadedFiles.current.set(item.id, { ...cached, pages }); setItems((current) => current.map((candidate) => candidate.id === item.id ? { ...candidate, pages } : candidate)); } })); return () => { disposed = true; }; }, [items]);
   const inSection = (section: ReportEvidenceSection) => items.filter((item) => item.section === section).sort((a, b) => a.order - b.order);
   const addFiles = async (section: ReportEvidenceSection, files: FileList | null) => {
@@ -141,27 +156,6 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
       }
     } finally { addingRef.current = false; setAdding(null); }
   };
-  const reattachOriginal = async (record: ReportEvidenceRecord, file: File | undefined) => {
-    if (!file || addingRef.current || exporting) return;
-    if (!supported(file) || !file.size || file.size > MAX_EVIDENCE_FILE_BYTES || kindOf(file) !== (/\.pdf$/i.test(record.stored.fileName) || record.stored.mimeType === 'application/pdf' ? 'pdf' : 'image') || reportEvidence.reduce((sum, item) => sum + item.stored.size, 0) - record.stored.size + file.size > MAX_EVIDENCE_TOTAL_BYTES) {
-      setMessage('원본과 같은 종류의 파일을 선택해 주세요. 파일 하나는 20MB, 합계는 120MB 이하입니다.'); return;
-    }
-    addingRef.current = true; setAddingSection(record.section); setAdding({ current: 0, total: 1 });
-    try {
-      const stored = await storeEvidence(file);
-      const next: ReportEvidenceRecord = { id: record.id, stored, section: record.section, order: record.order };
-      if (record.section === 'receipt' && kindOf(file) === 'image') {
-        try { const details = await recognizeReceiptDetails(file); Object.assign(next, { receiptDate: details.date, ...resolvedReceiptPatch(details) }); }
-        catch { next.receiptOcrStatus = 'failed'; }
-      }
-      if (record.section === 'statement' && kindOf(file) === 'pdf') Object.assign(next, { statementParseFailed: true, statementNeedsAccount: true });
-      loadedFiles.current.delete(record.id); raster.current.clear();
-      setStatementPasswords((current) => { const next = { ...current }; delete next[record.id]; return next; });
-      onReportEvidenceChange((current) => current.map((item) => item.id === record.id ? next : item));
-      setMessage('원본 파일을 다시 추가했습니다. 날짜와 결제 연결을 다시 확인해 주세요.');
-    } catch { setMessage('원본 파일을 저장하지 못했습니다. 다시 시도해 주세요.'); }
-    finally { addingRef.current = false; setAdding(null); }
-  };
   const update = (id: string, patch: Partial<ReportEvidenceRecord>) => onReportEvidenceChange((current) => current.map((item) => {
     if (item.id !== id) return item;
     const next = { ...item, ...patch };
@@ -173,6 +167,8 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   }));
   const readiness = getReportReadiness(entries, reportEvidence, periodKey, period);
   const payments = readiness.payments;
+  const lostPending = pendingLostReceiptLinks(lostLinks, readiness.missingReceipts.map((entry) => entry.id));
+  useEffect(() => { if (!loadingFiles && lostPending.length !== lostLinks.length) setLostLinks(lostPending); }, [loadingFiles, lostPending, lostLinks.length]);
   const unlinkedReceiptCount = reportEvidence.filter((item) => item.section === 'receipt' && !payments.some((payment) => payment.id === item.linkedEntryId)).length;
   const receiptWarning = readiness.missingReceipts.length || unlinkedReceiptCount ? `영수증 미연결 결제 ${readiness.missingReceipts.length}건 · 결제 미연결 영수증 ${unlinkedReceiptCount}장. 연결하지 않아도 PDF를 생성할 수 있습니다. 미연결 영수증은 별도로 포함됩니다.` : '';
   const receiptCategory = (item: Evidence) => payments.find((payment) => payment.id === item.linkedEntryId)?.category ?? '__unlinked__';
@@ -229,12 +225,13 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     const stored = reportEvidence.map((record) => record.stored);
     onReportEvidenceChange([]);
     void Promise.all(stored.map((file) => removeStoredEvidence(file).catch(() => undefined)));
+    setLostLinks([]);
     // The reset button sits at the top, so confirm with a short toast instead of a note above [PDF 생성].
     setMessage(null);
     onNotify?.('사용보고서를 초기화했습니다.');
   };
   const exportPdf = async (qualityComparison = false) => {
-    if (addingRef.current || loadingFiles || missingFiles.length) { setMessage('처리 중이거나 원본을 찾지 못한 파일이 있습니다. 원본 파일을 다시 추가한 뒤 생성해 주세요.'); return; }
+    if (addingRef.current || loadingFiles || missingFiles.length) { setMessage(missingFiles.length ? UNREADABLE_MESSAGE(missingFiles.length) : '파일을 처리하는 중입니다. 잠시 뒤 다시 시도해 주세요.'); return; }
     if (!items.length) return;
     const unreadStatements = items.filter((item) => item.section === 'statement' && item.kind === 'pdf' && !item.statementRows?.length);
     if (unreadStatements.length > 0) { setMessage(`표를 읽지 않은 입출금내역 ${unreadStatements.length}개가 있습니다. 원본 개인정보 보호를 위해 계좌 끝 4자리(비밀번호가 있으면 함께)를 입력하고 표를 읽어 주세요.`); return; }
@@ -277,7 +274,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   useEffect(() => { setBenchmarks({}); }, [inputFingerprint]);
   const runBenchmark = async (kind: 'legacy' | 'current') => {
     const receipts = inSection('receipt').filter((item) => item.kind === 'image');
-    if (addingRef.current || loadingFiles || missingFiles.length) { setMessage('파일 처리를 완료하고 누락된 원본을 다시 추가해 주세요.'); return; }
+    if (addingRef.current || loadingFiles || missingFiles.length) { setMessage(missingFiles.length ? UNREADABLE_MESSAGE(missingFiles.length) : '파일을 처리하는 중입니다. 잠시 뒤 다시 시도해 주세요.'); return; }
     if (!receipts.length) { setMessage('알고리즘 비교에는 JPG·PNG·WEBP 영수증을 한 장 이상 추가해 주세요.'); return; }
     cancelled.current = false; setExporting(true); setMessage(null);
     try {
@@ -311,7 +308,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   const section = (name: ReportEvidenceSection, text: string) => {
     const listed = inSection(name);
     const visible = name !== 'receipt' ? listed : listed.filter((item) => receiptFilter === 'all' || (receiptFilter === 'unlinked' ? !payments.some((payment) => payment.id === item.linkedEntryId) : !isValidReceiptDate(item.receiptDate)));
-    return <section data-guide={name} className="evidence-group"><h3>{SECTION_LABEL[name]} <span>{listed.length}개</span></h3><p>{text}</p>{name === 'receipt' && <section className="evidence-missing"><strong>영수증 연결 확인</strong><span>결제 {readiness.payments.length}건 · 연결 {readiness.linkedEntryIds.size}건 · 미연결 {readiness.missingReceipts.length}건</span>{receiptWarning && <small role="status">{receiptWarning}</small>}</section>}<label className="file-picker">{SECTION_LABEL[name]} 파일 추가<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple disabled={exporting || Boolean(adding)} onChange={(event) => { void addFiles(name, event.target.files); event.currentTarget.value = ''; }} /></label>{name === 'receipt' && <div className="receipt-task-controls"><label>영수증 보기<select aria-label="영수증 보기 필터" value={receiptFilter} onChange={(event) => setReceiptFilter(event.target.value as typeof receiptFilter)}><option value="all">전체</option><option value="unlinked">미연결</option><option value="date">날짜 확인 필요</option></select></label><button type="button" disabled={Boolean(adding) || !listed.some((item) => !payments.some((payment) => payment.id === item.linkedEntryId))} onClick={() => { const pending = listed.filter((item) => !payments.some((payment) => payment.id === item.linkedEntryId)); const next = pending[(pending.findIndex((item) => item.id === focusedReceipt) + 1) % pending.length]; if (next) { setReceiptFilter('unlinked'); setFocusedReceipt(next.id); requestAnimationFrame(() => document.getElementById(`evidence-${next.id}`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })); } }}>다음 미연결 영수증</button></div>}<div className="evidence-list">{visible.map((item) => { const index = listed.findIndex((record) => record.id === item.id);
+    return <section data-guide={name} className="evidence-group"><h3>{SECTION_LABEL[name]} <span>{listed.length}개</span></h3><p>{text}</p>{name === 'receipt' && <section className="evidence-missing"><strong>영수증 연결 확인</strong><span>결제 {readiness.payments.length}건 · 연결 {readiness.linkedEntryIds.size}건 · 미연결 {readiness.missingReceipts.length}건</span>{lostPending.length > 0 && <small className="evidence-lost-links">원본을 찾지 못해 연결이 풀린 결제 {lostPending.length}건</small>}{receiptWarning && <small role="status">{receiptWarning}</small>}</section>}<label className="file-picker">{SECTION_LABEL[name]} 파일 추가<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple disabled={exporting || Boolean(adding)} onChange={(event) => { void addFiles(name, event.target.files); event.currentTarget.value = ''; }} /></label>{name === 'receipt' && <div className="receipt-task-controls"><label>영수증 보기<select aria-label="영수증 보기 필터" value={receiptFilter} onChange={(event) => setReceiptFilter(event.target.value as typeof receiptFilter)}><option value="all">전체</option><option value="unlinked">미연결</option><option value="date">날짜 확인 필요</option></select></label><button type="button" disabled={Boolean(adding) || !listed.some((item) => !payments.some((payment) => payment.id === item.linkedEntryId))} onClick={() => { const pending = listed.filter((item) => !payments.some((payment) => payment.id === item.linkedEntryId)); const next = pending[(pending.findIndex((item) => item.id === focusedReceipt) + 1) % pending.length]; if (next) { setReceiptFilter('unlinked'); setFocusedReceipt(next.id); requestAnimationFrame(() => document.getElementById(`evidence-${next.id}`)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })); } }}>다음 미연결 영수증</button></div>}<div className="evidence-list">{visible.map((item) => { const index = listed.findIndex((record) => record.id === item.id);
       const isLinked = payments.some((payment) => payment.id === item.linkedEntryId);
       const receiptDate = name === 'receipt' && isValidReceiptDate(item.receiptDate) ? item.receiptDate : undefined;
       const sameDayPayments = receiptDate ? payments.filter((payment) => paymentDateInKorea(payment) === receiptDate && !reportEvidence.some((evidence) => evidence.section === 'receipt' && evidence.id !== item.id && evidence.linkedEntryId === payment.id)) : [];
@@ -319,5 +316,5 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     })}</div></section>;
   };
   const improvement = compareBenchmarks(benchmarks.legacy, benchmarks.current);
-  return <><section className="evidence-export">{adding && <p role="status">{addingSection === 'receipt' ? '파일 추가 · 날짜 확인 중' : addingSection === 'statement' ? '파일 추가 · 표 확인 중' : '파일 추가 중'} {adding.current} / {adding.total}장</p>}{missingFiles.length > 0 && <section className="evidence-missing" role="alert"><strong>원본 파일 {missingFiles.length}개를 찾지 못했습니다</strong><p>원본을 다시 추가해야 전체 제출 PDF를 생성할 수 있습니다. 아래에서 같은 파일을 선택하거나 첨부를 삭제해 주세요.</p>{missingFiles.map((record) => <div key={record.id}><span>{record.stored.fileName}</span><label className="file-picker">원본 다시 추가<input type="file" aria-label={`${record.stored.fileName} 원본 다시 추가`} disabled={Boolean(adding) || exporting} accept={record.stored.mimeType === 'application/pdf' ? '.pdf,application/pdf' : 'image/jpeg,image/png,image/webp'} onChange={(event) => { void reattachOriginal(record, event.target.files?.[0]); event.currentTarget.value = ''; }} /></label><button type="button" disabled={Boolean(adding) || exporting} onClick={() => onReportEvidenceChange((current) => current.filter((item) => item.id !== record.id))}>누락 첨부 삭제</button></div>)}</section>}{reportEvidence.length > 0 && <button type="button" className="evidence-reset" disabled={exporting || Boolean(adding)} onClick={removeAll}>보고서 초기화</button>}<p>지원금 사용 요약을 첫 장에 만들고, 이후 입출금내역·거래증빙·세부 항목별 영수증 순서로 정리합니다. 연결한 영수증은 세부 항목별로, 연결하지 않은 영수증은 별도로 모아 정리합니다.</p>{items.length > 0 && <section className="evidence-summary"><strong>제출 전 요약</strong><span>첨부 {items.length}개 · 원본 {Math.ceil(totalBytes / 1024 / 1024 * 10) / 10}MB</span><small>첫 장 요약 + 원본 {pages}장 · 소요 시간은 {expected}</small><small>컬러를 유지하며 5MB 이하로 최적화합니다.</small></section>}{section('statement', '은행 또는 카드사에서 받은 입출금·이용내역 파일을 먼저 넣어 주세요.')}{section('transactionProof', '주거비·교통비 결제를 보완할 계좌이체 확인서 등 자료가 있다면 해당 결제에 연결하세요.')}{section('receipt', '영수증에서 읽은 결제 날짜를 확인한 뒤, 같은 날짜의 결제를 한 번 눌러 연결하세요. OCR은 연결을 자동 확정하지 않습니다.')}{progress && <section className="evidence-progress" role="status"><strong>{progress.stage}</strong><span>{progress.current} / {progress.total}장 처리 완료 · {percent}%</span><i aria-hidden="true"><b style={{ width: `${percent}%` }} /></i><small>{progress.measuring ? '측정 횟수와 영수증 처리 장수는 별개입니다.' : expected}</small><button type="button" onClick={() => { cancelled.current = true; }}>생성 취소</button></section>}{message && <p className="evidence-message">{message}</p>}{resultPreviewUrl && <section className="evidence-result-preview"><strong>생성 결과</strong><button className="sheet-action" type="button" onClick={() => void openLatestSavedFile(resultPreviewUrl, 'application/pdf').catch(() => setMessage('PDF를 열지 못했습니다. Downloads/신청해 계산기에서 직접 열어 주세요.'))}>미리보기</button><small>기기에 설치된 PDF 앱에서 파일을 엽니다.</small></section>}{import.meta.env.MODE === 'internal' && <section className="evidence-benchmark"><strong>압축·알고리즘 검증 (내부 테스트)</strong><p>같은 영수증으로 과거 고화질 방식은 1회, 현재 단계형 방식은 3회 측정해 중앙값을 기록합니다.</p><button className="sheet-action" disabled={exporting || Boolean(adding) || loadingFiles || missingFiles.length > 0 || !items.length} onClick={() => void exportPdf(true)}>{exporting ? 'PDF 생성 중…' : '압축 품질 비교 생성'}</button><button className="sheet-action secondary-action" disabled={exporting || Boolean(adding)} onClick={() => void runBenchmark('legacy')}>과거 방식 시간 측정</button><button className="sheet-action secondary-action" disabled={exporting || Boolean(adding)} onClick={() => void runBenchmark('current')}>현재 방식 시간 측정</button>{(['legacy', 'current'] as const).map((kind) => benchmarks[kind] && <small key={kind}>{benchmarks[kind].label}: {benchmarks[kind].imageCount}장 · {(benchmarks[kind].elapsedMs / 1000).toFixed(2)}초 중앙값 · {Math.round(benchmarks[kind].outputBytes / 1024)}KB · {benchmarks[kind].sampleCount}회 측정</small>)}{improvement !== null && <p>{improvement} 처리 시간과 용량을 함께 비교해 주세요.</p>}</section>}<div className="evidence-export__actions"><button className="sheet-action" disabled={exporting || Boolean(adding) || loadingFiles || missingFiles.length > 0 || !items.length} onClick={() => void exportPdf()}>{exporting ? 'PDF 생성 중…' : 'PDF 생성'}</button></div></section>{guideOpen && <SpotlightGuide title="사용보고서 작성 도움말" steps={PDF_GUIDE_STEPS} onClose={() => setGuideOpen(false)} />}{previewReceipt?.url && <div className="receipt-preview-backdrop" role="dialog" aria-modal="true" aria-label="영수증 크게 보기" onClick={() => setPreviewReceipt(null)}><section className="receipt-preview" onClick={(event) => event.stopPropagation()}><button type="button" aria-label="영수증 미리보기 닫기" onClick={() => setPreviewReceipt(null)}>×</button><img src={previewReceipt.url} alt={`${previewReceipt.file.name} 크게 보기`} /><small>{previewReceipt.file.name}</small></section></div>}</>;
+  return <><section className="evidence-export">{adding && <p role="status">{addingSection === 'receipt' ? '파일 추가 · 날짜 확인 중' : addingSection === 'statement' ? '파일 추가 · 표 확인 중' : '파일 추가 중'} {adding.current} / {adding.total}장</p>}{missingFiles.length > 0 && <p className="evidence-message" role="alert">{UNREADABLE_MESSAGE(missingFiles.length)}</p>}{reportEvidence.length > 0 && <button type="button" className="evidence-reset" disabled={exporting || Boolean(adding)} onClick={removeAll}>보고서 초기화</button>}<p>지원금 사용 요약을 첫 장에 만들고, 이후 입출금내역·거래증빙·세부 항목별 영수증 순서로 정리합니다. 연결한 영수증은 세부 항목별로, 연결하지 않은 영수증은 별도로 모아 정리합니다.</p>{items.length > 0 && <section className="evidence-summary"><strong>제출 전 요약</strong><span>첨부 {items.length}개 · 원본 {Math.ceil(totalBytes / 1024 / 1024 * 10) / 10}MB</span><small>첫 장 요약 + 원본 {pages}장 · 소요 시간은 {expected}</small><small>컬러를 유지하며 5MB 이하로 최적화합니다.</small></section>}{section('statement', '은행 또는 카드사에서 받은 입출금·이용내역 파일을 먼저 넣어 주세요.')}{section('transactionProof', '주거비·교통비 결제를 보완할 계좌이체 확인서 등 자료가 있다면 해당 결제에 연결하세요.')}{section('receipt', '영수증에서 읽은 결제 날짜를 확인한 뒤, 같은 날짜의 결제를 한 번 눌러 연결하세요. OCR은 연결을 자동 확정하지 않습니다.')}{progress && <section className="evidence-progress" role="status"><strong>{progress.stage}</strong><span>{progress.current} / {progress.total}장 처리 완료 · {percent}%</span><i aria-hidden="true"><b style={{ width: `${percent}%` }} /></i><small>{progress.measuring ? '측정 횟수와 영수증 처리 장수는 별개입니다.' : expected}</small><button type="button" onClick={() => { cancelled.current = true; }}>생성 취소</button></section>}{message && <p className="evidence-message">{message}</p>}{resultPreviewUrl && <section className="evidence-result-preview"><strong>생성 결과</strong><button className="sheet-action" type="button" onClick={() => void openLatestSavedFile(resultPreviewUrl, 'application/pdf').catch(() => setMessage('PDF를 열지 못했습니다. Downloads/신청해 계산기에서 직접 열어 주세요.'))}>미리보기</button><small>기기에 설치된 PDF 앱에서 파일을 엽니다.</small></section>}{import.meta.env.MODE === 'internal' && <section className="evidence-benchmark"><strong>압축·알고리즘 검증 (내부 테스트)</strong><p>같은 영수증으로 과거 고화질 방식은 1회, 현재 단계형 방식은 3회 측정해 중앙값을 기록합니다.</p><button className="sheet-action" disabled={exporting || Boolean(adding) || loadingFiles || missingFiles.length > 0 || !items.length} onClick={() => void exportPdf(true)}>{exporting ? 'PDF 생성 중…' : '압축 품질 비교 생성'}</button><button className="sheet-action secondary-action" disabled={exporting || Boolean(adding)} onClick={() => void runBenchmark('legacy')}>과거 방식 시간 측정</button><button className="sheet-action secondary-action" disabled={exporting || Boolean(adding)} onClick={() => void runBenchmark('current')}>현재 방식 시간 측정</button>{(['legacy', 'current'] as const).map((kind) => benchmarks[kind] && <small key={kind}>{benchmarks[kind].label}: {benchmarks[kind].imageCount}장 · {(benchmarks[kind].elapsedMs / 1000).toFixed(2)}초 중앙값 · {Math.round(benchmarks[kind].outputBytes / 1024)}KB · {benchmarks[kind].sampleCount}회 측정</small>)}{improvement !== null && <p>{improvement} 처리 시간과 용량을 함께 비교해 주세요.</p>}</section>}<div className="evidence-export__actions"><button className="sheet-action" disabled={exporting || Boolean(adding) || loadingFiles || missingFiles.length > 0 || !items.length} onClick={() => void exportPdf()}>{exporting ? 'PDF 생성 중…' : 'PDF 생성'}</button></div></section>{guideOpen && <SpotlightGuide title="사용보고서 작성 도움말" steps={PDF_GUIDE_STEPS} onClose={() => setGuideOpen(false)} />}{previewReceipt?.url && <div className="receipt-preview-backdrop" role="dialog" aria-modal="true" aria-label="영수증 크게 보기" onClick={() => setPreviewReceipt(null)}><section className="receipt-preview" onClick={(event) => event.stopPropagation()}><button type="button" aria-label="영수증 미리보기 닫기" onClick={() => setPreviewReceipt(null)}>×</button><img src={previewReceipt.url} alt={`${previewReceipt.file.name} 크게 보기`} /><small>{previewReceipt.file.name}</small></section></div>}</>;
 }
