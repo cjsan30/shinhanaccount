@@ -58,7 +58,7 @@ function useScreenWakeLock(active: boolean) {
 
 const UNREADABLE_MESSAGE = (count: number) => `첨부 ${count}개를 읽지 못했습니다. 사용보고서를 닫았다가 다시 열어 주세요.`;
 
-export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period }: { helpRequest?: number; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
+export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEvidenceChange, summary, entries, periodKey, period, onNotify }: { helpRequest?: number; onNotify?: (message: string) => void; reportEvidence: ReportEvidenceRecord[]; onReportEvidenceChange: Dispatch<SetStateAction<ReportEvidenceRecord[]>>; summary: ReportSummary; entries: LedgerEntry[]; periodKey: string; period?: PolicyPeriod }) {
   useEffect(() => { if (helpRequest > 0) setGuideOpen(true); }, [helpRequest]);
   const [adding, setAdding] = useState<{ current: number; total: number } | null>(null);
   const [addingSection, setAddingSection] = useState<ReportEvidenceSection>('receipt');
@@ -226,7 +226,9 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     onReportEvidenceChange([]);
     void Promise.all(stored.map((file) => removeStoredEvidence(file).catch(() => undefined)));
     setLostLinks([]);
-    setMessage('사용보고서를 초기화했습니다.');
+    // The reset button sits at the top, so confirm with a short toast instead of a note above [PDF 생성].
+    setMessage(null);
+    onNotify?.('사용보고서를 초기화했습니다.');
   };
   const exportPdf = async (qualityComparison = false) => {
     if (addingRef.current || loadingFiles || missingFiles.length) { setMessage(missingFiles.length ? UNREADABLE_MESSAGE(missingFiles.length) : '파일을 처리하는 중입니다. 잠시 뒤 다시 시도해 주세요.'); return; }
