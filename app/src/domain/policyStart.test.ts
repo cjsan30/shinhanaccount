@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isDateInPolicyPeriod } from './budget';
+import { DEFAULT_POLICY_PERIOD, isDateInPolicyPeriod } from './budget';
+import { isInPeriodScope, selectClassifiedInPeriod } from './periodSelectors';
 import type { Ledger, LedgerEntry } from './ledger';
 import { excludePaymentsBeforeDeposit, getDepositDateChoices, getPaymentsOnDate, getReinclusionCandidates, hasCountedPayments, includeBeforeDepositPayment, resolveDepositStart, restoreBeforeDeposit } from './policyStart';
 
@@ -110,6 +111,10 @@ describe('payments before the deposit', () => {
     expect(included.entries.map((item) => [item.id, item.status, item.category, item.includedBeforeDeposit])).toEqual([['gap', 'classified', 'food', true], ['other', 'excluded', undefined, undefined]]);
     expect(excludePaymentsBeforeDeposit(included, '2026-12', funding)).toBe(included);
     expect(includeBeforeDepositPayment(included, 'missing')).toBe(included);
+    // It counts in this period although it is before the deposit start; the other one still does not.
+    const scope = { periodKey: '2026-12', period: { ...DEFAULT_POLICY_PERIOD, start: { periodKey: '2026-12', at: funding.startAt } } };
+    expect(selectClassifiedInPeriod(included, scope).map((item) => item.id)).toEqual(['gap']);
+    expect(isInPeriodScope(included.entries[1], scope)).toBe(false);
   });
 
   it('tells whether any payment already counts', () => {

@@ -11,7 +11,7 @@ export type PeriodScope = { periodKey: string; period?: PolicyPeriod };
 
 export type ItemUsage = { item: AnyPolicyItemDefinition; spent: number; count: number };
 
-export function isInPeriodScope(value: { occurredAt: string }, scope: PeriodScope) {
+export function isInPeriodScope(value: { occurredAt: string; includedBeforeDeposit?: boolean }, scope: PeriodScope) {
   return isEntryInPolicyPeriod(value, scope.periodKey, scope.period);
 }
 

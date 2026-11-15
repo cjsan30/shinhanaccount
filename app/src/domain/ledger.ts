@@ -26,7 +26,8 @@ export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, period?: PolicyPeriod) { return getPolicyPeriodKey(new Date(entry.occurredAt), period); }
-export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, period); }
+/** A payment the user counted although it came before the deposit belongs to the period by its date alone. */
+export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey' | 'includedBeforeDeposit'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, entry.includedBeforeDeposit ? undefined : period); }
 export function getRemainingPaymentAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount'>) { return Math.max(0, entry.amount - (entry.cancelledAmount ?? 0)); }
 export function getSupportAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount' | 'supportAmount' | 'status'>) {
   if (entry.status === 'cancelled') return 0;
