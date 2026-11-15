@@ -20,6 +20,8 @@ type Props = {
   onOpenUndecided: () => void;
   onOpenRecent: () => void;
   onOpenEvidence: () => void;
+  /** Verification build only. */
+  onOpenVerifyTools?: () => void;
   onImportTransactions?: () => void;
   /** "이번 기간 ○ ~ ○ · 계획 보기": opens the plan of the period. */
   period?: { label: string; onOpen: () => void };
@@ -109,6 +111,6 @@ export function DashboardScreen(props: Props) {
     {props.status ? <StatusCard status={props.status} onNewPayment={props.onNewPayment} /> : <><section className="summary"><div className="summary-heading"><p>총 잔액</p><button className="new-payment" aria-label="새 지출 직접 등록" onClick={props.onNewPayment}><Plus size={16} weight="bold" />새 지출</button></div><strong ref={total}>{won(props.totalLimit - props.totalSpent)}</strong><span>{won(props.totalLimit)} 중 {won(props.totalSpent)} 사용 · {props.totalUsage.toFixed(1)}%</span><i><b style={{ width: `${Math.min(100, props.totalUsage)}%` }} /></i></section>
     {props.period && <button type="button" className="period-line" onClick={props.period.onOpen}><span>이번 기간 {props.period.label}</span><b>계획 보기</b><CaretRight size={18} /></button>}
     <section className="budgets"><Budget name="정주비" value={props.resident} open={props.onOpenResident} /><Budget name="학습공간비" value={props.study} open={props.onOpenStudy} /></section></>}
-    <section className="quick"><h2>바로가기</h2>{props.onImportTransactions && <button onClick={props.onImportTransactions}><i><ListBullets size={29} /></i>거래내역 가져오기<CaretRight size={25} /></button>}<button data-guide="undecided" aria-label={`분류 필요 ${props.undecidedCount}건`} onClick={props.onOpenUndecided}><i><ChatCircleDots size={29} /></i><span>분류 필요</span>{props.undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{props.undecidedCount > 9 ? '9+' : props.undecidedCount}</b>}<CaretRight size={25} /></button><button data-guide="history" onClick={props.onOpenRecent}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button data-guide="export" onClick={props.onOpenEvidence}><i><ListBullets size={29} /></i>사용보고서 작성<CaretRight size={25} /></button></section>
+    <section className="quick"><h2>바로가기</h2>{props.onImportTransactions && <button onClick={props.onImportTransactions}><i><ListBullets size={29} /></i>거래내역 가져오기<CaretRight size={25} /></button>}<button data-guide="undecided" aria-label={`분류 필요 ${props.undecidedCount}건`} onClick={props.onOpenUndecided}><i><ChatCircleDots size={29} /></i><span>분류 필요</span>{props.undecidedCount > 0 && <b className="undecided-badge" aria-hidden="true">{props.undecidedCount > 9 ? '9+' : props.undecidedCount}</b>}<CaretRight size={25} /></button><button data-guide="history" onClick={props.onOpenRecent}><i><ListBullets size={29} /></i>결제 내역 확인<CaretRight size={25} /></button><button data-guide="export" onClick={props.onOpenEvidence}><i><ListBullets size={29} /></i>사용보고서 작성<CaretRight size={25} /></button>{props.onOpenVerifyTools && <button onClick={props.onOpenVerifyTools}><i><ListBullets size={29} /></i>검증 도구<CaretRight size={25} /></button>}</section>
   </>;
 }
