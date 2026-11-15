@@ -415,7 +415,7 @@ function App() {
         await acknowledgeApprovals(payload.pendingApprovals);
         show(payload.historyAction === 'keep-undecided' && payload.pendingApprovals.length ? `${payload.pendingApprovals.length}건을 분류 필요 목록으로 불러왔습니다.` : '정책을 확정했습니다.');
       } else {
-        show('초기 설정을 건너뛰었습니다. 계획표는 설정에서 나중에 등록할 수 있어요.');
+        show('초기 설정을 건너뛰었습니다. 계획표는 대시보드에서 나중에 등록할 수 있어요.');
       }
     } catch { setStorageError('정책을 암호화 저장소에 저장하지 못했습니다. 다시 실행해 주세요.'); }
   };
@@ -568,8 +568,10 @@ function App() {
     setPolicyBook(nextBook);
     return true;
   };
-  // An existing user whose new period opened (from the 11th) without a plan yet.
-  const planMissing = !activePolicy.confirmed && policyBook.versions.length > 0 && policyBook.mode !== 'not-applicant';
+  // An existing user whose new period opened (from the 11th) without a plan yet, or one who
+  // skipped the plan in onboarding: both register it from the dashboard.
+  const notApplicant = policyBook.mode === 'not-applicant';
+  const planMissing = notApplicant || (!activePolicy.confirmed && policyBook.versions.length > 0);
   const [planToRegister, setPlanToRegister] = useState<SupportPolicy | null>(null);
   const [depositMode, setDepositMode] = useState<'register' | 'deposited' | 'change'>('register');
   const [reincludeEntries, setReincludeEntries] = useState<LedgerEntry[]>([]);
@@ -744,9 +746,9 @@ function App() {
   else if (panel === 'operations') content = <OperationsSettings card={card} showCard={showCard} onToggleShowCard={() => setShowCard((current) => !current)} onCardChange={changeCard} paymentAlertsEnabled={paymentAlertsEnabled} budgetAlertsEnabled={budgetAlertsEnabled} onTogglePaymentAlerts={() => void togglePaymentNotifications()} onToggleBudgetAlerts={() => void toggleBudgetNotifications()} thresholds={[first, second]} onThresholdChange={updateAlertThreshold} notify={show} />;
   else if (panel === 'verification' && VerificationPanel) content = <VerificationPanel storageReady={storageReady} storageError={Boolean(storageError)} policyBook={policyBook} ledger={ledger} evidence={reportEvidence} value={verification} onChange={setVerification} notify={show} />;
   else if (panel === 'plan') content = planEditing
-    ? <PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="계획 저장" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onSubmit={() => { void savePlanEdit(); }} />
+    ? <PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="계획 저장" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onAddCustomItem={policyDraft.addCustomItem} onRemoveCustomItem={policyDraft.removeCustomItem} onSubmit={() => { void savePlanEdit(); }} />
     : <PlanView policy={policy} funding={activePolicy.funding} range={periodRange} onEditPlan={() => { policyDraft.editSaved(); setPlanEditing(true); }} onEditStart={() => openDeposit('change')} onDeposited={() => openDeposit('deposited')} />;
-  else if (panel === 'plan-new') content = <NewPlan canReuse={validatePolicyAgainstProfile(activePolicy.policy).length === 0} onReuse={() => beginRegistration(structuredClone(activePolicy.policy))} editor={<PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="다음" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onSubmit={() => beginRegistration(policyDraft.draft)} />} />;
+  else if (panel === 'plan-new') content = <NewPlan canReuse={validatePolicyAgainstProfile(activePolicy.policy).length === 0} onReuse={() => beginRegistration(structuredClone(activePolicy.policy))} editor={<PlanEditor text={policyDraft.text} draft={policyDraft.draft} focusToken={policyDraft.focusToken} submitLabel="다음" onTextChange={policyDraft.setText} onReviewText={policyDraft.reviewText} onReadScreenshot={() => void policyDraft.readScreenshot()} onUpdateAmount={policyDraft.updateAmount} onUpdateProfile={policyDraft.updateProfile} onToggleAlertTarget={policyDraft.toggleAlertTarget} onAddCustomItem={policyDraft.addCustomItem} onRemoveCustomItem={policyDraft.removeCustomItem} onSubmit={() => beginRegistration(policyDraft.draft)} />} />;
   else if (panel === 'deposit') content = <DepositStart periodKey={activePolicy.periodKey} now={now} ledger={ledger} askDeposited={depositMode === 'register'} onConfirm={(funding) => { void applyFunding(funding); }} />;
   else if (panel === 'reinclude') content = <ReincludePayments entries={reincludeEntries} onConfirm={(ids) => { void confirmReinclusion(ids); }} />;
   else if (panel === 'data') content = <DataManagementPanel importFile={importFile} importTransactions={importTransactions} importResult={importResult} importReading={importReading} importMessage={importMessage} hasMaskedCardWarning={Boolean(importSafety?.hasMaskedCardWarning)} merchantRules={merchantRules} ledger={ledger} policyBook={policyBook} periodKey={activePolicy.periodKey} period={policy.period} canUndoImport={Boolean(undoImportLedger)} onUndoImport={undoLatestImport} onResetData={resetSelectedData} onFileSelected={(file) => { setImportFile(file); setImportTransactions(null); setImportResult(null); setImportSafety(null); setImportMessage(file ? '파일을 선택했습니다. 파일 읽기를 눌러 확인하세요.' : null); }} onPreviewImport={() => void previewImportFile()} onApplyImport={applyCardExport} onOpenImportGuide={() => setPanel('import')} onOpenRules={() => setPanel('rules')} onRestore={restoreBackup} notify={show} />;

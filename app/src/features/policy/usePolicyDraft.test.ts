@@ -38,15 +38,31 @@ describe('usePolicyDraft', () => {
     expect(notify).toHaveBeenCalledWith('스크린샷의 텍스트를 읽었습니다. 검토 후 확정해 주세요.');
   });
 
-  it('explains an unreadable or cancelled screenshot without creating a draft', async () => {
+  it('opens blank amounts for an unreadable screenshot and leaves a cancelled one alone', async () => {
     const { notify, view } = setup();
-    policyOcr.pickAndRecognize.mockResolvedValueOnce({ text: '  ' });
-    await act(async () => { await view.result.current.readScreenshot(); });
-    expect(notify).toHaveBeenLastCalledWith('사진에서 읽을 수 있는 텍스트가 없습니다.');
     policyOcr.pickAndRecognize.mockRejectedValueOnce(new Error('cancelled'));
     await act(async () => { await view.result.current.readScreenshot(); });
     expect(notify).toHaveBeenLastCalledWith('사진 선택 또는 텍스트 인식을 취소했습니다.');
     expect(view.result.current.draft).toBeNull();
+    policyOcr.pickAndRecognize.mockResolvedValueOnce({ text: '  ' });
+    await act(async () => { await view.result.current.readScreenshot(); });
+    expect(notify).toHaveBeenLastCalledWith('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.');
+    expect(view.result.current.draft).toMatchObject({ profileId: 'shinhanhae-40', plans: { food: 0, cafe: 0 } });
+  });
+
+  it('adds and removes a user item and rejects an incomplete one', () => {
+    const { notify, view } = setup();
+    act(() => view.result.current.editSaved());
+    let added = true;
+    act(() => { added = view.result.current.addCustomItem(' ', 'resident', '1000'); });
+    expect(added).toBe(false);
+    expect(notify).toHaveBeenLastCalledWith('사용자 항목 이름과 금액을 확인해 주세요.');
+    act(() => { added = view.result.current.addCustomItem('장비 대여', 'studySpace', '10,000'); });
+    expect(added).toBe(true);
+    const item = view.result.current.draft?.customItems?.[0];
+    expect(item).toMatchObject({ label: '장비 대여', bucket: 'studySpace', amount: 10000 });
+    act(() => view.result.current.removeCustomItem(item!.id));
+    expect(view.result.current.draft?.customItems).toEqual([]);
   });
 
   it('edits a copy of the saved plan without changing the saved one', () => {

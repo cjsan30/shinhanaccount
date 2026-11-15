@@ -4,7 +4,7 @@ import { emptyPolicy } from '../../domain/policy';
 import { PlanEditor } from './PlanEditor';
 
 const draft = { ...emptyPolicy, plans: { ...emptyPolicy.plans, housing: 300000, food: 200000, cafe: 200000 } };
-const props = () => ({ text: '', draft, focusToken: 1, submitLabel: '계획 저장', onTextChange: vi.fn(), onReviewText: vi.fn(), onReadScreenshot: vi.fn(), onUpdateAmount: vi.fn(), onUpdateProfile: vi.fn(), onToggleAlertTarget: vi.fn(), onSubmit: vi.fn() });
+const props = () => ({ text: '', draft, focusToken: 1, submitLabel: '계획 저장', onTextChange: vi.fn(), onReviewText: vi.fn(), onReadScreenshot: vi.fn(), onUpdateAmount: vi.fn(), onUpdateProfile: vi.fn(), onToggleAlertTarget: vi.fn(), onAddCustomItem: vi.fn(() => true), onRemoveCustomItem: vi.fn(), onSubmit: vi.fn() });
 
 describe('plan editor', () => {
   it('reads, edits and submits the reviewed plan', () => {

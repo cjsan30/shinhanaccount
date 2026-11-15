@@ -79,7 +79,7 @@ describe('app entry flows', () => {
   it.each(['dashboard', 'import'])('defers the notice until the actual dashboard after normal onboarding: %s', async (route) => {
     localStorage.setItem('shinhanhae-onboarding-progress-v1', JSON.stringify({ step: 'policy', policy: { plans: { housing: 300000, food: 200000, education: 0, transport: 0, studyCafe: 0, cafe: 200000, readingRoom: 0 }, sourceText: 'saved plan', profileId: 'shinhanhae-70', alertTargets: [] } }));
     await renderApp(false);
-    fireEvent.click(await screen.findByRole('button', { name: '정책 확정' }));
+    fireEvent.click(await screen.findByRole('button', { name: '다음' }));
     fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
     fireEvent.click(await screen.findByRole('button', { name: route === 'import' ? /결제한 적이 있어요/ : /아직 사용 전이에요/ }));
     if (route === 'import') {
@@ -88,6 +88,22 @@ describe('app entry flows', () => {
       fireEvent.click(screen.getByRole('button', { name: '나중에 등록하기' }));
     }
     expect(await screen.findByRole('dialog', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
+  });
+  it('lets a user who skipped the plan register it later from the dashboard', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T12:00:00+09:00'));
+    localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [], mode: 'not-applicant' }));
+    await renderApp();
+    expect(await screen.findByText('새 기간 계획을 등록해 주세요')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '새 계획 등록' }));
+    expect(screen.queryByRole('button', { name: '지난 계획 그대로 쓰기' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('계획표 내용'), { target: { value: '식비 200,000원 교육비 200,000원 교통비 100,000원 카페 200,000원' } });
+    fireEvent.click(screen.getByRole('button', { name: '계획표 읽기' }));
+    fireEvent.click(await screen.findByRole('button', { name: '다음' }));
+    fireEvent.click(await screen.findByRole('button', { name: '아직이에요' }));
+    expect(await screen.findByText('지원금 입금 대기')).toBeInTheDocument();
+    const book = JSON.parse(localStorage.getItem('shinhanhae-policy-book-v1')!);
+    expect(book.mode).toBeUndefined();
+    expect(book.versions[0]).toMatchObject({ periodKey: '2026-10', funding: { status: 'pending' } });
   });
   it('shows the notice to existing users until explicitly confirmed, without replacing their plan', async () => {
     const book = { versions: [], mode: 'not-applicant' };
