@@ -63,13 +63,16 @@ describe('EvidenceExport', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     render(<StatefulEvidenceExport initialEvidence={evidence} />);
     const clear = screen.getByRole('button', { name: '첨부파일 모두 지우기' });
+    expect(screen.getByText('지금 첨부 3개')).toBeInTheDocument();
+    expect(clear.closest('.evidence-clear-bar')?.nextElementSibling?.textContent).toMatch(/^지원금 사용 요약/);
     fireEvent.click(clear);
     expect(confirm).toHaveBeenLastCalledWith('입출금내역·거래증빙·영수증 첨부파일 3개를 모두 지웁니다. 되돌릴 수 없습니다. 계속할까요?');
     expect(removeStoredEvidence).not.toHaveBeenCalled();
     fireEvent.click(clear);
     expect(await screen.findByText('첨부파일을 모두 지웠습니다.')).toBeInTheDocument();
     expect(vi.mocked(removeStoredEvidence).mock.calls.map(([file]) => file.id)).toEqual(['statement', 'proof', 'receipt']);
-    expect(screen.getByRole('button', { name: '첨부파일 모두 지우기' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '첨부파일 모두 지우기' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/지금 첨부/)).not.toBeInTheDocument();
   });
 
   it('shows stored receipts before batch OCR completes and only fills dates without auto-linking', async () => {
