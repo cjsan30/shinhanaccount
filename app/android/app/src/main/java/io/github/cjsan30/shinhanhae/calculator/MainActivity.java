@@ -37,8 +37,19 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AppHealthPlugin.class);
         registerPlugin(ExternalAppPlugin.class);
         registerPlugin(AppInformationPlugin.class);
+        registerVerifyToolsIfPresent();
         super.onCreate(savedInstanceState);
         initializeInAppUpdates();
+    }
+
+    /** The verification tools plugin exists only in the debug source set, never in the Play build. */
+    @SuppressWarnings("unchecked")
+    private void registerVerifyToolsIfPresent() {
+        try {
+            registerPlugin((Class<? extends com.getcapacitor.Plugin>) Class.forName("io.github.cjsan30.shinhanhae.calculator.VerifyToolsPlugin"));
+        } catch (ClassNotFoundException ignored) {
+            // Release build: no verification tools.
+        }
     }
 
     @Override

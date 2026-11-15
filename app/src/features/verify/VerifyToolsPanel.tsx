@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { VERIFY_DATE_OFFSET_KEY, getDateOffset } from '../../domain/verifyTools';
+import { VerifyTools } from '../../native/verifyTools';
 
 type Props = {
   testPaymentCount: number;
@@ -24,6 +25,12 @@ export function VerifyToolsPanel(props: Props) {
     } catch { return; }
     window.location.reload();
   };
+  const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
+  const scheduleNotice = () => {
+    VerifyTools.scheduleTestApproval({ delaySeconds: 15, amount: 5000 })
+      .then(() => setNoticeStatus('예약했습니다. 지금 앱을 닫아 주세요.'))
+      .catch((error: unknown) => setNoticeStatus(error instanceof Error ? error.message : '알림을 예약하지 못했습니다.'));
+  };
   return <section className="verify-tools">
     <p>검증 앱에서만 보이는 도구입니다. Play 배포본에는 없습니다.</p>
     <h3>오늘 날짜 바꾸기</h3>
@@ -40,5 +47,9 @@ export function VerifyToolsPanel(props: Props) {
     <label>결제 날짜<input type="date" aria-label="테스트 결제 날짜" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></label>
     <button className="sheet-action" type="button" disabled={!paymentDate} onClick={() => props.onAddTestPayments(paymentDate)}>테스트 결제 3건 넣기</button>
     <button className="sheet-action secondary-action" type="button" disabled={!props.testPaymentCount} onClick={props.onRemoveTestPayments}>테스트 결제 지우기 ({props.testPaymentCount}건)</button>
+    <h3>가짜 결제 알림</h3>
+    <p>약 15초~1분 뒤 등록한 카드로 5,000원 결제 알림을 보냅니다. 누른 뒤 앱을 닫으면 앱이 닫힌 상태에서 알림과 예산 경고를 확인할 수 있습니다. 실제 결제처럼 기록되니 확인 후 결제 내역에서 지워 주세요.</p>
+    <button className="sheet-action" type="button" onClick={scheduleNotice}>가짜 결제 알림 보내기</button>
+    {noticeStatus && <small role="status">{noticeStatus}</small>}
   </section>;
 }
