@@ -65,9 +65,19 @@ public class FileExportPlugin extends Plugin {
             call.reject("열 파일 정보가 없습니다.");
             return;
         }
+        Uri uri = Uri.parse(uriValue);
+        // A report listed in the app may have been deleted in the file app since it was saved.
+        try (android.os.ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(uri, "r")) {
+            if (descriptor == null) throw new java.io.FileNotFoundException(uriValue);
+        } catch (java.io.FileNotFoundException | SecurityException | IllegalArgumentException missing) {
+            call.reject("저장한 파일을 찾지 못했습니다.", "FILE_NOT_FOUND");
+            return;
+        } catch (java.io.IOException ignored) {
+            // Closing failed after the file opened, so it exists.
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW)
-                .setDataAndType(Uri.parse(uriValue), mimeType)
+                .setDataAndType(uri, mimeType)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(Intent.createChooser(intent, "파일 미리보기"));

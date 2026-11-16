@@ -6,7 +6,6 @@ type FileExportPlugin = {
 };
 
 const FileExport = registerPlugin<FileExportPlugin>('FileExport');
-let latestNativeUri: string | null = null;
 
 export function bytesToBase64(bytes: Uint8Array) {
   let value = '';
@@ -34,8 +33,13 @@ export async function saveFile(fileName: string, bytes: Uint8Array, mimeType: st
     return { location: 'download' as const, fileName: uniqueName, relativePath: 'Downloads' };
   }
   const result = await FileExport.save({ fileName: uniqueName, base64Data: bytesToBase64(bytes), mimeType });
-  latestNativeUri = result.uri;
   return { location: 'downloads' as const, ...result };
+}
+
+/** The native side rejects with this code when the saved file was deleted from Downloads. */
+export const SAVED_FILE_NOT_FOUND = 'FILE_NOT_FOUND';
+export function isSavedFileNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === SAVED_FILE_NOT_FOUND;
 }
 
 export async function openSavedFile(uri: string, mimeType: string) {
@@ -44,9 +48,4 @@ export async function openSavedFile(uri: string, mimeType: string) {
     return;
   }
   await FileExport.open({ uri, mimeType });
-}
-
-/** Opens the last file saved during this app session; browser builds use its Blob URL fallback. */
-export function openLatestSavedFile(browserFallbackUrl: string, mimeType: string) {
-  return openSavedFile(Capacitor.isNativePlatform() && latestNativeUri ? latestNativeUri : browserFallbackUrl, mimeType);
 }
