@@ -1,1 +1,5 @@
 :root{background:#10151b}body{margin:0}
+/* Korean text wraps between words, never inside one; a word longer than the line (file names) may still break. */
+body{word-break:keep-all;overflow-wrap:break-word}
+/* Avoid a lone word on the last line of short texts. */
+:where(p,small,li,label,figcaption,h1,h2,h3,strong,span){text-wrap:pretty}

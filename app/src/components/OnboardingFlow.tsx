@@ -7,6 +7,7 @@ import { getPolicyPeriodKey } from '../domain/budget';
 import { createEmptyLedger, saveAsUndecided } from '../domain/ledger';
 import { DepositStart } from '../features/policy/DepositStart';
 import { SHORT_APP_NOTICE } from '../domain/appInformation';
+import { Sentences } from './Sentences';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
@@ -126,7 +127,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
           }}
           onSkip={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}
         />
-        {message && <p className="onboarding-error" role="alert">{message}</p>}
+        {message && <p className="onboarding-error" role="alert"><Sentences text={message} /></p>}
       </>
     );
   }
@@ -138,7 +139,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
         <button className="guide-toggle" type="button" onClick={() => skipToDashboard('지원자 온보딩을 건너뛰고 대시보드로 이동합니다.')}>
           넘어가기
         </button>
-        {message && <p className="onboarding-error" role="alert">{message}</p>}
+        {message && <p className="onboarding-error" role="alert"><Sentences text={message} /></p>}
       </>
     );
   }
@@ -159,7 +160,7 @@ export function OnboardingFlow({ onComplete }: { onComplete: (payload: CompleteP
     <main className="first-run">
       <div className="first-run__mark">지원금 관리 · 3단계</div>
       <h1>결제 내역이<br />이미 있나요?</h1>
-      <p>정책을 확정했습니다. 신한카드 이용내역을 가져오거나, 바로 지원금 관리를 시작할 수 있습니다.</p>
+      <p>정책을 확정했습니다. <br />신한카드 이용내역을 가져오거나, 바로 지원금 관리를 시작할 수 있습니다.</p>
       {pendingApprovals.length > 0 && (
         <section className="first-run__notice">
           <strong>정책 확정 전 승인 알림 {pendingApprovals.length}건</strong>

@@ -29,7 +29,7 @@ export function PlanEditor(props: Props) {
   const draft = props.draft;
   return <div className="policy-card plan-editor">
     <p>정주비는 식비·교육비·교통비·주거비, 학습공간비는 카페·스터디카페·독서실입니다.</p>
-    <p>모바일 웹에서 계획표를 복사해 붙여넣으세요. 자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
+    <p>모바일 웹에서 계획표를 복사해 붙여넣으세요. <br />자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
     <textarea aria-label="계획표 내용" value={props.text} onChange={(event) => props.onTextChange(event.target.value)} placeholder="예: 식비 200000원 교육비 160000원 교통비 140000원 카페 200000원" />
     <button className="sheet-action" onClick={props.onReviewText}>계획표 읽기</button>
     <button className="sheet-action secondary-action" onClick={props.onReadScreenshot}>스크린샷에서 읽기</button>
