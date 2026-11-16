@@ -49,7 +49,53 @@ public class PolicyOcrPlugin extends Plugin {
         }
     }
 
-    private String toVisualRows(Text result) {
+    /**
+     * Every recognized line with its position on the image. Reading the plan table is done in
+     * TypeScript from these boxes (domain/planOcr.ts), so it can tell the amount column from the
+     * ratio column and the notes below the table.
+     */
+    static com.getcapacitor.JSArray toLineBoxes(Text result) {
+        com.getcapacitor.JSArray lines = new com.getcapacitor.JSArray();
+        for (Text.TextBlock block : result.getTextBlocks()) {
+            for (Text.Line line : block.getLines()) {
+                Rect bounds = line.getBoundingBox();
+                if (bounds == null || line.getText().trim().isEmpty()) continue;
+                JSObject item = new JSObject();
+                item.put("text", line.getText());
+                item.put("left", bounds.left);
+                item.put("top", bounds.top);
+                item.put("right", bounds.right);
+                item.put("bottom", bounds.bottom);
+                lines.put(item);
+            }
+        }
+        return lines;
+    }
+
+    /** Screenshots narrower than this are enlarged before OCR; small plan text is misread otherwise. */
+    static final int MIN_OCR_WIDTH = 1440;
+
+    /**
+     * The image to recognize. Images narrower than [MIN_OCR_WIDTH] are scaled up first: device
+     * runs with the plan screenshot (docs/10, 2026-11-16) read 720 and 1080 px images correctly
+     * only after enlarging. ImageDecoder applies the photo's rotation.
+     */
+    static InputImage preparedImage(android.content.Context context, Uri uri) throws java.io.IOException {
+        android.graphics.Bitmap bitmap = android.graphics.ImageDecoder.decodeBitmap(
+            android.graphics.ImageDecoder.createSource(context.getContentResolver(), uri),
+            (decoder, info, source) -> {
+                decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE);
+                int width = info.getSize().getWidth();
+                if (width > 0 && width < MIN_OCR_WIDTH) {
+                    float scale = (float) MIN_OCR_WIDTH / width;
+                    decoder.setTargetSize(MIN_OCR_WIDTH, Math.round(info.getSize().getHeight() * scale));
+                }
+            });
+        return InputImage.fromBitmap(bitmap, 0);
+    }
+
+    /** Shared with the verification build's batch reader so both read the plan the same way. */
+    static String toVisualRows(Text result) {
         List<OcrLine> lines = new ArrayList<>();
         for (Text.TextBlock block : result.getTextBlocks()) {
             for (Text.Line line : block.getLines()) {
@@ -90,12 +136,13 @@ public class PolicyOcrPlugin extends Plugin {
     }
     private void recognize(PluginCall call, Uri uri) {
         try {
-            InputImage image = InputImage.fromFilePath(getContext(), uri);
+            InputImage image = preparedImage(getContext(), uri);
             TextRecognizer recognizer = TextRecognition.getClient(new KoreanTextRecognizerOptions.Builder().build());
             recognizer.process(image)
                 .addOnSuccessListener(text -> {
                     JSObject output = new JSObject();
                     output.put("text", toVisualRows(text));
+                    output.put("lines", toLineBoxes(text));
                     call.resolve(output);
                     recognizer.close();
                 })
