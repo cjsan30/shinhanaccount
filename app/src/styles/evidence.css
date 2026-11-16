@@ -1046,11 +1046,7 @@ body.high-contrast .pdf-preview .pdf-preview__save {
   color: #000 !important;
 }
 
-/* Under [미리보기]: what that button just produced, then the reports made before. */
-.evidence-saved-notice {
-  margin-top: 12px;
-}
-
+/* Under [미리보기]: the reports made so far, newest first. */
 .evidence-recent-reports {
   margin-top: 18px;
   padding-top: 16px;

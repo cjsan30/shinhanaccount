@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 type FileExportPlugin = {
   save(options: { fileName: string; base64Data: string; mimeType: string }): Promise<{ uri: string; fileName: string; relativePath: string }>;
   open(options: { uri: string; mimeType: string }): Promise<void>;
+  existing(options: { uris: string[] }): Promise<{ uris: string[] }>;
 };
 
 const FileExport = registerPlugin<FileExportPlugin>('FileExport');
@@ -34,6 +35,15 @@ export async function saveFile(fileName: string, bytes: Uint8Array, mimeType: st
   }
   const result = await FileExport.save({ fileName: uniqueName, base64Data: bytesToBase64(bytes), mimeType });
   return { location: 'downloads' as const, ...result };
+}
+
+/**
+ * Of the given saved files, the ones that still exist on the device.
+ * Browser builds keep their own blob: URLs alive, so they are all reported as present.
+ */
+export async function existingSavedFiles(uris: string[]): Promise<string[]> {
+  if (!uris.length || !Capacitor.isNativePlatform()) return uris;
+  return (await FileExport.existing({ uris })).uris;
 }
 
 /** The native side rejects with this code when the saved file was deleted from Downloads. */
