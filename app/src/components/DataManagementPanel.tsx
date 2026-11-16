@@ -20,7 +20,6 @@ type Props = {
   onFileSelected: (file: File | null) => void;
   onPreviewImport: () => void;
   onApplyImport: () => void;
-  onOpenImportGuide: () => void;
   onOpenRules: () => void;
   periodKey: string;
   period?: PolicyPeriod;
@@ -33,14 +32,6 @@ type Props = {
 
 export function DataManagementPanel(props: Props) {
   return <section className="data-sections">
-    <details className="data-section">
-      <summary><strong>거래내역</strong><span>카드 CSV·Excel / 은행 PDF</span></summary>
-      <div className="data-section__body import-card">
-        <p>카드번호 또는 계좌번호 끝 4자리를 입력한 뒤 해당 파일을 가져옵니다. <br />현재 정책 기간 밖의 거래는 저장하지 않습니다.</p>
-        <button className="sheet-action" onClick={props.onOpenImportGuide}>거래내역 가져오기</button>
-      </div>
-    </details>
-
     <details className="data-section">
       <summary><strong>자동 분류 규칙</strong><span>{props.merchantRules.length}/50개 저장됨</span></summary>
       <div className="data-section__body merchant-rule-card"><p>상호명 포함 또는 정확히 일치하는 조건을 관리합니다.</p><button className="sheet-action" onClick={props.onOpenRules}>규칙 관리</button></div>

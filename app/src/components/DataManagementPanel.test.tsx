@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createEmptyLedger } from '../domain/ledger';
 import { DataManagementPanel } from './DataManagementPanel';
@@ -6,7 +6,7 @@ import { DataManagementPanel } from './DataManagementPanel';
 const baseProps = () => ({
   importFile: null, importTransactions: null, importResult: null, importReading: false, importMessage: null, hasMaskedCardWarning: false,
   merchantRules: [], ledger: createEmptyLedger(), policyBook: { versions: [] }, periodKey: '2026-09', canUndoImport: false,
-  onFileSelected: vi.fn(), onPreviewImport: vi.fn(), onApplyImport: vi.fn(), onOpenImportGuide: vi.fn(), onOpenRules: vi.fn(), onUndoImport: vi.fn(), onResetData: vi.fn(), onRestore: vi.fn(), notify: vi.fn(),
+  onFileSelected: vi.fn(), onPreviewImport: vi.fn(), onApplyImport: vi.fn(), onOpenRules: vi.fn(), onUndoImport: vi.fn(), onResetData: vi.fn(), onRestore: vi.fn(), notify: vi.fn(),
 });
 
 describe('data management panel', () => {
@@ -20,9 +20,9 @@ describe('data management panel', () => {
     expect(screen.queryByLabelText('계획표 내용')).not.toBeInTheDocument();
   });
 
-  it('routes users to the unified transaction-import guide', () => {
-    const props = baseProps(); render(<DataManagementPanel {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: '거래내역 가져오기' }));
-    expect(props.onOpenImportGuide).toHaveBeenCalledOnce();
+  it('leaves transaction import to the home screen', () => {
+    render(<DataManagementPanel {...baseProps()} />);
+    expect(screen.queryByRole('button', { name: '거래내역 가져오기' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '규칙 관리' })).toBeInTheDocument();
   });
 });

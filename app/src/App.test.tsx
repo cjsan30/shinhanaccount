@@ -71,8 +71,9 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     expect(screen.queryByText('필요한 설정만 선택해 관리하세요.')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^앱 안내/ }));
-    expect(screen.getByRole('heading', { name: APP_INFORMATION_TITLE })).toBeInTheDocument();
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: '앱 안내 · 개인정보' })).toBeInTheDocument();
+    // The only link is the full privacy policy; no other outside sites.
+    expect(screen.queryAllByRole('link').map((link) => link.textContent)).toEqual(['전체 개인정보처리방침 보기']);
     fireEvent.click(screen.getByRole('button', { name: '이전 화면으로 돌아가기' }));
     expect(screen.getByRole('heading', { name: '설정' })).toBeInTheDocument();
   });
@@ -295,11 +296,12 @@ describe('app entry flows', () => {
 
     const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원|누락 가능성 점검|데이터 초기화)$/);
     // The plan moved to the dashboard ("계획 보기").
-    expect(summaries.map((node) => node.textContent)).toEqual(['거래내역', '자동 분류 규칙', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
+    // 거래내역 가져오기 lives on the home screen only (decision 2026-11-17).
+    expect(summaries.map((node) => node.textContent)).toEqual(['자동 분류 규칙', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
     expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   });
 
-  it('opens the transaction registration guide from data management', async () => {
+  it('keeps transaction import on the home screen, not in data management', async () => {
     window.localStorage.setItem('shinhanhae-ledger-v1', JSON.stringify(createEmptyLedger()));
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
       periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
@@ -308,8 +310,8 @@ describe('app entry flows', () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
-    fireEvent.click(await screen.findByRole('button', { name: '거래내역 가져오기' }));
-    expect(screen.getByRole('heading', { name: /결제내역을\s*등록할까요/ })).toBeInTheDocument();
+    await screen.findByText('자동 분류 규칙');
+    expect(screen.queryByRole('button', { name: '거래내역 가져오기' })).not.toBeInTheDocument();
   });
 
   it('shows the two notification controls with status-aware copy', async () => {
@@ -320,7 +322,7 @@ describe('app entry flows', () => {
     }] }));
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
-    fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
+    fireEvent.click(screen.getByRole('button', { name: /카드 · 알림/ }));
     expect(screen.getByRole('button', { name: '결제 알림 수신 설정' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '예산 경고 알림 설정' })).toBeInTheDocument();
     expect(screen.queryByText('개발 테스트')).not.toBeInTheDocument();
@@ -334,7 +336,7 @@ describe('app entry flows', () => {
     smsBridge.getConfiguration.mockResolvedValue({ cardLast4: '4321' });
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
-    fireEvent.click(screen.getByRole('button', { name: /운영 설정/ }));
+    fireEvent.click(screen.getByRole('button', { name: /카드 · 알림/ }));
     const cardInput = screen.getByLabelText('카드 끝 4자리');
     await waitFor(() => expect(cardInput).toHaveValue('4321'));
     fireEvent.change(cardInput, { target: { value: '374' } });
@@ -351,7 +353,8 @@ describe('app entry flows', () => {
     }] }));
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: '설정 열기' }));
-    fireEvent.click(screen.getByText('개인정보 처리 안내'));
+    fireEvent.click(screen.getByRole('button', { name: /앱 안내 · 개인정보/ }));
+    expect(screen.getByRole('heading', { name: '개인정보 처리 안내' })).toBeInTheDocument();
     expect(screen.getByText(/원문 알림과 다른 대화는 저장·전송·삭제하지 않습니다/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '전체 개인정보처리방침 보기' })).toHaveAttribute('href', 'https://cjsan30.github.io/shinhanaccount/privacy-policy.html');
   });
