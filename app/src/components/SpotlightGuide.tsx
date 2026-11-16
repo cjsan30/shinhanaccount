@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Sentences } from './Sentences';
 
 export type GuideStep = { target: string; fallbackTarget?: string; title: string; body: string };
 export function SpotlightGuide({ title, steps, onClose }: { title: string; steps: readonly GuideStep[]; onClose: () => void }) {
@@ -59,7 +60,7 @@ export function SpotlightGuide({ title, steps, onClose }: { title: string; steps
   }}>
     {rect && <div className="spotlight-highlight" aria-hidden="true" style={{ left: Math.max(6, rect.left - 6), top, width: Math.max(0, Math.min(window.innerWidth - 6, rect.right + 6) - Math.max(6, rect.left - 6)), height: Math.max(0, bottom - top) }} />}
     <section ref={card} className="spotlight-card" style={{ top: cardTop, left: visibleLeft + 12, right: 'auto', width: Math.min(408, Math.max(0, visibleWidth - 24)), maxHeight: Math.max(0, height - 24), marginInline: 0 }}>
-      <small>{title} · {index + 1}/{steps.length}</small><h3>{step.title}</h3><p>{step.body}</p>
+      <small>{title} · {index + 1}/{steps.length}</small><h3>{step.title}</h3><p><Sentences text={step.body} /></p>
       <footer><button type="button" onClick={onClose}>건너뛰기</button><button type="button" disabled={index === 0} onClick={() => move(-1)}>이전</button><button type="button" className="spotlight-next" onClick={() => index === steps.length - 1 ? onClose() : move(1)}>{index === steps.length - 1 ? '완료' : '다음'}</button></footer>
     </section>
   </div>, document.body);

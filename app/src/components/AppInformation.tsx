@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { APP_INFORMATION_TITLE, APP_INFORMATION_PARAGRAPHS } from '../domain/appInformation';
+import { Sentences } from './Sentences';
 
 export function AppInformationContent() {
   return <section className="app-information-content">
     <h3>이 앱에 대해</h3>
-    {APP_INFORMATION_PARAGRAPHS.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+    {APP_INFORMATION_PARAGRAPHS.map((paragraph) => <p key={paragraph}><Sentences text={paragraph} /></p>)}
   </section>;
 }
 
@@ -28,7 +29,7 @@ export function AppInformationNotice({ onConfirm, error, saving = false }: { onC
     }}>
       <h2 id="app-information-notice-title">{APP_INFORMATION_TITLE}</h2>
       <div className="app-information-notice__body"><AppInformationContent /></div>
-      {error && <p className="app-information-error" role="alert">{error}</p>}
+      {error && <p className="app-information-error" role="alert"><Sentences text={error} /></p>}
       <button className="sheet-action" type="button" onClick={onConfirm} disabled={saving}>{saving ? '확인 중…' : '확인'}</button>
     </section>
   </div>;

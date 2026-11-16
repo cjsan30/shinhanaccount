@@ -3,6 +3,7 @@ import { PencilSimple } from '@phosphor-icons/react';
 import { getRemainingPaymentAmount, getSupportAmount, type LedgerEntry } from '../domain/ledger';
 import { type AnyPolicyItemDefinition } from '../domain/policy';
 import { getPaymentAmountDisplay } from '../domain/paymentAmountDisplay';
+import { Sentences } from './Sentences';
 
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 type PolicyDefinition = AnyPolicyItemDefinition;
@@ -65,7 +66,7 @@ export function UndecidedPanel({ entries, allEntries = entries, items, onResolve
         {entry.duplicateCandidateIds?.map((id) => { const existing = allEntries.find((candidate) => candidate.id === id); return existing && <section className="duplicate-review" key={id} aria-label={`${entry.merchant} 중복 확인`}><strong>같은 거래인가요?</strong><p>{existing.merchant} · {won(existing.amount)}<br />{existing.occurredAt.slice(0, 16).replace('T', ' ')} · {existing.status === 'undecided' ? '분류 필요' : '기존 결제'}{existing.category ? ` · ${items.find((candidate) => candidate.ledgerCategories.includes(existing.category!))?.label ?? existing.category}` : ''}</p><div><button type="button" onClick={() => onResolveDuplicate?.(entry.id, id, true)}>Yes</button><button type="button" onClick={() => onResolveDuplicate?.(entry.id, id, false)}>No</button></div></section>; })}
       </div>; })}
     </div>
-    {amountError && <p role="alert" className="import-warning">{amountError}</p>}
+    {amountError && <p role="alert" className="import-warning"><Sentences text={amountError} /></p>}
     {selected.length > 0 && <div className="undecided-quick-action"><label>분류 항목<select aria-label="분류 필요 결제 일괄 분류" value={itemKey} onChange={(event) => setItemKey(event.target.value)}>{items.map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.bucket === 'resident' ? '정주비' : '학습공간비'} · {candidate.label}</option>)}</select></label><div className="undecided-quick-action__buttons"><span>{selected.length}건 선택</span><button className="sheet-action" onClick={classifySelected}>바로 분류</button><button className="sheet-action secondary-action" onClick={excludeSelected}>사업 무관 제외</button></div>{selected.length === 1 && <label className="undecided-rule"><input type="checkbox" checked={saveRule} onChange={(event) => setSaveRule(event.target.checked)} disabled={item.ledgerCategories[0]?.startsWith('custom:')} /> 이 상호명도 자동 분류 규칙으로 저장</label>}{item.ledgerCategories[0]?.startsWith('custom:') && <small>사용자 항목은 직접 분류에만 사용합니다.</small>}</div>}
   </section>;
 }

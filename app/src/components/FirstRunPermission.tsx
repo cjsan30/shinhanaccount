@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { NotificationBridge } from '../native/notificationBridge';
 import { SmsBridge } from '../native/smsBridge';
+import { Sentences } from './Sentences';
 
 type Props = {
   onComplete: (cardLast4: string) => void;
@@ -67,9 +68,9 @@ export function FirstRunPermission({ onComplete, onSkip }: Props) {
       <section className="first-run__notice">
         <strong>권한이 필요한 이유</strong>
         <span>알림 접근은 등록한 카드의 승인 알림만 기기 안에서 기록합니다.</span>
-        <small>앱 알림은 예산 경고와 새 결제 안내를 보여줍니다. 두 권한 모두 설정에서 언제든 해제할 수 있습니다.</small>
+        <small>앱 알림은 예산 경고와 새 결제 안내를 보여줍니다. <br />두 권한 모두 설정에서 언제든 해제할 수 있습니다.</small>
       </section>
-      {message && <p role="alert" className="first-run__error">{message}</p>}
+      {message && <p role="alert" className="first-run__error"><Sentences text={message} /></p>}
       <button className="first-run__start" type="button" onClick={() => void start()} disabled={saving}>
         {saving ? '권한 확인 중…' : '동의하고 알림 접근 설정'}
       </button>

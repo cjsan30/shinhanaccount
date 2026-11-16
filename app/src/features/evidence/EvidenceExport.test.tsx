@@ -74,7 +74,7 @@ describe('EvidenceExport', () => {
     const clear = screen.getByRole('button', { name: '보고서 초기화' });
     expect(clear.parentElement?.firstElementChild).toBe(clear);
     fireEvent.click(clear);
-    expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요? 첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다. 되돌릴 수 없습니다.');
+    expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요?\n첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다.\n되돌릴 수 없습니다.');
     expect(removeStoredEvidence).not.toHaveBeenCalled();
     fireEvent.click(clear);
     await waitFor(() => expect(notify).toHaveBeenCalledWith('사용보고서를 초기화했습니다.'));
