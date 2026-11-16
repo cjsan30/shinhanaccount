@@ -106,7 +106,7 @@ export async function statementPages(rows: StatementRow[], excludedRowIds: strin
       values.forEach((value, column) => ctx.fillText(value, columns[column], y + 35));
       if (row.redacted) { ctx.fillStyle = '#7a6a52'; ctx.font = `400 13px ${font}`; ctx.fillText(row.reason ?? '사업 무관 내역', 64, y + 52); }
     });
-    ctx.fillStyle = '#6d7885'; ctx.font = `400 15px ${font}`; ctx.fillText('정책 기간 내 출금만 표시합니다. 사업 무관 행은 내용만 가립니다.', 64, 1698);
+    ctx.fillStyle = '#6d7885'; ctx.font = `400 15px ${font}`; ctx.fillText('정책 기간 내 출금만 표시합니다. 사업 무관 행은 내용만 모자이크합니다.', 64, 1698);
     pages.push({ bytes: await jpeg(canvas, quality), width: canvas.width, height: canvas.height });
   }
   return pages;
