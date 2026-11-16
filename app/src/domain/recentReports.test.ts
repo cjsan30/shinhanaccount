@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { addRecentReport, isRecentReport, RECENT_REPORT_LIMIT, removeRecentReport, type RecentReport } from './recentReports';
+import { addRecentReport, isRecentReport, removeRecentReport, type RecentReport } from './recentReports';
 
 const report = (index: number): RecentReport => ({ uri: `content://media/${index}`, fileName: `report_${index}.pdf`, size: 1000 * index, savedAt: `2026-11-${String(index).padStart(2, '0')}T12:00:00+09:00` });
 
 describe('recent reports', () => {
-  it('keeps the newest report first and at most the limit', () => {
+  it('keeps every saved report, newest first', () => {
     let list: RecentReport[] = [];
-    for (let index = 1; index <= RECENT_REPORT_LIMIT + 2; index += 1) list = addRecentReport(list, report(index));
-    expect(list).toHaveLength(RECENT_REPORT_LIMIT);
-    expect(list[0].uri).toBe(`content://media/${RECENT_REPORT_LIMIT + 2}`);
-    expect(list.map((item) => item.uri)).not.toContain('content://media/1');
+    for (let index = 1; index <= 12; index += 1) list = addRecentReport(list, report(index));
+    expect(list).toHaveLength(12);
+    expect(list[0].uri).toBe('content://media/12');
+    expect(list.at(-1)?.uri).toBe('content://media/1');
   });
 
   it('does not list the same file twice', () => {

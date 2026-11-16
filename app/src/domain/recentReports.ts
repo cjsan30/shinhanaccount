@@ -1,11 +1,9 @@
 /** A report PDF the app saved to Downloads. Only where it is and how big it is; no report content. */
 export type RecentReport = { uri: string; fileName: string; size: number; savedAt: string };
 
-export const RECENT_REPORT_LIMIT = 5;
-
-/** Newest first, one row per file, at most RECENT_REPORT_LIMIT rows. */
+/** Newest first, one row per file. Every saved report is kept; deleted files leave on their own. */
 export function addRecentReport(current: RecentReport[], report: RecentReport): RecentReport[] {
-  return [report, ...current.filter((item) => item.uri !== report.uri)].slice(0, RECENT_REPORT_LIMIT);
+  return [report, ...current.filter((item) => item.uri !== report.uri)];
 }
 
 export function removeRecentReport(current: RecentReport[], uri: string): RecentReport[] {

@@ -222,7 +222,9 @@ describe('app entry flows', () => {
     expect(screen.queryByRole('dialog', { name: '앱 사용 도움말' })).not.toBeInTheDocument();
     const before = window.localStorage.getItem('shinhanhae-policy-book-v1');
     fireEvent.click(await screen.findByRole('button', { name: '앱 사용 도움말' }));
-    expect(screen.getByText('계획표 설정 · 거래내역 가져오기')).toBeInTheDocument();
+    // First step of the reworked guide (decision 2026-11-17).
+    expect(screen.getByText('이번 기간 계획')).toBeInTheDocument();
+    expect(screen.getByText(/1\/7/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(window.localStorage.getItem('shinhanhae-policy-book-v1')).toBe(before);
     fireEvent.click(screen.getByRole('button', { name: '사용보고서 작성' }));
