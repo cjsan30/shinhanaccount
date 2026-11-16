@@ -1111,3 +1111,198 @@ body.high-contrast .pdf-preview .pdf-preview__save {
   color: #ffc5c5;
   font-size: 13px;
 }
+
+/* 결제별 영수증 (decision 2026-11-16): one list of the period's payments and their receipts. */
+.receipt-overview {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-raised);
+}
+
+.receipt-overview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.receipt-overview__head strong {
+  margin-right: auto;
+  color: var(--color-text-bright);
+  font-size: 15px;
+}
+
+.receipt-overview__count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-fill);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.receipt-overview__count.is-missing {
+  background: #efc46b22;
+  color: #f2c86d;
+}
+
+.receipt-overview__note {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* One line: an 18px box and its label. Scoped twice to win over the generic sheet label/input rules. */
+.receipt-overview .receipt-overview__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.receipt-overview .receipt-overview__filter input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* The picker behind the rows without a receipt; opened from code only. */
+.evidence-export .receipt-link-picker {
+  display: none !important;
+}
+
+.receipt-overview ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-overview li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.receipt-overview li button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 2px;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+}
+
+.receipt-overview li button:disabled {
+  opacity: .5;
+}
+
+.receipt-overview__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #16424a;
+  color: #b8f3e9;
+  font-weight: 700;
+}
+
+.receipt-overview li button.is-missing .receipt-overview__mark {
+  border: 1px dashed #f2c86d;
+  background: none;
+  color: #f2c86d;
+}
+
+.receipt-overview__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.receipt-overview__text b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-overview__text small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.receipt-overview li button.is-missing .receipt-overview__text small {
+  color: #f2c86d;
+}
+
+.receipt-overview__amount {
+  flex: none;
+  font-weight: 700;
+}
+
+.receipt-overview__more {
+  padding: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+}
+
+body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-overview__note, .receipt-overview__filter, .receipt-overview__text small, .receipt-overview__mark) {
+  color: #fff !important;
+}
+
+/* Folded receipt cards (decision 2026-11-16): one row under the file button. */
+.evidence-group .receipt-cards-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.receipt-cards-toggle span {
+  flex: 1;
+}
+
+.receipt-cards-toggle small {
+  color: #f2c86d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.receipt-cards-toggle i {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+}
+
+body.high-contrast .receipt-cards-toggle :is(small, i) {
+  color: #fff !important;
+}
