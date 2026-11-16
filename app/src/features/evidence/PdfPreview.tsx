@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
 type PdfPreviewProps = { pages: string[]; sizeLabel: string; saving: boolean; error: string | null; onClose: () => void; onSave: () => void };
 
@@ -6,7 +6,8 @@ type PdfPreviewProps = { pages: string[]; sizeLabel: string; saving: boolean; er
 export function PdfPreview({ pages, sizeLabel, saving, error, onClose, onSave }: PdfPreviewProps) {
   const [zoomed, setZoomed] = useState<number | null>(null);
   // Android back closes only the preview (App.tsx sends this event), not the whole report sheet.
-  useEffect(() => {
+  // Attached as the preview is drawn, so a back press right after it appears is not missed.
+  useLayoutEffect(() => {
     const close = () => { if (!saving) onClose(); };
     window.addEventListener('close-pdf-preview', close);
     return () => window.removeEventListener('close-pdf-preview', close);
