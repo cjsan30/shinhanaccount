@@ -13,6 +13,13 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.JSObject
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -40,6 +47,44 @@ class VerifyToolsPlugin : Plugin() {
         context.getSystemService(AlarmManager::class.java)
             .setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delaySeconds * 1000L, pending)
         call.resolve()
+    }
+
+    /**
+     * Reads every image pushed to <app files>/plan-ocr with the same OCR and row grouping as
+     * [계획표 스크린샷에서 읽기], and writes the texts to <app files>/plan-ocr-results.json for
+     * comparison on the computer. Images and results stay on the device; nothing is uploaded.
+     */
+    @PluginMethod
+    fun recognizePlanImages(call: PluginCall) {
+        val context = context
+        if (!isVerifyApp(context)) { call.reject("검증 앱에서만 쓸 수 있습니다."); return }
+        val folder = context.getExternalFilesDir("plan-ocr")
+        val images = folder?.listFiles { file -> file.isFile && file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }?.sortedBy { it.name }.orEmpty()
+        if (images.isEmpty()) { call.reject("plan-ocr 폴더에 이미지가 없습니다."); return }
+        Thread {
+            val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+            val results = JSONArray()
+            try {
+                for (image in images) {
+                    val entry = JSONObject().put("file", image.name)
+                    try {
+                        val text = Tasks.await(recognizer.process(PolicyOcrPlugin.preparedImage(context, android.net.Uri.fromFile(image))))
+                        entry.put("text", PolicyOcrPlugin.toVisualRows(text))
+                        entry.put("lines", PolicyOcrPlugin.toLineBoxes(text))
+                        entry.put("width", image.let { android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { options -> android.graphics.BitmapFactory.decodeFile(it.path, options) }.outWidth })
+                    } catch (error: Exception) {
+                        entry.put("error", error.message ?: error.javaClass.simpleName)
+                    }
+                    results.put(entry)
+                }
+                File(context.getExternalFilesDir(null), "plan-ocr-results.json").writeText(results.toString(2))
+                call.resolve(JSObject().put("count", images.size))
+            } catch (error: Exception) {
+                call.reject("계획표 OCR 결과를 저장하지 못했습니다.", error)
+            } finally {
+                recognizer.close()
+            }
+        }.start()
     }
 }
 

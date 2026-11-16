@@ -32,6 +32,13 @@ export function VerifyToolsPanel(props: Props) {
       .then(() => setNoticeStatus('예약했습니다. 지금 앱을 닫아 주세요.'))
       .catch((error: unknown) => setNoticeStatus(error instanceof Error ? error.message : '알림을 예약하지 못했습니다.'));
   };
+  const [planOcrStatus, setPlanOcrStatus] = useState<string | null>(null);
+  const readPlanImages = () => {
+    setPlanOcrStatus('읽는 중입니다…');
+    VerifyTools.recognizePlanImages()
+      .then(({ count }) => setPlanOcrStatus(`계획표 이미지 ${count}장을 읽었습니다. 결과는 앱 파일 폴더의 plan-ocr-results.json에 있습니다.`))
+      .catch((error: unknown) => setPlanOcrStatus(error instanceof Error ? error.message : '계획표 이미지를 읽지 못했습니다.'));
+  };
   return <section className="verify-tools">
     <p>검증 앱에서만 보이는 도구입니다. Play 배포본에는 없습니다.</p>
     <h3>오늘 날짜 바꾸기</h3>
@@ -52,5 +59,9 @@ export function VerifyToolsPanel(props: Props) {
     <p>약 15초~1분 뒤 등록한 카드로 5,000원 결제 알림을 보냅니다. <br />누른 뒤 앱을 닫으면 앱이 닫힌 상태에서 알림과 예산 경고를 확인할 수 있습니다. <br />실제 결제처럼 기록되니 확인 후 결제 내역에서 지워 주세요.</p>
     <button className="sheet-action" type="button" onClick={scheduleNotice}>가짜 결제 알림 보내기</button>
     {noticeStatus && <small role="status"><Sentences text={noticeStatus} /></small>}
+    <h3>계획표 OCR 일괄 읽기</h3>
+    <p>컴퓨터에서 앱 파일 폴더의 plan-ocr에 넣은 계획표 이미지를 모두 읽어 결과 파일로 남깁니다. <br />정확도 검증용입니다.</p>
+    <button className="sheet-action secondary-action" type="button" onClick={readPlanImages}>계획표 OCR 일괄 읽기</button>
+    {planOcrStatus && <small role="status" data-plan-ocr-status><Sentences text={planOcrStatus} /></small>}
   </section>;
 }

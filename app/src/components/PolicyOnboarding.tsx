@@ -22,7 +22,8 @@ export function PolicyOnboarding({ onConfirm, initialDraft = null, onDraftChange
   const confirm = () => {
     if (!draft) return;
     const issues = validatePolicyAgainstProfile(draft);
-    if (issues.length) { setMessage(issues[0]); return; }
+    // The review already lists the issues and marks the fields; take the user to the first one.
+    if (issues.length) { setMessage(null); document.querySelector<HTMLInputElement>('.plan-amount-input--invalid')?.focus(); return; }
     onConfirm({ ...draft, alertTargets: getAlertTargets(draft), sourceText: plan.text || draft.sourceText });
   };
   return (
