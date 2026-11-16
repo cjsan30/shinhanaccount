@@ -250,6 +250,7 @@ function App() {
     void CapacitorApp.addListener('backButton', () => {
       if (document.querySelector('[data-app-information-notice]')) return;
       if (document.querySelector('.spotlight-layer')) { window.dispatchEvent(new Event('close-help-guide')); return; }
+      if (document.querySelector('.pdf-preview')) { window.dispatchEvent(new Event('close-pdf-preview')); return; }
       setPanel((current) => {
         if (current === 'import') { setInitialImportRoute(false); return null; }
         if (current) return previousPanel(current);

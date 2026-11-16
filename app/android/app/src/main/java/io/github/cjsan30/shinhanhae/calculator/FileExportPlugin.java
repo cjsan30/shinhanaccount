@@ -57,6 +57,32 @@ public class FileExportPlugin extends Plugin {
         }
     }
 
+    /** Reports which of the given saved files still exist, so the app can drop ones deleted in the file app. */
+    @com.getcapacitor.PluginMethod
+    public void existing(PluginCall call) {
+        com.getcapacitor.JSArray uris = call.getArray("uris");
+        com.getcapacitor.JSArray found = new com.getcapacitor.JSArray();
+        if (uris != null) {
+            for (int index = 0; index < uris.length(); index += 1) {
+                String value = uris.optString(index, null);
+                if (value != null && savedFileExists(Uri.parse(value))) found.put(value);
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("uris", found);
+        call.resolve(result);
+    }
+
+    private boolean savedFileExists(Uri uri) {
+        try (android.os.ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(uri, "r")) {
+            return descriptor != null;
+        } catch (java.io.FileNotFoundException | SecurityException | IllegalArgumentException missing) {
+            return false;
+        } catch (java.io.IOException closeFailed) {
+            return true;
+        }
+    }
+
     @com.getcapacitor.PluginMethod
     public void open(PluginCall call) {
         String uriValue = call.getString("uri");
@@ -65,9 +91,19 @@ public class FileExportPlugin extends Plugin {
             call.reject("열 파일 정보가 없습니다.");
             return;
         }
+        Uri uri = Uri.parse(uriValue);
+        // A report listed in the app may have been deleted in the file app since it was saved.
+        try (android.os.ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(uri, "r")) {
+            if (descriptor == null) throw new java.io.FileNotFoundException(uriValue);
+        } catch (java.io.FileNotFoundException | SecurityException | IllegalArgumentException missing) {
+            call.reject("저장한 파일을 찾지 못했습니다.", "FILE_NOT_FOUND");
+            return;
+        } catch (java.io.IOException ignored) {
+            // Closing failed after the file opened, so it exists.
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW)
-                .setDataAndType(Uri.parse(uriValue), mimeType)
+                .setDataAndType(uri, mimeType)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(Intent.createChooser(intent, "파일 미리보기"));

@@ -420,39 +420,6 @@
   }
 }
 
-.evidence-result-preview {
-  margin: 16px 0;
-  padding: 14px;
-  border: 1px solid #55d1c855;
-  border-radius: 13px;
-  background: #102d34;
-}
-
-.evidence-result-preview summary {
-  cursor: pointer;
-  color: #a3eee7;
-  font-weight: 800;
-}
-
-.evidence-result-preview object {
-  display: block;
-  width: 100%;
-  height: 340px;
-  margin-top: 12px;
-  border: 0;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.evidence-result-preview a {
-  display: block;
-  padding: 14px;
-  color: #0b2530;
-  background: var(--color-accent);
-  text-align: center;
-  font-weight: 800;
-}
-
 .evidence-export__actions {
   display: grid;
   grid-template-columns: minmax(0,1fr) auto;
@@ -949,4 +916,198 @@ body.high-contrast .sheet .evidence-missing > div > button {
 .evidence-reset:disabled {
   cursor: not-allowed;
   opacity: .42;
+}
+
+/* In-app PDF preview: full screen, pages scroll top to bottom, actions stay at the bottom. */
+.pdf-preview {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1118;
+  color: var(--color-text);
+}
+
+.pdf-preview__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__header strong {
+  font-size: 18px;
+}
+
+.pdf-preview__header span {
+  color: #b9c0c8;
+  font-size: 14px;
+}
+
+.pdf-preview__pages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 16px 24px;
+}
+
+.pdf-preview__page {
+  margin: 0 0 18px;
+  overflow-x: auto;
+}
+
+.pdf-preview__page button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.pdf-preview__page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.pdf-preview__page.is-zoomed button {
+  width: 220%;
+  cursor: zoom-out;
+}
+
+.pdf-preview__page figcaption {
+  margin-top: 6px;
+  color: #b9c0c8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.pdf-preview__footer {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__footer p {
+  margin: 0 0 10px;
+  color: #ffc5c5;
+  font-size: 13px;
+}
+
+.pdf-preview__footer div {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 10px;
+}
+
+.pdf-preview__close,
+.pdf-preview__save {
+  min-height: 48px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pdf-preview__close {
+  border: 1px solid var(--color-divider-strong);
+  background: var(--color-fill);
+  color: var(--color-text);
+}
+
+.pdf-preview__save {
+  border: 0;
+  background: #eef0f2;
+  color: #151a20;
+}
+
+.pdf-preview__close:disabled,
+.pdf-preview__save:disabled {
+  opacity: .42;
+}
+
+body.high-contrast .pdf-preview :is(strong, span, figcaption, p, .pdf-preview__close) {
+  color: #fff !important;
+}
+
+body.high-contrast .pdf-preview .pdf-preview__save {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+/* Under [미리보기]: the reports made so far, newest first. */
+.evidence-recent-reports {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.evidence-recent-reports > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.evidence-recent-reports ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-recent-reports li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  background: var(--color-fill);
+}
+
+.evidence-recent-reports li span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.evidence-recent-reports li b {
+  font-size: 14px;
+}
+
+.evidence-recent-reports li small {
+  color: #b9c0c8;
+  font-size: 12px;
+}
+
+.evidence-recent-reports li button {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.evidence-recent-reports > p {
+  margin-top: 10px;
+  color: #ffc5c5;
+  font-size: 13px;
 }

@@ -3,10 +3,10 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 type FileExportPlugin = {
   save(options: { fileName: string; base64Data: string; mimeType: string }): Promise<{ uri: string; fileName: string; relativePath: string }>;
   open(options: { uri: string; mimeType: string }): Promise<void>;
+  existing(options: { uris: string[] }): Promise<{ uris: string[] }>;
 };
 
 const FileExport = registerPlugin<FileExportPlugin>('FileExport');
-let latestNativeUri: string | null = null;
 
 export function bytesToBase64(bytes: Uint8Array) {
   let value = '';
@@ -34,8 +34,22 @@ export async function saveFile(fileName: string, bytes: Uint8Array, mimeType: st
     return { location: 'download' as const, fileName: uniqueName, relativePath: 'Downloads' };
   }
   const result = await FileExport.save({ fileName: uniqueName, base64Data: bytesToBase64(bytes), mimeType });
-  latestNativeUri = result.uri;
   return { location: 'downloads' as const, ...result };
+}
+
+/**
+ * Of the given saved files, the ones that still exist on the device.
+ * Browser builds keep their own blob: URLs alive, so they are all reported as present.
+ */
+export async function existingSavedFiles(uris: string[]): Promise<string[]> {
+  if (!uris.length || !Capacitor.isNativePlatform()) return uris;
+  return (await FileExport.existing({ uris })).uris;
+}
+
+/** The native side rejects with this code when the saved file was deleted from Downloads. */
+export const SAVED_FILE_NOT_FOUND = 'FILE_NOT_FOUND';
+export function isSavedFileNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === SAVED_FILE_NOT_FOUND;
 }
 
 export async function openSavedFile(uri: string, mimeType: string) {
@@ -44,9 +58,4 @@ export async function openSavedFile(uri: string, mimeType: string) {
     return;
   }
   await FileExport.open({ uri, mimeType });
-}
-
-/** Opens the last file saved during this app session; browser builds use its Blob URL fallback. */
-export function openLatestSavedFile(browserFallbackUrl: string, mimeType: string) {
-  return openSavedFile(Capacitor.isNativePlatform() && latestNativeUri ? latestNativeUri : browserFallbackUrl, mimeType);
 }
