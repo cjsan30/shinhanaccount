@@ -57,6 +57,32 @@ public class FileExportPlugin extends Plugin {
         }
     }
 
+    /** Reports which of the given saved files still exist, so the app can drop ones deleted in the file app. */
+    @com.getcapacitor.PluginMethod
+    public void existing(PluginCall call) {
+        com.getcapacitor.JSArray uris = call.getArray("uris");
+        com.getcapacitor.JSArray found = new com.getcapacitor.JSArray();
+        if (uris != null) {
+            for (int index = 0; index < uris.length(); index += 1) {
+                String value = uris.optString(index, null);
+                if (value != null && savedFileExists(Uri.parse(value))) found.put(value);
+            }
+        }
+        JSObject result = new JSObject();
+        result.put("uris", found);
+        call.resolve(result);
+    }
+
+    private boolean savedFileExists(Uri uri) {
+        try (android.os.ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(uri, "r")) {
+            return descriptor != null;
+        } catch (java.io.FileNotFoundException | SecurityException | IllegalArgumentException missing) {
+            return false;
+        } catch (java.io.IOException closeFailed) {
+            return true;
+        }
+    }
+
     @com.getcapacitor.PluginMethod
     public void open(PluginCall call) {
         String uriValue = call.getString("uri");
