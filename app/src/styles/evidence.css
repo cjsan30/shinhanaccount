@@ -1267,3 +1267,42 @@ body.high-contrast .pdf-preview .pdf-preview__save {
 body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-overview__note, .receipt-overview__filter, .receipt-overview__text small, .receipt-overview__mark) {
   color: #fff !important;
 }
+
+/* Folded receipt cards (decision 2026-11-16): one row under the file button. */
+.evidence-group .receipt-cards-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.receipt-cards-toggle span {
+  flex: 1;
+}
+
+.receipt-cards-toggle small {
+  color: #f2c86d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.receipt-cards-toggle i {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+}
+
+body.high-contrast .receipt-cards-toggle :is(small, i) {
+  color: #fff !important;
+}

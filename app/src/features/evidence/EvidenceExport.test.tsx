@@ -150,6 +150,8 @@ describe('EvidenceExport', () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
     const entries = [{ id: 'p', cardLast4: '1234', merchant: '연결 결제', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food', occurredAt: '2026-09-20T12:00:00+09:00' }];
     const { container } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'linked', stored: { id: 's', fileName: 'linked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'p', category: 'transport' }]} />);
+    // Linked receipts start folded (decision 2026-11-16).
+    fireEvent.click(await screen.findByRole('button', { name: /영수증 1장 보기/ }));
     await screen.findByText('linked.jpg');
     fireEvent.click(screen.getByText('연결한 영수증 확인 · 수정'));
     fireEvent.blur(screen.getByLabelText('영수증 1 날짜'));
@@ -208,6 +210,28 @@ describe('EvidenceExport', () => {
     fireEvent.click(within(overview).getByLabelText('영수증 없는 결제만 보기'));
     expect(rows()).toHaveLength(6);
     expect(rows().every((name) => name?.endsWith('영수증 추가'))).toBe(true);
+  });
+
+  it('folds the receipt cards and opens them only when a receipt needs the user', async () => {
+    const payment = { id: 'p1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '연결 가게', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' };
+    const linked = { id: 'r1', stored: { id: 's1', fileName: 'linked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt' as const, order: 0, linkedEntryId: 'p1', receiptOcrStatus: 'linked' as const, receiptDate: '2026-09-20' };
+    const first = render(<StatefulEvidenceExport entries={[payment]} initialEvidence={[linked]} />);
+    const toggle = await screen.findByRole('button', { name: /영수증 1장 보기/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('linked.jpg')).not.toBeInTheDocument();
+    // 결제별 영수증 → the linked payment opens the cards on its receipt.
+    fireEvent.click(within(screen.getByRole('region', { name: '결제별 영수증' })).getByRole('button', { name: '연결 가게 5,000원 · 영수증 1 보기' }));
+    expect(await screen.findByText('linked.jpg')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /영수증 1장 접기/ })).toHaveAttribute('aria-expanded', 'true');
+    first.unmount();
+
+    // A receipt without a payment needs a date or a link, so the cards open by themselves.
+    const unlinked = { id: 'r2', stored: { id: 's2', fileName: 'unlinked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-21' }, section: 'receipt' as const, order: 1, receiptOcrStatus: 'needs-input' as const };
+    render(<StatefulEvidenceExport entries={[payment]} initialEvidence={[linked, unlinked]} />);
+    expect(await screen.findByText('unlinked.jpg')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /영수증 2장 접기/ }));
+    expect(screen.queryByText('unlinked.jpg')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /영수증 2장 보기/ })).toHaveTextContent('확인 필요 1장');
   });
 
   it('links a receipt picked from a payment row to that payment without reading its date', async () => {
