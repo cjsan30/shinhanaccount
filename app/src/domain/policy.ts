@@ -50,6 +50,24 @@ export function validatePolicyAgainstProfile(policy: SupportPolicy) {
   return issues;
 }
 
+/**
+ * The amount fields to mark as wrong while reviewing a plan: every item of a group whose sum
+ * misses the group limit (which one is wrong cannot be known), and any item above its cap.
+ * Matches the messages of validatePolicyAgainstProfile.
+ */
+export function getPlanIssueItems(policy: SupportPolicy): PolicyItem[] {
+  const profile = getSupportProfile(policy.profileId);
+  const flagged = new Set<PolicyItem>();
+  for (const bucket of ['resident', 'studySpace'] as const) {
+    if (getPolicyLimit(policy, bucket) !== profile.bucketLimits[bucket]) POLICY_ITEMS.filter((item) => item.bucket === bucket).forEach((item) => flagged.add(item.key));
+  }
+  for (const item of POLICY_ITEMS) {
+    const amount = policy.plans[item.key];
+    if (!Number.isFinite(amount) || amount < 0 || amount > profile.itemCaps[item.key]) flagged.add(item.key);
+  }
+  return POLICY_ITEMS.map((item) => item.key).filter((key) => flagged.has(key));
+}
+
 export const POLICY_ITEM_ALIASES: Record<PolicyItem, readonly string[]> = {
   housing: ['주거비', '주거비용', '숙박비', '숙박비용', '숙박요금', '월세', '월세비', '임대료', '임차료'],
   food: ['식비', '식사비', '식사비용', '식대', '식료품비', '식료품비용'],

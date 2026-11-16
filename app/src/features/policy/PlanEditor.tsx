@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { SHINHANHAE_PROFILES, getAlertTargets, getPolicyLimit, getSupportProfile, POLICY_ITEMS, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
+import { SHINHANHAE_PROFILES, getAlertTargets, getPlanIssueItems, getPolicyLimit, getSupportProfile, POLICY_ITEMS, validatePolicyAgainstProfile, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
+import { Sentences } from '../../components/Sentences';
 
 type Props = {
   text: string;
@@ -27,6 +28,9 @@ export function PlanEditor(props: Props) {
     requestAnimationFrame(() => draftRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   }, [focusToken]);
   const draft = props.draft;
+  // Shown while reviewing, not only on save: what to fix and which fields (decision 2026-11-16).
+  const issues = draft ? validatePolicyAgainstProfile(draft) : [];
+  const issueItems = new Set(draft ? getPlanIssueItems(draft) : []);
   return <div className="policy-card plan-editor">
     <p>정주비는 식비·교육비·교통비·주거비, 학습공간비는 카페·스터디카페·독서실입니다.</p>
     <p>모바일 웹에서 계획표를 복사해 붙여넣으세요. <br />자동 확정하지 않으며, 아래 결과를 검토한 뒤 적용합니다.</p>
@@ -39,10 +43,11 @@ export function PlanEditor(props: Props) {
       <div className="policy-lines">
         {(['resident', 'studySpace'] as const).map((bucket) => <section className="policy-group" key={bucket}>
           <h4>{bucket === 'resident' ? '정주비' : '학습공간비'} <span>{won(getPolicyLimit(draft, bucket))} / {won(getSupportProfile(draft.profileId).bucketLimits[bucket])}</span></h4>
-          {POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => <label className="policy-amount" key={item.key}>{item.label}<input aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={draft.plans[item.key] ?? 0} onChange={(event) => props.onUpdateAmount(item.key, event.target.value)} /></label>)}
+          {POLICY_ITEMS.filter((item) => item.bucket === bucket).map((item) => <label className="policy-amount" key={item.key}>{item.label}<input className={issueItems.has(item.key) ? 'plan-amount-input plan-amount-input--invalid' : 'plan-amount-input'} aria-invalid={issueItems.has(item.key) || undefined} aria-label={`${item.label} 계획 금액`} type="number" inputMode="numeric" min="0" step="1000" value={draft.plans[item.key] ?? 0} onChange={(event) => props.onUpdateAmount(item.key, event.target.value)} /></label>)}
         </section>)}
         <strong>총 한도 {won(getPolicyLimit(draft, 'resident') + getPolicyLimit(draft, 'studySpace'))} / {won(getSupportProfile(draft.profileId).totalLimit)}</strong>
       </div>
+      {issues.length > 0 && <ul className="plan-issues" role="alert">{issues.map((issue) => <li key={issue}><Sentences text={issue} /></li>)}</ul>}
       <section className="policy-alert-targets policy-alert-targets--review"><strong>잔액 경고 대상</strong><span>선택한 항목만 공통 경고 기준에 따라 알려드립니다.</span>{POLICY_ITEMS.filter((item) => draft.plans[item.key] > 0).map((item) => <label key={item.key}><input type="checkbox" checked={getAlertTargets(draft).includes(item.key)} onChange={() => props.onToggleAlertTarget(item.key)} /><b>{item.label}</b><small>{won(draft.plans[item.key])}</small></label>)}</section>
       <button className="sheet-action" onClick={props.onSubmit}>{props.submitLabel}</button>
     </div>}

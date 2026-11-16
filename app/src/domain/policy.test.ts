@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { POLICY_ITEM_ALIASES, emptyPolicy } from './policy';
-import { POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, confirmPolicyForPeriod, createPolicyBook, getAlertTargets, getCategoryLabel, getCategoryLimit, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyItems, getPolicyLimit, getPolicyVersion, loadPolicy, loadPolicyBook, parsePolicyText, savePolicy, savePolicyBook, validatePolicyAgainstProfile } from './policy';
+import { POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, confirmPolicyForPeriod, createPolicyBook, getAlertTargets, getCategoryLabel, getCategoryLimit, getEffectivePolicy, getNextPolicyPeriodKey, getPolicyItems, getPolicyLimit, getPolicyVersion, loadPolicy, loadPolicyBook, parsePolicyText, savePolicy, savePolicyBook, validatePolicyAgainstProfile, getPlanIssueItems } from './policy';
 
 describe('policy text import', () => {
   it.each(Object.entries(POLICY_ITEM_ALIASES).flatMap(([item, aliases]) => aliases.map((alias) => ({ item, alias }))))('reads $alias only as $item', ({ item, alias }) => {
@@ -135,5 +135,24 @@ describe('policy text import', () => {
     const fallback = getEffectivePolicy({ versions: [prior] }, now);
     expect(fallback).toMatchObject({ confirmed: false, policy: { plans: prior.plans } });
     expect(getPolicyVersion({ versions: [prior] }, '2026-08')).toBe(prior);
+  });
+});
+
+describe('plan review issues', () => {
+  const valid = { ...emptyPolicy, plans: { ...emptyPolicy.plans, food: 200_000, education: 150_000, transport: 150_000, cafe: 200_000 } };
+
+  it('marks nothing for a plan that meets every limit', () => {
+    expect(getPlanIssueItems(valid)).toEqual([]);
+  });
+
+  it('marks every item of a group whose sum misses the group limit, not the other group', () => {
+    const short = { ...valid, plans: { ...valid.plans, education: 130_000 } };
+    expect(getPlanIssueItems(short)).toEqual(['housing', 'food', 'education', 'transport']);
+    expect(validatePolicyAgainstProfile(short)).toContain('정주비 합계를 500,000원으로 맞춰 주세요.');
+  });
+
+  it('marks only the item that is above its own cap when the group sum is right', () => {
+    const overFood = { ...valid, plans: { ...valid.plans, food: 300_000, education: 50_000 } };
+    expect(getPlanIssueItems(overFood)).toEqual(['food']);
   });
 });

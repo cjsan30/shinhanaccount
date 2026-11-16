@@ -309,3 +309,35 @@
 .plan-editor .policy-preview {
   scroll-margin-top: 96px;
 }
+
+/* Plan review: what to fix (above the save button) and which amount fields. */
+.plan-issues {
+  margin: 14px 0 0;
+  padding: 10px 12px 10px 28px;
+  border: 1px solid #ff7a7a66;
+  border-radius: 10px;
+  background: #ff59591a;
+  color: #ffc5c5;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.plan-issues li + li {
+  margin-top: 4px;
+}
+
+/* !important: the generic sheet input rule sets the border with higher specificity. */
+.plan-amount-input--invalid {
+  border-color: #ff7a7a !important;
+  box-shadow: 0 0 0 1px #ff7a7a;
+}
+
+body.high-contrast .plan-issues,
+body.high-contrast .plan-issues li {
+  color: #fff !important;
+}
+
+body.high-contrast .plan-amount-input--invalid {
+  border-color: #fff !important;
+  box-shadow: 0 0 0 2px #fff;
+}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { emptyPolicy, getAlertTargets, parsePolicyText, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
+import { emptyPolicy, getAlertTargets, getSupportProfile, parsePolicyText, type PolicyItem, type SupportPolicy, type SupportProfileId } from '../../domain/policy';
+import { readPlanTable, type OcrLineBox } from '../../domain/planOcr';
 import { PolicyOcr } from '../../native/policyOcr';
 
 /**
@@ -15,6 +16,15 @@ export function usePolicyDraft(basePolicy: SupportPolicy, notify: (message: stri
   // A parsed plan keeps the saved profile and alert choices until the user changes them.
   const draftFromText = (value: string): SupportPolicy => ({ ...parsePolicyText(value), profileId: basePolicy.profileId, alertTargets: getAlertTargets(basePolicy) });
 
+  // A screenshot of the site's plan table is read by cell position; text parsing is the fallback
+  // (pasted text, or a picture without the table). Cells it cannot read stay 0 and are marked.
+  const draftFromScreenshot = (value: string, lines?: OcrLineBox[]): SupportPolicy => {
+    const fromText = draftFromText(value);
+    const table = lines?.length ? readPlanTable(lines, getSupportProfile(basePolicy.profileId).bucketLimits) : null;
+    if (!table || !Object.keys(table).length) return fromText;
+    return { ...fromText, plans: { ...structuredClone(emptyPolicy.plans), ...table } };
+  };
+
   // An unreadable image keeps the amounts on screen, or opens blank ones to type in.
   const blankDraft = (): SupportPolicy => ({ ...structuredClone(emptyPolicy), profileId: basePolicy.profileId, alertTargets: [] });
 
@@ -28,7 +38,7 @@ export function usePolicyDraft(basePolicy: SupportPolicy, notify: (message: stri
       const result = await PolicyOcr.pickAndRecognize();
       if (!result.text.trim()) { setDraft((current) => current ?? blankDraft()); focusDraft(); notify('이미지에서 금액을 읽지 못했습니다. 항목별 금액을 직접 입력해 주세요.'); return; }
       setText(result.text);
-      setDraft(draftFromText(result.text));
+      setDraft(draftFromScreenshot(result.text, result.lines));
       focusDraft();
       notify('스크린샷의 텍스트를 읽었습니다. 검토 후 확정해 주세요.');
     } catch {
