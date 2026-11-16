@@ -251,87 +251,6 @@
   margin-bottom: 14px;
 }
 
-.sms-diagnostics {
-  margin-top: 24px;
-  padding-top: 22px;
-  border-top: 1px solid var(--color-divider);
-}
-
-.sms-diagnostics h3 {
-  margin: 0;
-}
-
-.sms-diagnostic-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.sms-diagnostic-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.sms-diagnostic-list article {
-  position: relative;
-  padding: 12px 50px 12px 12px;
-  border: 1px solid var(--color-divider);
-  border-radius: 10px;
-  background: #ffffff08;
-}
-
-.sms-diagnostic-list article[data-status="success"] {
-  border-color: #69d5bd44;
-}
-
-.sms-diagnostic-list article[data-status="error"] {
-  border-color: #ff797955;
-}
-
-.sms-diagnostic-list article[data-status="blocked"],
-.sms-diagnostic-list article[data-status="ignored"] {
-  border-color: #f5c66e44;
-}
-
-.sms-diagnostic-list article div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sms-diagnostic-list article strong {
-  font-size: 13px;
-}
-
-.sms-diagnostic-list article time {
-  flex: 0 0 auto;
-  color: #9cabb9;
-  font-size: 11px;
-}
-
-.sms-diagnostic-list article small {
-  display: block;
-  margin-top: 6px;
-  color: #b7c7d9;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.sms-diagnostic-list article code {
-  position: absolute;
-  right: 12px;
-  bottom: 11px;
-  color: #728397;
-  font-size: 10px;
-}
-
-.sms-diagnostic-empty {
-  padding: 14px;
-  border-radius: 10px;
-  background: #ffffff08;
-}
-
 .settings-hub {
   display: grid;
   gap: 14px;
@@ -372,6 +291,38 @@
   top: 50%;
   transform: translateY(-50%);
   color: #4ee3da;
+}
+
+/* Feedback: same width as the entries above, one low line without a description (decision 2026-11-17). */
+.settings-hub .settings-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 12px 20px 12px 24px;
+  border: 1px solid #70e3de2e;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-hub .settings-feedback svg {
+  color: #4ee3da;
+}
+
+/* 앱 안내 · 개인정보: the privacy notice follows the app notice on the same page. */
+.privacy-notice .privacy-notice__title {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: 18px;
+}
+
+body.high-contrast .settings-hub .settings-feedback {
+  border-color: #fff;
+  color: #fff !important;
 }
 
 .operations-settings label {
@@ -871,7 +822,7 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
 }
 
 .privacy-notice {
-  margin-top: 6px;
+  margin-top: 18px;
   padding: 18px;
   border: 1px solid #70e3de2e;
   border-radius: 18px;

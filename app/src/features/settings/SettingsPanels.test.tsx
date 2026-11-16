@@ -1,24 +1,34 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { OperationsSettings, SettingsHub } from './SettingsPanels';
-
-vi.mock('../../components/SmsDiagnostics', () => ({ SmsDiagnostics: () => null }));
 
 describe('SettingsHub', () => {
   it('opens each destination and hides the internal verification entry outside internal builds', () => {
     const onOpen = vi.fn();
     render(<SettingsHub onOpen={onOpen} />);
-    for (const name of [/운영 설정/, /데이터 관리/, /접근성 · 개인화/, /^앱 안내/]) fireEvent.click(screen.getByRole('button', { name }));
+    for (const name of [/카드 · 알림/, /데이터 관리/, /접근성 · 개인화/, /앱 안내 · 개인정보/]) fireEvent.click(screen.getByRole('button', { name }));
     expect(onOpen.mock.calls.map(([destination]) => destination)).toEqual(['operations', 'data', 'accessibility', 'information']);
     expect(screen.queryByRole('button', { name: /실기기 검증/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /피드백 보내기/ })).toHaveAttribute('href', expect.stringMatching(/^mailto:/));
   });
 });
 
+describe('feedback', () => {
+  it('opens the mail with the prepared body when one is provided', async () => {
+    const href = vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, href: '' } as Location);
+    const assigned: string[] = [];
+    Object.defineProperty(href.getMockImplementation()!(), 'href', { set: (value: string) => assigned.push(value), get: () => '' });
+    render(<SettingsHub onOpen={vi.fn()} feedbackBody={async () => '본문'} />);
+    fireEvent.click(screen.getByRole('link', { name: /피드백 보내기/ }));
+    await waitFor(() => expect(assigned[0]).toMatch(/^mailto:.*&body=%EB%B3%B8%EB%AC%B8$/));
+    href.mockRestore();
+  });
+});
+
 describe('OperationsSettings', () => {
   const props = (patch: Partial<Parameters<typeof OperationsSettings>[0]> = {}) => ({
     card: '1234', showCard: false, onToggleShowCard: vi.fn(), onCardChange: vi.fn(), paymentAlertsEnabled: true, budgetAlertsEnabled: false,
-    onTogglePaymentAlerts: vi.fn(), onToggleBudgetAlerts: vi.fn(), thresholds: [50, 80] as [number, number], onThresholdChange: vi.fn(), notify: vi.fn(), ...patch,
+    onTogglePaymentAlerts: vi.fn(), onToggleBudgetAlerts: vi.fn(), thresholds: [50, 80] as [number, number], onThresholdChange: vi.fn(), ...patch,
   });
 
   it('masks the card digits until shown and passes raw input to the caller', () => {

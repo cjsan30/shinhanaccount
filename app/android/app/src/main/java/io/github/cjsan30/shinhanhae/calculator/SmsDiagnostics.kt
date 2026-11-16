@@ -77,6 +77,10 @@ internal fun recordSmsDiagnostic(
             errorType?.takeIf { it.isNotBlank() }?.let { entry.put("errorType", it.take(80)) }
             sourceApp?.takeIf { it.isNotBlank() }?.let { entry.put("sourceApp", it.take(100)) }
             history.put(entry)
+            // Older versions logged every other app's notification; drop those records on the next write.
+            for (index in history.length() - 1 downTo 0) {
+                if (history.optJSONObject(index)?.optString("stage") == SmsDiagnosticStage.NOTIFICATION_SOURCE_UNSUPPORTED) history.remove(index)
+            }
             while (history.length() > MAX_SMS_DIAGNOSTICS) history.remove(0)
             prefs.edit().putString(SMS_DIAGNOSTICS_KEY, history.toString()).commit()
         }

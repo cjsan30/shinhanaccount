@@ -87,16 +87,9 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
     private fun processNotification(sbn: StatusBarNotification) {
         val prefs = secureSmsPreferences(this)
         val eventId = newSmsDiagnosticEventId()
-        if (!isApprovalNotificationSource(sbn.packageName, packageName, sbn.notification.channelId)) {
-            recordSmsDiagnostic(
-                prefs,
-                eventId,
-                SmsDiagnosticStage.NOTIFICATION_SOURCE_UNSUPPORTED,
-                status = "skipped",
-                sourceApp = sbn.packageName,
-            )
-            return
-        }
+        // Other apps' notifications leave no trace, not even their package name: the diagnostics
+        // keep only payment-notification records and are sent with feedback (decision 2026-11-17).
+        if (!isApprovalNotificationSource(sbn.packageName, packageName, sbn.notification.channelId)) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
             recordSmsDiagnostic(
                 prefs,
