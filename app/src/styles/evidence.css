@@ -950,3 +950,131 @@ body.high-contrast .sheet .evidence-missing > div > button {
   cursor: not-allowed;
   opacity: .42;
 }
+
+/* In-app PDF preview: full screen, pages scroll top to bottom, actions stay at the bottom. */
+.pdf-preview {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1118;
+  color: var(--color-text);
+}
+
+.pdf-preview__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__header strong {
+  font-size: 18px;
+}
+
+.pdf-preview__header span {
+  color: #b9c0c8;
+  font-size: 14px;
+}
+
+.pdf-preview__pages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 16px 24px;
+}
+
+.pdf-preview__page {
+  margin: 0 0 18px;
+  overflow-x: auto;
+}
+
+.pdf-preview__page button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.pdf-preview__page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.pdf-preview__page.is-zoomed button {
+  width: 220%;
+  cursor: zoom-out;
+}
+
+.pdf-preview__page figcaption {
+  margin-top: 6px;
+  color: #b9c0c8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.pdf-preview__footer {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__footer p {
+  margin: 0 0 10px;
+  color: #ffc5c5;
+  font-size: 13px;
+}
+
+.pdf-preview__footer div {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 10px;
+}
+
+.pdf-preview__close,
+.pdf-preview__save {
+  min-height: 48px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pdf-preview__close {
+  border: 1px solid var(--color-divider-strong);
+  background: var(--color-fill);
+  color: var(--color-text);
+}
+
+.pdf-preview__save {
+  border: 0;
+  background: #eef0f2;
+  color: #151a20;
+}
+
+.pdf-preview__close:disabled,
+.pdf-preview__save:disabled {
+  opacity: .42;
+}
+
+body.high-contrast .pdf-preview :is(strong, span, figcaption, p, .pdf-preview__close) {
+  color: #fff !important;
+}
+
+body.high-contrast .pdf-preview .pdf-preview__save {
+  background: #fff !important;
+  color: #000 !important;
+}

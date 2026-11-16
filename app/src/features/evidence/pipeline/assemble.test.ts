@@ -94,7 +94,7 @@ describe('evidence PDF assembly', () => {
 
   it('fails with a clear message when no profile fits', async () => {
     pdfState.saveSizes = [TARGET_BYTES + 1, TARGET_BYTES + 1, TARGET_BYTES + 1];
-    await expect(assembleEvidencePdf(input())).rejects.toThrow('5MB 이하로 만들 수 없습니다');
+    await expect(assembleEvidencePdf(input())).rejects.toThrow('4.5MB 이하로 만들 수 없습니다');
   });
 
   it('hands every profile to a quality comparison and stops if one is too large', async () => {
@@ -102,7 +102,7 @@ describe('evidence PDF assembly', () => {
     await assembleEvidencePdf(input({ onComparison }));
     expect(onComparison.mock.calls.map(([profileId]) => profileId)).toEqual(['default', 'compact', 'minimum']);
     pdfState.saveSizes = [1000, TARGET_BYTES + 1];
-    await expect(assembleEvidencePdf(input({ onComparison: vi.fn(async () => undefined) }))).rejects.toThrow('compact 품질의 PDF가 5MB 제한을 넘습니다');
+    await expect(assembleEvidencePdf(input({ onComparison: vi.fn(async () => undefined) }))).rejects.toThrow('compact 품질의 PDF가 4.5MB 제한을 넘습니다');
   });
 
   it('stops between pages when cancelled', async () => {

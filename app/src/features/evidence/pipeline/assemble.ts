@@ -121,12 +121,12 @@ export async function assembleEvidencePdf(input: EvidenceAssembly): Promise<Uint
     bytes = await pdf.save({ useObjectStreams: true });
     if (isCancelled()) throw new ExportCancelled();
     if (onComparison) {
-      if (bytes.byteLength > TARGET_BYTES) throw new Error(`${profile.id} 품질의 PDF가 5MB 제한을 넘습니다. 영수증 수나 불필요한 페이지를 줄여 다시 비교해 주세요.`);
+      if (bytes.byteLength > TARGET_BYTES) throw new Error(`${profile.id} 품질의 PDF가 4.5MB 제한을 넘습니다. 영수증 수나 불필요한 페이지를 줄여 다시 비교해 주세요.`);
       await onComparison(profile.id, bytes);
       continue;
     }
     if (bytes.byteLength <= TARGET_BYTES) break;
   }
-  if (!onComparison && bytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 5MB 이하로 만들 수 없습니다. 원본이 너무 큰 경우 불필요한 페이지를 줄인 뒤 다시 생성해 주세요.');
+  if (!onComparison && bytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 4.5MB 이하로 만들 수 없습니다. 원본이 너무 큰 경우 불필요한 페이지를 줄인 뒤 다시 생성해 주세요.');
   return bytes;
 }
