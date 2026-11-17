@@ -435,33 +435,6 @@
   border-radius: 16px;
   background: #fff;
 }
-
-.onboarding-history-guide {
-  margin: 14px 0 20px;
-  padding: 14px;
-  border-left: 3px solid #72d6cf;
-  border-radius: 0 12px 12px 0;
-  background: #172f3b;
-}
-
-.onboarding-history-guide strong {
-  display: block;
-  color: #e9f5f7;
-  font-size: 14px;
-}
-
-.onboarding-history-guide p {
-  margin: 7px 0 0 !important;
-  color: #bfd0de !important;
-  font-size: 13px !important;
-  line-height: 1.65 !important;
-}
-
-.onboarding-history-guide b {
-  color: var(--color-accent);
-  font-weight: 750;
-}
-
 /* Information stays readable in small viewports and the largest text setting. */
 
 .first-run--applicant {

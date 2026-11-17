@@ -279,19 +279,6 @@ body.high-contrast :is(button,input,select) {
   outline-color: #fff !important;
 }
 
-@keyframes evidence-warning-pulse {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  35% {
-    transform: translateX(-3px);
-  }
-  70% {
-    transform: translateX(3px);
-  }
-}
-
 .app-help-trigger {
   display: grid;
   place-items: center;
