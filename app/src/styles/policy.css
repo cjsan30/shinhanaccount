@@ -206,7 +206,7 @@
 
 /* .secondary-action forces a 10px top margin; both buttons sit on one line here. */
 .plan-view__actions .sheet-action {
-  margin-top: 0 !important;
+  margin-top: 0;
 }
 
 .sheet .plan-view__item {
