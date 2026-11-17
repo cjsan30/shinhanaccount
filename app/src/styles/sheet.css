@@ -49,6 +49,11 @@
   touch-action: none;
 }
 
+/* Focus moves to the sheet itself when it opens; the sheet is a container, not a control. */
+.sheet:focus {
+  outline: none;
+}
+
 .sheet {
   width: min(560px,100%);
   max-height: 78svh;
