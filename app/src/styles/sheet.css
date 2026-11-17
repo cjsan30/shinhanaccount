@@ -134,7 +134,7 @@
 }
 
 .file-picker {
-  padding: 13px !important;
+  padding: 13px;
   border: 1px solid var(--color-divider-strong);
   border-radius: 10px;
   background: var(--color-fill);
@@ -142,8 +142,9 @@
   font-weight: 700;
 }
 
-.file-picker input {
-  display: none !important;
+/* The picker is the label itself; the file input stays hidden. Specific enough to beat `.sheet input:not([type="range"])`. */
+label.file-picker input[type="file"] {
+  display: none;
 }
 
 .import-preview .sheet-action {
