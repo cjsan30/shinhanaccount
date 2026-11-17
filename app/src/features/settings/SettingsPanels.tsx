@@ -18,7 +18,7 @@ export function SettingsHub({ onOpen, feedbackBody }: { onOpen: (destination: Se
   return <section className="settings-hub">
     <button className="settings-destination" onClick={() => onOpen('operations')}><strong>카드 · 알림</strong><span>카드 끝 4자리 · 결제 알림 · 예산 경고</span><CaretRight size={26} /></button>
     <button className="settings-destination" onClick={() => onOpen('data')}><strong>데이터 관리</strong><span>분류 규칙 · 백업 · 점검 · 초기화</span><CaretRight size={26} /></button>
-    <button className="settings-destination" onClick={() => onOpen('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 고대비 · 진동</span><CaretRight size={26} /></button>
+    <button className="settings-destination" onClick={() => onOpen('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 진동</span><CaretRight size={26} /></button>
     {import.meta.env.MODE === 'internal' && <button className="settings-destination" onClick={() => onOpen('verification')}><strong>실기기 검증</strong><span>자동 확인 · Yes/No 최종 판정</span><CaretRight size={26} /></button>}
     <button className="settings-destination" onClick={() => onOpen('information')}><strong>앱 안내 · 개인정보</strong><span>비공식 앱 안내 · 개인정보 처리</span><CaretRight size={26} /></button>
     <a className="settings-feedback" href={FEEDBACK_MAIL} onClick={(event) => { void sendFeedback(event); }}>피드백 보내기<CaretRight size={20} /></a>

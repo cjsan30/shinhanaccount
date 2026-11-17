@@ -537,12 +537,6 @@
   line-height: 1.45;
 }
 
-body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payment-row,.payment-detail__hero,.onboarding-policy__group,.first-run__card,.import-card__upload) {
-  border-color: #fff !important;
-  background: #000 !important;
-  color: #fff !important;
-}
-
 .import-page {
   min-height: 100svh;
   max-width: 560px;
@@ -1225,15 +1219,6 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
   .reclassify-card__meta .support-amount-toggle {
     font-size: 14px;
   }
-}
-
-body.high-contrast .sheet .support-amount-toggle {
-  color: #fff;
-  background: transparent;
-}
-
-body.high-contrast .support-amount-controls :is(small, .support-amount-review) {
-  color: #fff;
 }
 
 .reclassify-card--portion .reclassify-card__merchant {

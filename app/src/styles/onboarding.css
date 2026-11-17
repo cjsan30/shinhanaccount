@@ -462,7 +462,3 @@
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
-
-body.high-contrast :is(.app-information-content p, .app-information-content h3, .onboarding-app-notice p) {
-  color: #fff;
-}
