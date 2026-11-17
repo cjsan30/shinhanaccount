@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyLedger } from '../domain/ledger';
 
@@ -19,6 +19,17 @@ describe('backup export', () => {
     vi.clearAllMocks();
     encryptBackup.mockResolvedValue(new Blob(['encrypted']));
     vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+
+  it('splits backup and restore into two blocks with the file picker under restore', () => {
+    render(<BackupRestore {...props} embedded />);
+    const backup = screen.getByRole('heading', { name: '백업 만들기' }).closest('.backup-block') as HTMLElement;
+    const restore = screen.getByRole('heading', { name: '백업에서 복원' }).closest('.backup-block') as HTMLElement;
+    expect(within(backup).getByLabelText('백업 비밀번호')).toBeInTheDocument();
+    expect(within(backup).queryByLabelText('백업 파일')).not.toBeInTheDocument();
+    expect(within(restore).getByLabelText('백업 파일')).toBeInTheDocument();
+    expect(within(restore).getByLabelText('복원 비밀번호')).toBeInTheDocument();
+    expect(within(restore).getByRole('button', { name: '백업으로 복원하기' })).toBeDisabled();
   });
 
   it('reports the direct Downloads path after saving', async () => {

@@ -6,7 +6,7 @@ export type SettingsDestination = 'operations' | 'data' | 'accessibility' | 'ver
 
 const FEEDBACK_MAIL = 'mailto:cjsan30@gmail.com?subject=%5B%EC%8B%A0%EC%B2%AD%ED%95%B4%20%EA%B3%84%EC%82%B0%EA%B8%B0%5D%20%ED%94%BC%EB%93%9C%EB%B0%B1';
 
-/** Settings home (decision 2026-11-17): four entries and a small feedback row. */
+/** Settings home (decision 2026-11-17): four entries as one-line titles and a small feedback row. */
 export function SettingsHub({ onOpen, feedbackBody }: { onOpen: (destination: SettingsDestination) => void; feedbackBody?: () => Promise<string> }) {
   const sendFeedback = async (event: { preventDefault: () => void }) => {
     if (!feedbackBody) return;
@@ -16,11 +16,11 @@ export function SettingsHub({ onOpen, feedbackBody }: { onOpen: (destination: Se
     window.location.href = body ? withMailBody(FEEDBACK_MAIL, body) : FEEDBACK_MAIL;
   };
   return <section className="settings-hub">
-    <button className="settings-destination" onClick={() => onOpen('operations')}><strong>카드 · 알림</strong><span>카드 끝 4자리 · 결제 알림 · 예산 경고</span><CaretRight size={26} /></button>
-    <button className="settings-destination" onClick={() => onOpen('data')}><strong>데이터 관리</strong><span>분류 규칙 · 백업 · 점검 · 초기화</span><CaretRight size={26} /></button>
-    <button className="settings-destination" onClick={() => onOpen('accessibility')}><strong>접근성 · 개인화</strong><span>글자 크기 · 진동</span><CaretRight size={26} /></button>
-    {import.meta.env.MODE === 'internal' && <button className="settings-destination" onClick={() => onOpen('verification')}><strong>실기기 검증</strong><span>자동 확인 · Yes/No 최종 판정</span><CaretRight size={26} /></button>}
-    <button className="settings-destination" onClick={() => onOpen('information')}><strong>앱 안내 · 개인정보</strong><span>비공식 앱 안내 · 개인정보 처리</span><CaretRight size={26} /></button>
+    <button className="settings-destination" onClick={() => onOpen('operations')}><strong>카드 · 알림</strong><CaretRight size={22} /></button>
+    <button className="settings-destination" onClick={() => onOpen('data')}><strong>데이터 관리</strong><CaretRight size={22} /></button>
+    <button className="settings-destination" onClick={() => onOpen('accessibility')}><strong>접근성 · 개인화</strong><CaretRight size={22} /></button>
+    {import.meta.env.MODE === 'internal' && <button className="settings-destination" onClick={() => onOpen('verification')}><strong>실기기 검증</strong><CaretRight size={22} /></button>}
+    <button className="settings-destination" onClick={() => onOpen('information')}><strong>앱 안내 · 개인정보</strong><CaretRight size={22} /></button>
     <a className="settings-feedback" href={FEEDBACK_MAIL} onClick={(event) => { void sendFeedback(event); }}>피드백 보내기<CaretRight size={20} /></a>
   </section>;
 }

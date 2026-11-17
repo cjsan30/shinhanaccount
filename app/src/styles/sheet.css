@@ -168,10 +168,6 @@ label.file-picker input[type="file"] {
   background: #74869a;
 }
 
-.backup-card .file-picker {
-  margin-top: 18px;
-}
-
 .sheet select {
   display: block;
   width: 100%;
