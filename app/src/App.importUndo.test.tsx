@@ -88,7 +88,7 @@ describe('undo the latest import (decision 2026-11-18)', () => {
     fireEvent.click(screen.getByRole('button', { name: '방금 가져온 내역 되돌리기' }));
     await waitFor(() => expect(screen.queryByText('테스트 가져오기 식당')).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: '방금 가져온 내역 되돌리기' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/가져오기 당시 집계/)).not.toBeInTheDocument();
+    expect(screen.queryByText('가져오기 결과')).not.toBeInTheDocument();
   });
 
   it('also removes the statement PDF the import added to 사용보고서', async () => {
