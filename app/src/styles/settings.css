@@ -85,21 +85,29 @@
 }
 
 .policy-amount {
-  display: flex !important;
   align-items: center;
   justify-content: space-between;
-  margin: 0 !important;
   color: #c9d0d8;
   font-size: 13px;
 }
 
+/* Above `.sheet label`. */
+.policy-preview label.policy-amount {
+  display: flex;
+  margin: 0;
+}
+
 .policy-amount input {
-  width: 108px !important;
-  margin: 0 !important;
-  padding: 7px 8px !important;
   text-align: right;
-  letter-spacing: 0 !important;
   font-size: 13px;
+}
+
+/* Above `.sheet input:not([type="range"])` (sheet) and the onboarding input rules. */
+.policy-preview label.policy-amount input:not([type="range"]) {
+  width: 108px;
+  margin: 0;
+  padding: 7px 8px;
+  letter-spacing: 0;
 }
 
 .policy-lines {
@@ -322,7 +330,7 @@
 
 body.high-contrast .settings-hub .settings-feedback {
   border-color: #fff;
-  color: #fff !important;
+  color: #fff;
 }
 
 .operations-settings label {
@@ -783,12 +791,16 @@ header .settings-button svg {
   font-weight: 800;
 }
 
+/* Above `.sheet label`. */
+.sheet label.accessibility-settings__toggle {
+  display: flex;
+  margin: 0;
+}
+
 .accessibility-settings__toggle {
-  display: flex !important;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin: 0 !important;
   padding: 15px 0;
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -805,11 +817,15 @@ header .settings-button svg {
 }
 
 .accessibility-settings__toggle input {
-  display: block !important;
-  width: 22px !important;
   height: 22px;
-  margin: 0 !important;
   accent-color: #6bddcf;
+}
+
+/* Above `.sheet input:not([type="range"])`. */
+.sheet .accessibility-settings__toggle input[type="checkbox"] {
+  display: block;
+  width: 22px;
+  margin: 0;
 }
 
 body.high-contrast :is(.first-run__start,.new-payment,.accessibility-settings__choices button.is-selected,.recovery-notice button) {
@@ -990,9 +1006,9 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
 }
 
 .verification-pass {
-  border-color: #6dded4 !important;
-  background: var(--color-accent) !important;
-  color: #102630 !important;
+  border-color: #6dded4;
+  background: var(--color-accent);
+  color: #102630;
 }
 
 .verification-fail {
@@ -1171,7 +1187,7 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
 }
 
 body.high-contrast .app-information-notice {
-  border-color: #fff !important;
-  background: #000 !important;
-  color: #fff !important;
+  border-color: #fff;
+  background: #000;
+  color: #fff;
 }
