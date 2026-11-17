@@ -574,11 +574,11 @@ describe('EvidenceExport', () => {
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
     expect(await screen.findByText('입출금내역 표를 읽지 못했습니다. PDF 비밀번호와 파일 형식을 확인해 주세요.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'fake-pdf-pass-d' } });
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
 
     await waitFor(() => expect(screen.getByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument());
-    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'test-pass');
+    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'fake-pdf-pass-d');
   });
 
   it('connects additional proof only to eligible housing or transport payments', async () => {
