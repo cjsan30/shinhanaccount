@@ -182,8 +182,30 @@
   letter-spacing: -.04em;
 }
 
-.backup-card>p {
-  margin-top: 8px;
+/* Backup and restore as two separate blocks (decision 2026-11-18). */
+.backup-block {
+  padding: 18px 16px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  background: #ffffff08;
+}
+
+.backup-block + .backup-block {
+  margin-top: 14px;
+}
+
+.backup-block h4 {
+  margin: 0 0 6px;
+  color: var(--color-text);
+  font-size: 16px;
+}
+
+.backup-block p {
+  margin: 0;
+}
+
+.backup-block .file-picker {
+  margin-top: 14px;
 }
 
 .backup-file {
@@ -271,10 +293,10 @@
 .settings-destination {
   position: relative;
   width: 100%;
-  min-height: 136px;
-  padding: 27px 60px 27px 24px;
+  min-height: 64px;
+  padding: 0 52px 0 20px;
   border: 1px solid #70e3de2e;
-  border-radius: 20px;
+  border-radius: 16px;
   color: #f5f7fa;
   background: linear-gradient(135deg,#17304a,#172338);
   text-align: left;
@@ -282,20 +304,13 @@
 
 .settings-destination strong {
   display: block;
-  font-size: 26px;
-  letter-spacing: -.05em;
-}
-
-.settings-destination span {
-  display: block;
-  margin-top: 11px;
-  color: var(--color-text-secondary);
-  font-size: 15px;
+  font-size: 19px;
+  letter-spacing: -.03em;
 }
 
 .settings-destination svg {
   position: absolute;
-  right: 22px;
+  right: 18px;
   top: 50%;
   transform: translateY(-50%);
   color: #4ee3da;
@@ -538,30 +553,6 @@ header .settings-button svg {
   color: #b8c6d6;
   font-size: 13px;
   line-height: 1.55;
-}
-
-.data-integrity ul {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.data-integrity li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #ffffff0a;
-  color: #cbd8e6;
-  font-size: 13px;
-}
-
-.data-integrity li b {
-  color: var(--color-accent);
-  font-variant-numeric: tabular-nums;
 }
 
 .data-integrity label {

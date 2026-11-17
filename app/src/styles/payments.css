@@ -1088,6 +1088,20 @@
   font-weight: 700;
 }
 
+/* Undo the latest import right under its result (decision 2026-11-18). */
+.import-merge-summary .import-undo {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.import-undo__note {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Physical-device regression: preserve text scaling instead of clipping enlarged labels. */
 
 .reclassify-card__meta {

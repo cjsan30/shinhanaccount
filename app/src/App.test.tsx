@@ -303,9 +303,10 @@ describe('app entry flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /데이터 관리/ }));
 
     const summaries = await screen.findAllByText(/^(거래내역|자동 분류 규칙|계획표|백업 · 복원|누락 가능성 점검|데이터 초기화)$/);
+    // 누락 가능성 점검 was removed (decision 2026-11-18).
     // The plan moved to the dashboard ("계획 보기").
     // 거래내역 가져오기 lives on the home screen only (decision 2026-11-17).
-    expect(summaries.map((node) => node.textContent)).toEqual(['자동 분류 규칙', '백업 · 복원', '누락 가능성 점검', '데이터 초기화']);
+    expect(summaries.map((node) => node.textContent)).toEqual(['자동 분류 규칙', '백업 · 복원', '데이터 초기화']);
     expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   });
 

@@ -1,4 +1,3 @@
-import type { PolicyPeriod } from '../domain/budget';
 import type { BackupPayload } from '../domain/backup';
 import type { ImportResult, Ledger } from '../domain/ledger';
 import type { ImportedCardTransaction } from '../domain/shinhanImport';
@@ -21,10 +20,6 @@ type Props = {
   onPreviewImport: () => void;
   onApplyImport: () => void;
   onOpenRules: () => void;
-  periodKey: string;
-  period?: PolicyPeriod;
-  canUndoImport: boolean;
-  onUndoImport: () => void;
   onResetData: (scopes: Array<'ledger' | 'rules' | 'policy'>) => void;
   onRestore: (payload: BackupPayload) => void;
   notify: (message: string) => void;
@@ -42,6 +37,6 @@ export function DataManagementPanel(props: Props) {
       <div className="data-section__body"><BackupRestore embedded ledger={props.ledger} policyBook={props.policyBook} merchantRules={props.merchantRules} onRestore={props.onRestore} notify={props.notify} /></div>
     </details>
 
-    <DataIntegrityPanel ledger={props.ledger} periodKey={props.periodKey} period={props.period} canUndoImport={props.canUndoImport} onUndoImport={props.onUndoImport} onReset={props.onResetData} />
+    <DataIntegrityPanel onReset={props.onResetData} />
   </section>;
 }

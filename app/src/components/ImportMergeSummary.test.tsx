@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { createEmptyLedger, type LedgerEntry } from '../domain/ledger';
 import { resolveImportDuplicate } from '../domain/importReconciliation';
 import { ImportMergeSummary } from './ImportMergeSummary';
@@ -36,6 +36,17 @@ describe('import summary separates historical results from remaining reviews', (
   it('ignores missing, self-referential and non-undecided candidates', () => {
     render(<ImportMergeSummary summary={summary} entries={[original, { ...pending, duplicateCandidateIds: ['missing', pending.id] }]} />);
     expect(screen.getByText('현재 중복 확인 필요 0건')).toBeInTheDocument();
+  });
+
+  it('offers undo with its note only while the latest import can be undone', () => {
+    const onUndo = vi.fn();
+    const { rerender } = render(<ImportMergeSummary summary={summary} entries={[original]} onUndo={onUndo} />);
+    fireEvent.click(screen.getByRole('button', { name: '방금 가져온 내역 되돌리기' }));
+    expect(onUndo).toHaveBeenCalledOnce();
+    expect(screen.getByText('앱을 닫기 전까지만 되돌릴 수 있습니다.')).toBeInTheDocument();
+    rerender(<ImportMergeSummary summary={summary} entries={[original]} />);
+    expect(screen.queryByRole('button', { name: '방금 가져온 내역 되돌리기' })).not.toBeInTheDocument();
+    expect(screen.queryByText('앱을 닫기 전까지만 되돌릴 수 있습니다.')).not.toBeInTheDocument();
   });
 
   it('does not show an empty import summary on an ordinary undecided screen', () => {
