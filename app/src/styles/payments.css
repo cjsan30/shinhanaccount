@@ -209,7 +209,11 @@
   padding: 12px;
   border-radius: 10px;
   background: #ffffff0b;
-  color: var(--color-text-label) !important;
+}
+
+/* Above `.sheet p`. */
+.sheet .undecided-summary {
+  color: var(--color-text-label);
 }
 
 .previous-undecided .reclassify-card {
@@ -231,8 +235,12 @@
   padding-top: 18px;
 }
 
+/* Above `.undecided-quick-action > div`. */
+.undecided-quick-action > .undecided-quick-action__buttons {
+  display: grid;
+}
+
 .undecided-quick-action__buttons {
-  display: grid !important;
   grid-template-columns: minmax(0,1fr) repeat(2,minmax(0,1fr));
   align-items: center;
   gap: 8px;
@@ -242,8 +250,12 @@
   padding-top: 14px;
 }
 
+/* Above `.sheet p`. */
+.sheet .payment-history__summary {
+  margin: 0 0 18px;
+}
+
 .payment-history__summary {
-  margin: 0 0 18px !important;
   color: #b8c6d6;
   font-size: 13px;
 }
@@ -699,14 +711,15 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 }
 
 .import-card__guide p {
-  margin: 0 !important;
-  color: #c5d3df !important;
-  font-size: 13px !important;
+  margin: 0;
+  color: #c5d3df;
+  font-size: 13px;
   line-height: 1.55;
 }
 
-.import-card__intro {
-  margin-bottom: 14px !important;
+/* Above `.import-card__upload > p`. */
+.import-card__upload > p.import-card__intro {
+  margin-bottom: 14px;
 }
 
 .import-card__open-app {
@@ -885,7 +898,7 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 }
 
 .undecided-quick-action .undecided-rule {
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   width: 100%;
@@ -921,22 +934,29 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 
 .undecided-check {
   position: static;
-  display: flex !important;
   align-items: center;
-  margin: 0 !important;
   transform: none;
+}
+
+/* Above `.sheet label` and `.sheet input:not([type="range"])`. */
+.sheet .undecided-check {
+  display: flex;
+  margin: 0;
 }
 
 .undecided-check input,
 .undecided-bulk input {
-  display: block !important;
-  width: 18px !important;
   height: 18px;
-  margin: 0 !important;
 }
 
-.undecided-bulk label {
-  margin: 0 !important;
+.sheet :is(.undecided-check, .undecided-bulk) input[type="checkbox"] {
+  display: block;
+  width: 18px;
+  margin: 0;
+}
+
+.sheet .undecided-bulk label {
+  margin: 0;
 }
 
 .reclassify-card__merchant {
@@ -1208,12 +1228,12 @@ body.high-contrast :is(.panel,.settings-destination,.quick>button,.budget,.payme
 }
 
 body.high-contrast .sheet .support-amount-toggle {
-  color: #fff !important;
-  background: transparent !important;
+  color: #fff;
+  background: transparent;
 }
 
 body.high-contrast .support-amount-controls :is(small, .support-amount-review) {
-  color: #fff !important;
+  color: #fff;
 }
 
 .reclassify-card--portion .reclassify-card__merchant {
