@@ -49,6 +49,11 @@
   touch-action: none;
 }
 
+/* Focus moves to the sheet title when it opens; the title is not a control. */
+.sheet > header h2:focus {
+  outline: none;
+}
+
 .sheet {
   width: min(560px,100%);
   max-height: 78svh;
