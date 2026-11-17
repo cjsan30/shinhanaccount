@@ -66,6 +66,22 @@ describe('SpotlightGuide', () => {
     fireEvent.keyDown(dialog, { key: 'Tab' }); expect(screen.getByRole('button', { name: '건너뛰기' })).toHaveFocus();
     fireEvent.keyDown(dialog, { key: 'Escape' }); expect(close).toHaveBeenCalledOnce();
   });
+  it('shows the fallback text only while the step points at its fallback target', async () => {
+    const section = document.createElement('section'); section.id = 'whole'; section.scrollIntoView = vi.fn();
+    section.getBoundingClientRect = () => ({ left: 10, right: 310, top: 50, bottom: 200, width: 300, height: 150, x: 10, y: 50, toJSON: () => ({}) });
+    document.body.append(section);
+    const { unmount } = render(<SpotlightGuide title="안내" steps={[{ target: '#detail', fallbackTarget: '#whole', title: '모자이크', body: '기본 설명', fallbackBody: '파일을 추가하면 고를 수 있어요' }]} onClose={vi.fn()} />);
+    expect(await screen.findByText('파일을 추가하면 고를 수 있어요')).toBeInTheDocument();
+    expect(screen.queryByText('기본 설명')).not.toBeInTheDocument();
+    unmount();
+    const detail = document.createElement('button'); detail.id = 'detail'; detail.scrollIntoView = vi.fn();
+    detail.getBoundingClientRect = section.getBoundingClientRect;
+    document.body.append(detail);
+    render(<SpotlightGuide title="안내" steps={[{ target: '#detail', fallbackTarget: '#whole', title: '모자이크', body: '기본 설명', fallbackBody: '파일을 추가하면 고를 수 있어요' }]} onClose={vi.fn()} />);
+    expect(await screen.findByText('기본 설명')).toBeInTheDocument();
+    section.remove(); detail.remove();
+  });
+
   it('highlights a fallback target and closes on Android back without changing the screen', async () => {
     const target = document.createElement('button'); target.id = 'fallback'; target.scrollIntoView = vi.fn();
     target.getBoundingClientRect = () => ({ left: 10, right: 110, top: 50, bottom: 100, width: 100, height: 50, x: 10, y: 50, toJSON: () => ({}) });

@@ -29,7 +29,7 @@ import { Sentences } from '../../components/Sentences';
 // 사용보고서 작성 도움말 (decision 2026-11-17).
 const PDF_GUIDE_STEPS: readonly GuideStep[] = [
   { target: '[data-guide="statement"] > .file-picker', title: '입출금내역을 추가하세요', body: '사용보고서에 추가될 입출금내역을 추가하세요.' },
-  { target: '.statement-redaction > summary', fallbackTarget: '[data-guide="statement"] > .file-picker', title: '모자이크할 내역을 확인하세요', body: '사용보고서에 모자이크가 필요한 부분을 체크해 주세요. 입금과 기간 외 내역은 자동으로 모자이크 처리됩니다.' },
+  { target: '.statement-redaction > summary', fallbackTarget: '[data-guide="statement"]', title: '모자이크할 내역을 확인하세요', body: '사용보고서에 모자이크가 필요한 부분을 체크해 주세요. 입금과 기간 외 내역은 자동으로 모자이크 처리됩니다.', fallbackBody: '사용보고서에 모자이크가 필요한 부분을 체크해 주세요. 입금과 기간 외 내역은 자동으로 모자이크 처리됩니다. 입출금내역을 추가하면 파일마다 모자이크할 행을 고를 수 있어요.' },
   { target: '[data-guide="transactionProof"] > .file-picker', title: '추가 증빙은 필요한 경우만', body: '주거비·교통비 결제를 보완할 계좌이체 확인서 등이 있다면 추가하고 해당 결제에 연결하세요.' },
   { target: '.receipt-overview', fallbackTarget: '[data-guide="receipt"] > .file-picker', title: '결제별 영수증을 확인하세요', body: '이번 기간 결제와 연결된 영수증을 한눈에 볼 수 있어요. 영수증 없는 결제를 누르면 사진을 골라 바로 연결할 수 있어요. 연결은 선택 사항입니다.' },
   { target: '[data-guide="receipt"] > .file-picker', title: '영수증을 추가하세요', body: '사진이나 스캔 이미지를 한꺼번에 추가할 수도 있어요. 추가한 영수증은 [영수증 N장 보기]에서 날짜를 확인하고 결제를 연결하세요.' },
