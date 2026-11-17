@@ -139,6 +139,8 @@ function App() {
   const [verification, setVerification] = useState<VerificationState>(initialState.verification ?? createVerificationState());
   const ledgerRef = useRef(ledger);
   const reportEvidenceRef = useRef(reportEvidence);
+  // The 사용보고서 statement attached by the latest import, removed again by its undo (decision 2026-11-18).
+  const undoImportStatementIdRef = useRef<string | null>(null);
   const verificationRef = useRef(verification);
   const [importTransactions, setImportTransactions] = useState<ImportedCardTransaction[] | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -536,13 +538,22 @@ function App() {
     setUndoImportLedger(null);
     setImportResult(null);
     setLatestImportSummary('');
-    show('방금 가져온 결제 내역을 되돌렸습니다.');
+    const statementId = undoImportStatementIdRef.current;
+    undoImportStatementIdRef.current = null;
+    const statement = statementId ? reportEvidenceRef.current.find((record) => record.id === statementId) : undefined;
+    if (statement) {
+      const remaining = reportEvidenceRef.current.filter((record) => record.id !== statementId);
+      reportEvidenceRef.current = remaining;
+      setReportEvidence(remaining);
+      void removeStoredEvidence(statement.stored).catch(() => undefined);
+    }
+    show(statement ? '방금 가져온 결제 내역과 사용보고서에 추가한 입출금내역 PDF를 되돌렸습니다.' : '방금 가져온 결제 내역을 되돌렸습니다.');
   };
   const resetSelectedData = (scopes: Array<'ledger' | 'rules' | 'policy'>) => {
     const next = resetAppData({ ledger: ledgerRef.current, policyBook: policyBookRef.current, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current }, scopes);
     ledgerRef.current = next.ledger; policyBookRef.current = next.policyBook; merchantRulesRef.current = next.merchantRules;
     setLedger(next.ledger); setPolicyBook(next.policyBook); setMerchantRules(next.merchantRules); setReportEvidence(next.reportEvidence ?? []);
-    if (scopes.includes('ledger')) { setUndoImportLedger(null); setImportResult(null); setLatestImportSummary(''); }
+    if (scopes.includes('ledger')) { setUndoImportLedger(null); undoImportStatementIdRef.current = null; setImportResult(null); setLatestImportSummary(''); }
     show('선택한 데이터를 초기화했습니다.');
   };
   const applyBudgetAdjustment = async (transfer: BudgetTransfer) => {
@@ -765,7 +776,7 @@ function App() {
   else if (panel === 'cancel') content = <PaymentCancel entry={cancellationTarget} amount={cancellationAmount} onAmountChange={setCancellationAmount} onConfirm={confirmCancellation} />;
   else if (panel === 'cancel-review') content = <CancellationReview ledger={ledger} notices={cancellationReviews} onConfirm={confirmCancellationReview} />;
   else if (panel === 'evidence') content = <EvidenceExport helpRequest={pdfHelpRequest} reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={reportSummary} entries={ledger.entries} periodKey={activePolicy.periodKey} period={policy.period} onNotify={show} />;
-  else if (panel === 'import') content = <TransactionImport cardLast4={card} periodKey={activePolicy.periodKey} period={policy.period} notify={show} onImport={(payload: TransactionImportPayload) => { if (payload.statement) { const statement = payload.statement; const total = reportEvidenceRef.current.reduce((sum, item) => sum + item.stored.size, 0); if (total + statement.file.size > 120 * 1024 * 1024) show('거래내역은 가져오지만 제출 원본 합계 120MB를 초과해 PDF 첨부는 추가하지 않습니다.'); else void storeEvidence(statement.file).then((stored) => setReportEvidence((current) => [...current, { id: crypto.randomUUID(), stored, section: 'statement', statementRows: toStatementRows(statement.transactions), excludedStatementRowIds: [], statementParseFailed: false, statementSourceRequiresPassword: statement.requiresPassword, order: Math.max(-1, ...current.filter((item) => item.section === 'statement').map((item) => item.order)) + 1 }])).catch(() => show('거래내역은 가져왔지만 사용보고서 원본 저장에 실패했습니다. 사용보고서 작성 화면에서 다시 추가해 주세요.')); } const result = payload.source === 'account' ? importBankTransactions(ledger, payload.bankTransactions ?? [], payload.identifierLast4, activePolicy.periodKey, policy.period) : importCardTransactions(ledger, payload.cardTransactions ?? [], payload.identifierLast4, activePolicy.periodKey, policy.period, (merchant) => classifyWithMerchantRules(merchant, merchantRules)); setUndoImportLedger(ledger); setLedger(result.ledger); leaveImport(); setLatestImportSummary(`신규 분류 필요 ${Math.max(0, result.undecided - (result.reviewNeeded ?? 0))}건 · 기존 분류 필요 결제에 병합 ${result.mergedUndecided ?? 0}건 · 기존 확정에 병합 ${result.mergedConfirmed ?? 0}건 · 중복 후보 ${result.reviewNeeded ?? 0}건 · 재등록 제외 ${result.duplicates}건`); setPanel('undecided'); const outside = payload.excludedOutsidePeriod ? ` 기간 외 ${payload.excludedOutsidePeriod}건은 저장하지 않았습니다.` : ''; show(result.replacedDemo ? `데모 내역을 실제 ${result.imported}건으로 교체했습니다.${outside}` : `${result.imported}건을 가져왔습니다.${outside}`); }} />;
+  else if (panel === 'import') content = <TransactionImport cardLast4={card} periodKey={activePolicy.periodKey} period={policy.period} notify={show} onImport={(payload: TransactionImportPayload) => { undoImportStatementIdRef.current = null; if (payload.statement) { const statement = payload.statement; const total = reportEvidenceRef.current.reduce((sum, item) => sum + item.stored.size, 0); if (total + statement.file.size > 120 * 1024 * 1024) show('거래내역은 가져오지만 제출 원본 합계 120MB를 초과해 PDF 첨부는 추가하지 않습니다.'); else { const statementId = crypto.randomUUID(); undoImportStatementIdRef.current = statementId; void storeEvidence(statement.file).then((stored) => setReportEvidence((current) => [...current, { id: statementId, stored, section: 'statement', statementRows: toStatementRows(statement.transactions), excludedStatementRowIds: [], statementParseFailed: false, statementSourceRequiresPassword: statement.requiresPassword, order: Math.max(-1, ...current.filter((item) => item.section === 'statement').map((item) => item.order)) + 1 }])).catch(() => show('거래내역은 가져왔지만 사용보고서 원본 저장에 실패했습니다. 사용보고서 작성 화면에서 다시 추가해 주세요.')); } } const result = payload.source === 'account' ? importBankTransactions(ledger, payload.bankTransactions ?? [], payload.identifierLast4, activePolicy.periodKey, policy.period) : importCardTransactions(ledger, payload.cardTransactions ?? [], payload.identifierLast4, activePolicy.periodKey, policy.period, (merchant) => classifyWithMerchantRules(merchant, merchantRules)); setUndoImportLedger(ledger); setLedger(result.ledger); leaveImport(); setLatestImportSummary(`신규 분류 필요 ${Math.max(0, result.undecided - (result.reviewNeeded ?? 0))}건 · 기존 분류 필요 결제에 병합 ${result.mergedUndecided ?? 0}건 · 기존 확정에 병합 ${result.mergedConfirmed ?? 0}건 · 중복 후보 ${result.reviewNeeded ?? 0}건 · 재등록 제외 ${result.duplicates}건`); setPanel('undecided'); const outside = payload.excludedOutsidePeriod ? ` 기간 외 ${payload.excludedOutsidePeriod}건은 저장하지 않았습니다.` : ''; show(result.replacedDemo ? `데모 내역을 실제 ${result.imported}건으로 교체했습니다.${outside}` : `${result.imported}건을 가져왔습니다.${outside}`); }} />;
   else if (panel === 'rules') content = <RuleManager rules={merchantRules} categoryNames={categoryNames} onRulesChange={setMerchantRules} notify={show} />;
   else if (panel === 'settings') content = <SettingsHub onOpen={setPanel} feedbackBody={buildFeedbackBody} />;
   else if (panel === 'accessibility') content = <AccessibilitySettings preferences={accessibilityPreferences} onChange={setAccessibilityPreferences} />;
