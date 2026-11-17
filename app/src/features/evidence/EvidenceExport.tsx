@@ -16,12 +16,14 @@ import type { PolicyPeriod } from '../../domain/budget';
 import { isValidReceiptDate } from '../../domain/receiptOcr';
 import { addRasterPages, assembleEvidencePdf } from './pipeline/assemble';
 import { compressImage, pdfPages, recognizeReceiptDetails, resolvedReceiptPatch } from './pipeline/render';
+import { checkPdfOpens } from './pipeline/pdfCheck';
 import { ExportCancelled, SECTION_LABEL, PROFILES, TARGET_BYTES, type RasterImage, type ReportSummary } from './pipeline/types';
 import { renderPreviewPages } from './pipeline/preview';
 import { PdfPreview } from './PdfPreview';
 export type { ReportSummary } from './pipeline/types';
 
 type EvidenceKind = 'image' | 'pdf';
+const UNOPENABLE_PDF_MESSAGE = '이 PDF를 열 수 없습니다. 파일이 손상됐을 수 있어요. 다시 저장해서 추가해 주세요.';
 type Evidence = ReportEvidenceRecord & { file: File; kind: EvidenceKind; url?: string; pages?: number };
 type Progress = { current: number; total: number; stage: string; attempt: number; measuring?: boolean };
 import { BenchmarkCancelled, compareBenchmarks, measureBenchmark, receiptFingerprint, type BenchmarkResult } from './benchmark';
@@ -88,6 +90,8 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
   const [overviewMissingOnly, setOverviewMissingOnly] = useState(false); const [overviewExpanded, setOverviewExpanded] = useState(false);
   // Folded whenever the screen opens; adding a receipt or jumping to one from 결제별 영수증 unfolds it.
   const [receiptCardsOpen, setReceiptCardsOpen] = useState(false);
+  // Protected receipt/proof PDFs: checked passwords live only in this screen (decision 2026-11-17).
+  const [pdfChecks, setPdfChecks] = useState<Record<string, 'verified' | 'wrong'>>({});
   const linkPicker = useRef<HTMLInputElement>(null); const linkTarget = useRef<LedgerEntry | null>(null);
   useEffect(() => { if (focusedReceipt) document.getElementById('evidence-' + focusedReceipt)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); }, [focusedReceipt, receiptFilter, receiptCardsOpen]);
   const [items, setItems] = useState<Evidence[]>([]); const [message, setMessage] = useState<string | null>(null); const [exporting, setExporting] = useState(false); const [progress, setProgress] = useState<Progress | null>(null); const [benchmarks, setBenchmarks] = useState<Partial<Record<'legacy' | 'current', BenchmarkResult>>>({}); const [statementPasswords, setStatementPasswords] = useState<Record<string, string>>({}); const [statementAccounts, setStatementAccounts] = useState<Record<string, string>>({}); const [statementsWithoutAccount, setStatementsWithoutAccount] = useState<Record<string, Partial<ReportEvidenceRecord>>>({}); const [previewReceipt, setPreviewReceipt] = useState<Evidence | null>(null); const [guideOpen, setGuideOpen] = useState(false); const urls = useRef(new Set<string>()); const raster = useRef(new Map<string, RasterImage[]>()); const cancelled = useRef(false);
@@ -172,12 +176,16 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     addingRef.current = true; setAddingSection(section); setAdding({ current: 0, total: valid.length });
     if (section === 'receipt') setReceiptCardsOpen(true);
     const pending: Array<{ record: ReportEvidenceRecord; file: File }> = [];
+    let lockedAdded = false;
     try {
       for (const file of valid) {
         try {
+          const opened = section !== 'statement' && kindOf(file) === 'pdf' ? await checkPdfOpens(file) : 'open';
+          if (opened === 'unreadable') { setMessage(UNOPENABLE_PDF_MESSAGE); continue; }
           const stored = await storeEvidence(file);
           const linked = linkTo && section === 'receipt' ? { linkedEntryId: linkTo.id, category: linkTo.category, receiptDate: paymentDateInKorea(linkTo), receiptOcrStatus: 'linked' as const } : undefined;
-          const record: ReportEvidenceRecord = { id: crypto.randomUUID(), stored, section, order: 0, ...(linked ?? (section === 'receipt' && kindOf(file) === 'image' ? { receiptOcrStatus: 'reading' } : {})) };
+          const record: ReportEvidenceRecord = { id: crypto.randomUUID(), stored, section, order: 0, ...(linked ?? (section === 'receipt' && kindOf(file) === 'image' ? { receiptOcrStatus: 'reading' } : {})), ...(opened === 'open' ? {} : { sourceRequiresPassword: true }) };
+          if (opened !== 'open') lockedAdded = true;
           const kind = kindOf(file); const url = kind === 'image' ? URL.createObjectURL(file) : undefined;
           if (url) urls.current.add(url);
           loadedFiles.current.set(record.id, { ...record, file, kind, url, pages: kind === 'image' ? 1 : undefined });
@@ -196,6 +204,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
         onReportEvidenceChange((current) => current.map((item) => item.id === record.id ? { ...item, ...patch } : item));
         setAdding({ current: index + 1, total: pending.length });
       }
+      if (lockedAdded) setMessage('비밀번호가 걸린 PDF가 있습니다. 파일 카드에서 비밀번호를 확인해 주세요.');
     } finally { addingRef.current = false; setAdding(null); }
   };
   const update = (id: string, patch: Partial<ReportEvidenceRecord>) => onReportEvidenceChange((current) => current.map((item) => {
@@ -239,6 +248,20 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     if (excluded.has(rowId)) excluded.delete(rowId); else excluded.add(rowId);
     return { ...item, excludedStatementRowIds: [...excluded] };
   }));
+  const verifyPdfPassword = async (item: Evidence) => {
+    const result = await checkPdfOpens(item.file, statementPasswords[item.id] || undefined);
+    if (result === 'unreadable') { setMessage(UNOPENABLE_PDF_MESSAGE); return; }
+    setPdfChecks((current) => ({ ...current, [item.id]: result === 'open' ? 'verified' : 'wrong' }));
+  };
+  const pdfPasswordCheck = (item: Evidence) => <div className="statement-unread evidence-pdf-password">
+    <strong>비밀번호가 걸린 PDF입니다</strong>
+    {pdfChecks[item.id] === 'verified' ? <small role="status">비밀번호를 확인했습니다.</small> : <>
+      <small><Sentences text="비밀번호를 확인해야 보고서에 넣을 수 있어요. 비밀번호는 저장하지 않아 앱을 다시 열면 다시 입력해야 합니다." /></small>
+      <label>PDF 비밀번호<input aria-label={`${item.file.name} PDF 비밀번호`} type="password" autoComplete="off" value={statementPasswords[item.id] ?? ''} onChange={(event) => { const value = event.target.value; setStatementPasswords((current) => ({ ...current, [item.id]: value })); setPdfChecks((current) => { const next = { ...current }; delete next[item.id]; return next; }); }} /></label>
+      <button type="button" onClick={() => void verifyPdfPassword(item)}>확인</button>
+      {pdfChecks[item.id] === 'wrong' && <small role="alert">비밀번호가 맞지 않습니다. 다시 입력해 주세요.</small>}
+    </>}
+  </div>;
   const retryStatementParse = async (item: Evidence) => {
     const account = statementAccounts[item.id] ?? '';
     if (!/^\d{4}$/.test(account)) { setMessage('입출금내역의 계좌 끝 4자리를 입력해 주세요.'); return; }
@@ -309,6 +332,13 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
     if (unreadStatements.length > 0) { setMessage(`표를 읽지 않은 입출금내역 ${unreadStatements.length}개가 있습니다. 원본 개인정보 보호를 위해 계좌 끝 4자리(비밀번호가 있으면 함께)를 입력하고 표를 읽어 주세요.`); return; }
     const protectedStatements = items.filter((item) => item.section === 'statement' && item.statementSourceRequiresPassword && !statementPasswords[item.id]);
     if (protectedStatements.length > 0) { setMessage(`원본 형식으로 제출하려면 보호된 입출금내역 ${protectedStatements.length}개의 PDF 비밀번호를 입력해 주세요. 비밀번호는 이 화면에서만 사용되고 저장되지 않습니다.`); return; }
+    const lockedPdfs = items.filter((item) => item.section !== 'statement' && item.sourceRequiresPassword && pdfChecks[item.id] !== 'verified');
+    if (lockedPdfs.length > 0) {
+      setMessage(`비밀번호를 확인하지 않은 PDF ${lockedPdfs.length}개가 있습니다. 파일 카드에서 비밀번호를 입력하고 [확인]을 눌러 주세요.`);
+      if (lockedPdfs[0].section === 'receipt') { setReceiptCardsOpen(true); setReceiptFilter('all'); }
+      setFocusedReceipt(lockedPdfs[0].id);
+      return;
+    }
     const categories = [...new Set(inSection('receipt').map(receiptCategory))] as string[];
     cancelled.current = false;
     setExporting(true);
@@ -417,7 +447,7 @@ export function EvidenceExport({ helpRequest = 0, reportEvidence, onReportEviden
       const isLinked = payments.some((payment) => payment.id === item.linkedEntryId);
       const receiptDate = name === 'receipt' && isValidReceiptDate(item.receiptDate) ? item.receiptDate : undefined;
       const sameDayPayments = receiptDate ? payments.filter((payment) => paymentDateInKorea(payment) === receiptDate && !reportEvidence.some((evidence) => evidence.section === 'receipt' && evidence.id !== item.id && evidence.linkedEntryId === payment.id)) : [];
-      return <article id={`evidence-${item.id}`} key={item.id}>{item.url ? <button type="button" className="receipt-thumbnail" onClick={() => setPreviewReceipt(item)} aria-label={`${SECTION_LABEL[name]} ${index + 1} 크게 보기`}><img src={item.url} alt={`${SECTION_LABEL[name]} ${index + 1}`} /></button> : <div className="evidence-pdf-preview" aria-label={`${SECTION_LABEL[name]} PDF`}>PDF</div>}<div className="evidence-content"><span>{item.file.name}</span>{name === 'statement' ? statementDetails(item) : null}{name === 'statement' && item.statementParseFailed ? <div className="statement-unread"><strong>{item.statementNeedsAccount ? '계좌 확인이 필요합니다' : '표를 읽지 못했습니다'}</strong><small>{item.statementNeedsAccount ? '계좌를 확인하고 표를 읽기 전까지 제출서류에 포함되지 않습니다.' : '원본 PDF는 제출서류에 포함되지 않습니다.'}</small><label>계좌 끝 4자리<input aria-label={`${item.file.name} 계좌 끝 4자리`} inputMode="numeric" maxLength={4} placeholder="0000" value={statementAccounts[item.id] ?? ''} onChange={(event) => { const value = event.target.value.replace(/\D/g, '').slice(0, 4); setStatementAccounts((current) => ({ ...current, [item.id]: value })); setStatementsWithoutAccount((current) => { const next = { ...current }; delete next[item.id]; return next; }); }} /></label><label>PDF 비밀번호 (있는 경우)<input aria-label={`${item.file.name} PDF 비밀번호`} type="password" value={statementPasswords[item.id] ?? ''} onChange={(event) => setStatementPasswords((current) => ({ ...current, [item.id]: event.target.value }))} /></label><button type="button" onClick={() => void retryStatementParse(item)}>{item.statementNeedsAccount ? '표 읽기' : '표 다시 읽기'}</button>{statementsWithoutAccount[item.id] ? <><small>파일에서 계좌번호를 확인할 수 없습니다.</small><button type="button" onClick={() => { update(item.id, statementsWithoutAccount[item.id]); setStatementsWithoutAccount((current) => { const next = { ...current }; delete next[item.id]; return next; }); setMessage('입출금내역 표를 읽었습니다. 사업과 무관한 행만 선택해 모자이크할 수 있습니다.'); }}>그래도 첨부</button></> : null}</div> : null}{name === 'transactionProof' && <label className="evidence-link">추가 증빙 결제 연결 (주거비·교통비)<select aria-label={`거래증빙 ${index + 1} 결제 연결`} value={item.linkedEntryId ?? ''} onChange={(event) => linkAdditionalProof(item.id, event.target.value)}><option value="">선택하지 않음</option>{additionalProofPayments.map((payment) => <option key={payment.id} value={payment.id}>{new Date(payment.occurredAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {payment.merchant} · {won(payment.amount)}</option>)}</select></label>}{name === 'receipt' && <details className="receipt-edit-details" open={!payments.some((payment) => payment.id === item.linkedEntryId) || expandedReceipts.has(item.id)} onToggle={(event) => { if (!payments.some((payment) => payment.id === item.linkedEntryId)) return; const open = event.currentTarget.open; setExpandedReceipts((current) => { const next = new Set(current); if (open) next.add(item.id); else next.delete(item.id); return next; }); }}><summary>{payments.some((payment) => payment.id === item.linkedEntryId) ? '연결한 영수증 확인 · 수정' : '날짜 확인 · 결제 연결'}</summary>{receiptStatus(item)}<label className="evidence-link">영수증 결제 날짜<input key={`receipt-date-${receiptDate ?? ''}`} aria-label={`영수증 ${index + 1} 날짜`} type="date" defaultValue={receiptDate ?? ''} disabled={Boolean(adding)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { if (isValidReceiptDate(event.target.value)) update(item.id, { receiptDate: event.target.value, receiptAutoLinked: undefined }); }} onBlur={(event) => { if (!event.target.value) update(item.id, { receiptDate: undefined, receiptAutoLinked: undefined }); }} /></label>{receiptDate && !isLinked && <div className="receipt-link-priority receipt-payment-candidates"><strong>{receiptDate} 결제 {sameDayPayments.length}건</strong>{sameDayPayments.length ? sameDayPayments.map((payment) => <button type="button" key={payment.id} onClick={() => linkReceipt(item.id, payment.id)}>{payment.merchant} · {won(payment.amount)} <small>{new Date(payment.occurredAt).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 이 결제로 연결</small></button>) : <small>이 날짜에 연결 가능한 정책 기간 내 결제가 없습니다. <br />날짜를 바꾸거나 거래내역을 확인해 주세요.</small>}</div>}{item.linkedEntryId && <button type="button" className="receipt-unlink" onClick={() => linkReceipt(item.id, '')}>결제 연결 해제</button>}</details>}</div><div className="evidence-order"><button type="button" disabled={exporting || index === 0} onClick={() => move(name, index, -1)}>위로</button><button type="button" disabled={exporting || index === listed.length - 1} onClick={() => move(name, index, 1)}>아래로</button><button type="button" disabled={exporting || Boolean(adding)} onClick={() => remove(item)}>삭제</button></div></article>;
+      return <article id={`evidence-${item.id}`} key={item.id}>{item.url ? <button type="button" className="receipt-thumbnail" onClick={() => setPreviewReceipt(item)} aria-label={`${SECTION_LABEL[name]} ${index + 1} 크게 보기`}><img src={item.url} alt={`${SECTION_LABEL[name]} ${index + 1}`} /></button> : <div className="evidence-pdf-preview" aria-label={`${SECTION_LABEL[name]} PDF`}>PDF</div>}<div className="evidence-content"><span>{item.file.name}</span>{name === 'statement' ? statementDetails(item) : null}{name === 'statement' && item.statementParseFailed ? <div className="statement-unread"><strong>{item.statementNeedsAccount ? '계좌 확인이 필요합니다' : '표를 읽지 못했습니다'}</strong><small>{item.statementNeedsAccount ? '계좌를 확인하고 표를 읽기 전까지 제출서류에 포함되지 않습니다.' : '원본 PDF는 제출서류에 포함되지 않습니다.'}</small><label>계좌 끝 4자리<input aria-label={`${item.file.name} 계좌 끝 4자리`} inputMode="numeric" maxLength={4} placeholder="0000" value={statementAccounts[item.id] ?? ''} onChange={(event) => { const value = event.target.value.replace(/\D/g, '').slice(0, 4); setStatementAccounts((current) => ({ ...current, [item.id]: value })); setStatementsWithoutAccount((current) => { const next = { ...current }; delete next[item.id]; return next; }); }} /></label><label>PDF 비밀번호 (있는 경우)<input aria-label={`${item.file.name} PDF 비밀번호`} type="password" value={statementPasswords[item.id] ?? ''} onChange={(event) => setStatementPasswords((current) => ({ ...current, [item.id]: event.target.value }))} /></label><button type="button" onClick={() => void retryStatementParse(item)}>{item.statementNeedsAccount ? '표 읽기' : '표 다시 읽기'}</button>{statementsWithoutAccount[item.id] ? <><small>파일에서 계좌번호를 확인할 수 없습니다.</small><button type="button" onClick={() => { update(item.id, statementsWithoutAccount[item.id]); setStatementsWithoutAccount((current) => { const next = { ...current }; delete next[item.id]; return next; }); setMessage('입출금내역 표를 읽었습니다. 사업과 무관한 행만 선택해 모자이크할 수 있습니다.'); }}>그래도 첨부</button></> : null}</div> : null}{name !== 'statement' && item.sourceRequiresPassword && pdfPasswordCheck(item)}{name === 'transactionProof' && <label className="evidence-link">추가 증빙 결제 연결 (주거비·교통비)<select aria-label={`거래증빙 ${index + 1} 결제 연결`} value={item.linkedEntryId ?? ''} onChange={(event) => linkAdditionalProof(item.id, event.target.value)}><option value="">선택하지 않음</option>{additionalProofPayments.map((payment) => <option key={payment.id} value={payment.id}>{new Date(payment.occurredAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {payment.merchant} · {won(payment.amount)}</option>)}</select></label>}{name === 'receipt' && <details className="receipt-edit-details" open={!payments.some((payment) => payment.id === item.linkedEntryId) || expandedReceipts.has(item.id)} onToggle={(event) => { if (!payments.some((payment) => payment.id === item.linkedEntryId)) return; const open = event.currentTarget.open; setExpandedReceipts((current) => { const next = new Set(current); if (open) next.add(item.id); else next.delete(item.id); return next; }); }}><summary>{payments.some((payment) => payment.id === item.linkedEntryId) ? '연결한 영수증 확인 · 수정' : '날짜 확인 · 결제 연결'}</summary>{receiptStatus(item)}<label className="evidence-link">영수증 결제 날짜<input key={`receipt-date-${receiptDate ?? ''}`} aria-label={`영수증 ${index + 1} 날짜`} type="date" defaultValue={receiptDate ?? ''} disabled={Boolean(adding)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { if (isValidReceiptDate(event.target.value)) update(item.id, { receiptDate: event.target.value, receiptAutoLinked: undefined }); }} onBlur={(event) => { if (!event.target.value) update(item.id, { receiptDate: undefined, receiptAutoLinked: undefined }); }} /></label>{receiptDate && !isLinked && <div className="receipt-link-priority receipt-payment-candidates"><strong>{receiptDate} 결제 {sameDayPayments.length}건</strong>{sameDayPayments.length ? sameDayPayments.map((payment) => <button type="button" key={payment.id} onClick={() => linkReceipt(item.id, payment.id)}>{payment.merchant} · {won(payment.amount)} <small>{new Date(payment.occurredAt).toLocaleString('ko-KR', { hour: '2-digit', minute: '2-digit' })} · 이 결제로 연결</small></button>) : <small>이 날짜에 연결 가능한 정책 기간 내 결제가 없습니다. <br />날짜를 바꾸거나 거래내역을 확인해 주세요.</small>}</div>}{item.linkedEntryId && <button type="button" className="receipt-unlink" onClick={() => linkReceipt(item.id, '')}>결제 연결 해제</button>}</details>}</div><div className="evidence-order"><button type="button" disabled={exporting || index === 0} onClick={() => move(name, index, -1)}>위로</button><button type="button" disabled={exporting || index === listed.length - 1} onClick={() => move(name, index, 1)}>아래로</button><button type="button" disabled={exporting || Boolean(adding)} onClick={() => remove(item)}>삭제</button></div></article>;
     })}</div></>}</section>;
   };
   const improvement = compareBenchmarks(benchmarks.legacy, benchmarks.current);

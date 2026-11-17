@@ -26,6 +26,8 @@ export type ReportEvidenceRecord = {
   statementNeedsAccount?: boolean;
   /** 원본 은행 PDF를 제출서류에 다시 그릴 때만, 이번 화면에서 비밀번호가 필요하다. 비밀번호 자체는 저장하지 않는다. */
   statementSourceRequiresPassword?: boolean;
+  /** 영수증·거래증빙 PDF에 열기 비밀번호가 걸려 있다. 비밀번호 자체는 저장하지 않고, 화면에서 확인한 뒤에만 보고서에 넣는다. */
+  sourceRequiresPassword?: boolean;
   order: number;
 };
 
