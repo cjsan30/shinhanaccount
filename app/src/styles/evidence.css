@@ -138,7 +138,7 @@
   padding: 12px;
   border-radius: 10px;
   background: #ffffff0b;
-  color: var(--color-text-label) !important;
+  color: var(--color-text-label);
 }
 
 .evidence-pdf-preview {
@@ -199,8 +199,12 @@
   font-weight: 700;
 }
 
+/* Above `.sheet label`. */
+.sheet label.evidence-link {
+  display: grid;
+}
+
 .evidence-link {
-  display: grid !important;
   gap: 6px;
   margin: 10px 0;
   color: #b7c7d9;
@@ -232,7 +236,7 @@
 }
 
 .statement-redaction label {
-  display: flex !important;
+  display: flex;
   align-items: center;
   gap: 7px;
   margin: 0;
@@ -349,8 +353,8 @@
 }
 
 .statement-unread button {
-  color: #102338 !important;
-  background: var(--color-accent) !important;
+  color: #102338;
+  background: var(--color-accent);
 }
 
 @media (max-width:380px) {
@@ -540,7 +544,7 @@
 }
 
 .sheet .statement-redaction__row {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 18px minmax(0,1fr) auto;
   align-items: center;
   gap: 8px;
@@ -634,12 +638,16 @@
   text-align: right;
 }
 .receipt-thumbnail {
-  display: block !important;
   width: 54px;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
   cursor: zoom-in;
+}
+
+/* Above `.evidence-list button`. */
+.evidence-list button.receipt-thumbnail {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .receipt-thumbnail img {
@@ -648,8 +656,12 @@
 
 .receipt-unlink {
   width: 100%;
-  color: #dce7f3 !important;
-  background: #ffffff18 !important;
+}
+
+/* Above `.evidence-list button`. */
+.evidence-list button.receipt-unlink {
+  color: #dce7f3;
+  background: #ffffff18;
 }
 
 .receipt-preview-backdrop {
@@ -681,11 +693,11 @@
   right: 5px;
   width: 38px;
   height: 38px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  background: #102338e8 !important;
-  color: #fff !important;
-  font-size: 30px !important;
+  padding: 0;
+  border-radius: 50%;
+  background: #102338e8;
+  color: #fff;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -777,9 +789,9 @@
 }
 
 body.high-contrast .sheet .receipt-task-controls > button {
-  border-color: #fff !important;
-  background: #000 !important;
-  color: #fff !important;
+  border-color: #fff;
+  background: #000;
+  color: #fff;
 }
 
 /* Report reset button at the top of the report sheet. Styled by its own class so it
@@ -1063,8 +1075,9 @@ body.high-contrast .pdf-preview .pdf-preview__save {
 }
 
 /* The picker behind the rows without a receipt; opened from code only. */
-.evidence-export .receipt-link-picker {
-  display: none !important;
+/* Above `.sheet input:not([type="range"])`. */
+.evidence-export input.receipt-link-picker[type="file"] {
+  display: none;
 }
 
 .receipt-overview ul {
@@ -1151,7 +1164,7 @@ body.high-contrast .pdf-preview .pdf-preview__save {
 }
 
 body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-overview__note, .receipt-overview__filter, .receipt-overview__text small, .receipt-overview__mark) {
-  color: #fff !important;
+  color: #fff;
 }
 
 /* Folded receipt cards (decision 2026-11-16): one row under the file button. */
@@ -1190,7 +1203,7 @@ body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-over
 }
 
 body.high-contrast .receipt-cards-toggle :is(small, i) {
-  color: #fff !important;
+  color: #fff;
 }
 
 .evidence-recent-reports .evidence-recent-reports__empty {
