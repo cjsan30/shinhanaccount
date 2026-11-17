@@ -60,7 +60,7 @@ import { adjustBudget, type BudgetTransfer } from './domain/budgetAdjustment';
 import { storeEvidence } from './native/evidenceVault';
 import { toStatementRows } from './domain/statementImport';
 import { splitEvidenceByPolicyPeriod, type ReportEvidenceRecord } from './domain/reportEvidence';
-import { removeStoredEvidence } from './native/evidenceVault';
+import { removeStoredEvidence, retryPendingEvidenceRemovals } from './native/evidenceVault';
 import { loadAccessibilityPreferences, saveAccessibilityPreferences, type AccessibilityPreferences } from './domain/accessibility';
 import { AccessibilitySettings } from './components/AccessibilitySettings';
 import { createVerificationState, type VerificationState } from './domain/verification';
@@ -207,6 +207,13 @@ function App() {
     void persistAppState(window.localStorage, { ledger, policyBook, merchantRules, reportEvidence, verification }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
   }, [ledger, merchantRules, policyBook, reportEvidence, storageReady, verification]);
   useEffect(() => { merchantRulesRef.current = merchantRules; }, [merchantRules]);
+  // Once per start: delete again any stored file whose deletion failed last time.
+  const retriedRemovals = useRef(false);
+  useEffect(() => {
+    if (!storageReady || retriedRemovals.current) return;
+    retriedRemovals.current = true;
+    void retryPendingEvidenceRemovals(new Set(reportEvidenceRef.current.map((record) => record.stored.id))).catch(() => undefined);
+  }, [storageReady]);
   // When a new policy period begins, files gathered for the previous report are removed.
   useEffect(() => {
     if (!storageReady) return;
