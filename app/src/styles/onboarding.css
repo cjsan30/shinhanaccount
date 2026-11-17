@@ -84,8 +84,9 @@
   color: var(--color-text-bright);
 }
 
-.first-run__error {
-  color: #ffaca6 !important;
+/* `.first-run>p` and `.first-run__card>p` would otherwise give the error the body text colour. */
+.first-run p.first-run__error {
+  color: #ffaca6;
 }
 
 .first-run__start {
@@ -463,5 +464,5 @@
 }
 
 body.high-contrast :is(.app-information-content p, .app-information-content h3, .onboarding-app-notice p) {
-  color: #fff !important;
+  color: #fff;
 }

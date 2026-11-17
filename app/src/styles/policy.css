@@ -270,11 +270,11 @@
 }
 
 .plan-editor .policy-amount input {
-  width: 108px !important;
-  margin: 0 !important;
-  padding: 7px 8px !important;
+  width: 108px;
+  margin: 0;
+  padding: 7px 8px;
   text-align: right;
-  letter-spacing: 0 !important;
+  letter-spacing: 0;
   font-size: 13px;
 }
 
@@ -339,18 +339,18 @@
   margin-top: 4px;
 }
 
-/* !important: the generic sheet input rule sets the border with higher specificity. */
-.plan-amount-input--invalid {
-  border-color: #ff7a7a !important;
+/* Specific enough to beat the generic `.sheet input:not([type="range"])` border. */
+input.plan-amount-input.plan-amount-input--invalid:not([type="range"]) {
+  border-color: #ff7a7a;
   box-shadow: 0 0 0 1px #ff7a7a;
 }
 
 body.high-contrast .plan-issues,
 body.high-contrast .plan-issues li {
-  color: #fff !important;
+  color: #fff;
 }
 
-body.high-contrast .plan-amount-input--invalid {
-  border-color: #fff !important;
+body.high-contrast input.plan-amount-input.plan-amount-input--invalid:not([type="range"]) {
+  border-color: #fff;
   box-shadow: 0 0 0 2px #fff;
 }
