@@ -40,10 +40,10 @@ export function BudgetAdjustment({ policy, spent, bucket: initialBucket, onApply
     } catch (error) { setMessage(error instanceof Error ? error.message : '저장하지 못했습니다. 다시 시도해 주세요.'); }
     finally { submitting.current = false; setBusy(false); }
   };
-  return <details className="data-section budget-adjustment">
-    <summary><strong>예산 조정</strong><span>같은 대분류 안에서 이동</span></summary>
-    <div className="data-section__body budget-adjustment__body">
-      <p>이번 기간의 미사용 예산을 다른 세부 항목으로 옮깁니다. <br />실제 지출과 대분류 총액은 바뀌지 않습니다.</p>
+  // Its own screen under 이번 기간 계획 (decision 2026-11-17).
+  return <section className="budget-adjustment">
+    <div className="budget-adjustment__body">
+      <p>이번 기간의 미사용 예산을 같은 대분류 안의 다른 세부 항목으로 옮깁니다. <br />실제 지출과 대분류 총액은 바뀌지 않습니다.</p>
       {!initialBucket && <label>대분류<select aria-label="예산 조정 대분류" value={bucket} disabled={busy} onChange={(event) => { setBucket(event.target.value as BudgetKey); setFrom(''); setTo(''); setAmountText(''); clearFeedback(); }}><option value="resident">정주비</option><option value="studySpace">학습공간비</option></select></label>}
       <label>가져올 항목<select aria-label="예산 가져올 항목" value={from} disabled={busy} onChange={(event) => { setFrom(event.target.value); if (event.target.value === to) setTo(''); clearFeedback(); }}><option value="">항목 선택</option>{items.map((item) => <option key={item.key} value={item.key} disabled={available(item.key) === 0}>{item.label} · 이동 가능 {won(available(item.key))}</option>)}</select></label>
       <label>받을 항목<select aria-label="예산 받을 항목" value={to} disabled={busy} onChange={(event) => { setTo(event.target.value); clearFeedback(); }}><option value="">항목 선택</option>{items.filter((item) => item.key !== from).map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
@@ -54,5 +54,5 @@ export function BudgetAdjustment({ policy, spent, bucket: initialBucket, onApply
       <button className="sheet-action" type="button" disabled={busy || !adjusted} onClick={() => void submit()}>{busy ? '저장 중…' : '예산 조정 적용'}</button>
       {message && <p role="status"><Sentences text={message} /></p>}
     </div>
-  </details>;
+  </section>;
 }

@@ -1049,7 +1049,6 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
 }
 
 .sheet .budget-adjustment {
-  margin-top: 16px;
   min-width: 0;
 }
 
@@ -1057,7 +1056,6 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
   display: grid;
   gap: 12px;
   min-width: 0;
-  padding-top: 16px;
 }
 
 .sheet .budget-adjustment__body label {

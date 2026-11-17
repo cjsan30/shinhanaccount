@@ -10,12 +10,14 @@ type PlanViewProps = {
   funding?: PolicyFunding;
   range: { start: string; end: string };
   onEditPlan: () => void;
+  /** Shown only for a confirmed plan; opens 예산 조정. */
+  onAdjust?: () => void;
   onEditStart: () => void;
   onDeposited: () => void;
 };
 
 /** The period's plan, opened from the dashboard: amounts, the start, and where to change them. */
-export function PlanView({ policy, funding, range, onEditPlan, onEditStart, onDeposited }: PlanViewProps) {
+export function PlanView({ policy, funding, range, onEditPlan, onAdjust, onEditStart, onDeposited }: PlanViewProps) {
   const amountOf = (key: string, category: string) => key in policy.plans ? policy.plans[key as keyof SupportPolicy['plans']] : policy.customItems?.find((custom) => `custom:${custom.id}` === category)?.amount ?? 0;
   const items = getPolicyItems(policy).filter((item) => amountOf(item.key, item.ledgerCategories[0]) > 0);
   const pending = funding?.status === 'pending';
@@ -28,7 +30,10 @@ export function PlanView({ policy, funding, range, onEditPlan, onEditStart, onDe
       <h4>{bucket === 'resident' ? '정주비' : '학습공간비'} <span>{won(getPolicyLimit(policy, bucket))}</span></h4>
       {items.filter((item) => item.bucket === bucket).map((item) => <p className="plan-view__item" key={item.key}><span>{item.label}</span><b>{won(amountOf(item.key, item.ledgerCategories[0]))}</b></p>)}
     </section>)}
-    <button type="button" className="sheet-action" onClick={onEditPlan}>계획 수정</button>
+    <div className="plan-view__actions">
+      <button type="button" className="sheet-action" onClick={onEditPlan}>계획 수정</button>
+      {onAdjust && <button type="button" className="sheet-action secondary-action" onClick={onAdjust}>예산 조정</button>}
+    </div>
   </section>;
 }
 
