@@ -62,7 +62,7 @@
 }
 
 .policy-preview .secondary-action {
-  margin-top: 0 !important;
+  margin-top: 0;
 }
 
 .policy-lines {
@@ -997,9 +997,15 @@ header .settings-button svg {
   color: #102630;
 }
 
-.verification-fail {
-  border-color: #c97777 !important;
-  color: #ffd0d0 !important;
+/* Kept as before the !important cleanup: secondary buttons here kept a 10px top margin although
+   their containers set 0 (the fail button sits 10px lower than the pass button). */
+:is(.verification-item__actions, .verification-section__heading, .verification-panel__footer) .sheet-action.secondary-action {
+  margin-top: 10px;
+}
+
+.sheet-action.verification-fail {
+  border-color: #c97777;
+  color: #ffd0d0;
 }
 
 .verification-item label {

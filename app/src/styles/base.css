@@ -108,7 +108,7 @@ header button,
 }
 
 .success {
-  color: #d2f1d8 !important;
+  color: #d2f1d8;
 }
 
 .primary {
@@ -147,11 +147,13 @@ header button,
   box-shadow: 0 12px 28px #0006;
 }
 
-.secondary-action {
-  margin-top: 10px !important;
-  color: #eef0f2 !important;
-  border: 1px solid var(--color-divider-strong) !important;
-  background: var(--color-fill) !important;
+/* Always used with .sheet-action; the pair outranks `.sheet-action`, and later rules such as
+   `.plan-view__actions .sheet-action` still override the margin. */
+.sheet-action.secondary-action {
+  margin-top: 10px;
+  color: #eef0f2;
+  border: 1px solid var(--color-divider-strong);
+  background: var(--color-fill);
 }
 
 .cancel-action {
@@ -164,9 +166,9 @@ header button,
   font-size: 12px;
 }
 
-.danger-action {
-  background: #c94a4a !important;
-  color: #fff !important;
+.sheet-action.danger-action {
+  background: #c94a4a;
+  color: #fff;
 }
 
 .app {

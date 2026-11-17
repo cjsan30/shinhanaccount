@@ -207,7 +207,7 @@ label.file-picker input[type="file"] {
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  margin: 0 !important;
+  margin: 0;
   padding: 8px 6px;
   white-space: nowrap;
 }
