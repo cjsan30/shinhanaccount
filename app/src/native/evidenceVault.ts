@@ -29,7 +29,45 @@ export async function loadEvidence(stored: StoredEvidence): Promise<File> {
   return new File([bytes], stored.fileName, { type: stored.mimeType, lastModified: new Date(stored.attachedAt).getTime() });
 }
 
+// Ids (no names or contents) of stored files whose deletion failed; retried on the next start (decision 2026-11-17).
+const PENDING_REMOVAL_KEY = 'shinhanhae-evidence-pending-removal-v1';
+
+function loadPendingRemovals(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(PENDING_REMOVAL_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch { return []; }
+}
+
+function savePendingRemovals(ids: string[]) {
+  try {
+    if (ids.length) window.localStorage.setItem(PENDING_REMOVAL_KEY, JSON.stringify(ids));
+    else window.localStorage.removeItem(PENDING_REMOVAL_KEY);
+  } catch { /* the next failed deletion records it again */ }
+}
+
 export async function removeStoredEvidence(stored: StoredEvidence) {
   webFiles.delete(stored.id);
-  if (Capacitor.isNativePlatform()) await EvidenceVault.remove({ id: stored.id });
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await EvidenceVault.remove({ id: stored.id });
+  } catch (error) {
+    savePendingRemovals([...new Set([...loadPendingRemovals(), stored.id])]);
+    throw error;
+  }
+}
+
+/**
+ * Deletes again the stored files whose deletion failed before. An id still used by an
+ * attachment is never deleted, only forgotten. Ids that fail again stay for the next start.
+ */
+export async function retryPendingEvidenceRemovals(inUse: ReadonlySet<string>) {
+  const pending = loadPendingRemovals();
+  if (!pending.length || !Capacitor.isNativePlatform()) return;
+  const stillFailing: string[] = [];
+  for (const id of pending) {
+    if (inUse.has(id)) continue;
+    try { await EvidenceVault.remove({ id }); } catch { stillFailing.push(id); }
+  }
+  savePendingRemovals(stillFailing);
 }
