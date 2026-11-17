@@ -328,11 +328,6 @@
   font-size: 18px;
 }
 
-body.high-contrast .settings-hub .settings-feedback {
-  border-color: #fff;
-  color: #fff;
-}
-
 .operations-settings label {
   display: block;
   margin-top: 24px;
@@ -828,15 +823,6 @@ header .settings-button svg {
   margin: 0;
 }
 
-body.high-contrast :is(.first-run__start,.new-payment,.accessibility-settings__choices button.is-selected,.recovery-notice button) {
-  background: #fff !important;
-  color: #000 !important;
-}
-
-body.high-contrast .accessibility-settings__choices button.is-selected {
-  color: #000 !important;
-}
-
 .privacy-notice {
   margin-top: 18px;
   padding: 18px;
@@ -1184,10 +1170,4 @@ body.high-contrast .accessibility-settings__choices button.is-selected {
 .app-information-error {
   color: #ffb0ae;
   line-height: 1.5;
-}
-
-body.high-contrast .app-information-notice {
-  border-color: #fff;
-  background: #000;
-  color: #fff;
 }

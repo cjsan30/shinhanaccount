@@ -788,12 +788,6 @@
   opacity: .5;
 }
 
-body.high-contrast .sheet .receipt-task-controls > button {
-  border-color: #fff;
-  background: #000;
-  color: #fff;
-}
-
 /* Report reset button at the top of the report sheet. Styled by its own class so it
    does not depend on the surrounding sheet. */
 .evidence-reset {
@@ -933,15 +927,6 @@ body.high-contrast .sheet .receipt-task-controls > button {
 .pdf-preview__close:disabled,
 .pdf-preview__save:disabled {
   opacity: .42;
-}
-
-body.high-contrast .pdf-preview :is(strong, span, figcaption, p, .pdf-preview__close) {
-  color: #fff !important;
-}
-
-body.high-contrast .pdf-preview .pdf-preview__save {
-  background: #fff !important;
-  color: #000 !important;
 }
 
 /* Under [미리보기]: the reports made so far, newest first. */
@@ -1163,10 +1148,6 @@ body.high-contrast .pdf-preview .pdf-preview__save {
   font: inherit;
 }
 
-body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-overview__note, .receipt-overview__filter, .receipt-overview__text small, .receipt-overview__mark) {
-  color: #fff;
-}
-
 /* Folded receipt cards (decision 2026-11-16): one row under the file button. */
 .evidence-group .receipt-cards-toggle {
   display: flex;
@@ -1200,10 +1181,6 @@ body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-over
   color: var(--color-text-secondary);
   font-size: 11px;
   font-style: normal;
-}
-
-body.high-contrast .receipt-cards-toggle :is(small, i) {
-  color: #fff;
 }
 
 .evidence-recent-reports .evidence-recent-reports__empty {

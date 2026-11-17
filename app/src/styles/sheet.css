@@ -220,24 +220,9 @@ label.file-picker input[type="file"] {
   margin-top: 0;
 }
 
-body.high-contrast :is(.app,.first-run,.import-page,.sheet) :is(p,small,span,strong,b,h1,h2,h3,label,legend,button) {
-  color: #fff !important;
-}
-
 .import-card__upload .file-picker {
   display: block;
   width: 100%;
-}
-
-/* Preserve dark text on white primary buttons in high-contrast mode. */
-
-body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not(.secondary-action):not(.danger-action) {
-  background: #fff !important;
-  color: #000 !important;
-}
-
-body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not(.secondary-action):not(.danger-action) :is(span, strong, small, b) {
-  color: #000 !important;
 }
 
 .sheet-backdrop {
@@ -417,26 +402,6 @@ body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not
   margin-right: 0;
 }
 
-body.high-contrast .spotlight-card {
-  border-color: #fff;
-  background: #000;
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card :is(small, h3, p) {
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card footer button {
-  border-color: #fff;
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card footer .spotlight-next {
-  background: #fff;
-  color: #000;
-}
-
 .app-information-notice > .sheet-action {
   flex-shrink: 0;
   width: 100%;
@@ -445,9 +410,4 @@ body.high-contrast .spotlight-card footer .spotlight-next {
   background: #fff;
   color: #10202d;
   white-space: normal;
-}
-
-body.high-contrast .app .app-information-notice > .sheet-action {
-  background: #fff !important;
-  color: #000 !important;
 }

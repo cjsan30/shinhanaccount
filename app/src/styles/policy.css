@@ -344,13 +344,3 @@ input.plan-amount-input.plan-amount-input--invalid:not([type="range"]) {
   border-color: #ff7a7a;
   box-shadow: 0 0 0 1px #ff7a7a;
 }
-
-body.high-contrast .plan-issues,
-body.high-contrast .plan-issues li {
-  color: #fff;
-}
-
-body.high-contrast input.plan-amount-input.plan-amount-input--invalid:not([type="range"]) {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px #fff;
-}

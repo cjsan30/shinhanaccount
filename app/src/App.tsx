@@ -227,7 +227,6 @@ function App() {
   useEffect(() => {
     saveAccessibilityPreferences(window.localStorage, accessibilityPreferences);
     document.body.dataset.textScale = accessibilityPreferences.textScale;
-    document.body.classList.toggle('high-contrast', accessibilityPreferences.highContrast);
   }, [accessibilityPreferences]);
   useEffect(() => {
     if (!accessibilityPreferences.vibration || !navigator.vibrate) return;

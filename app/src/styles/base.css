@@ -267,18 +267,6 @@ h1 {
   margin-top: 12px;
 }
 
-body.high-contrast .app,
-body.high-contrast .first-run,
-body.high-contrast .import-page,
-body.high-contrast .sheet {
-  background: #000 !important;
-  color: #fff !important;
-}
-
-body.high-contrast :is(button,input,select) {
-  outline-color: #fff !important;
-}
-
 .app-help-trigger {
   display: grid;
   place-items: center;
