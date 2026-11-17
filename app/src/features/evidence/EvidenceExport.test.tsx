@@ -18,6 +18,8 @@ const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load
 vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, openSavedFile: exportMocks.openSavedFile, existingSavedFiles: exportMocks.existingSavedFiles, isSavedFileNotFound: (error: unknown) => (error as { code?: string } | null)?.code === 'FILE_NOT_FOUND', bytesToBase64: () => 'local-test-image' }));
 vi.mock('../../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
+const pdfCheckMocks = vi.hoisted(() => ({ checkPdfOpens: vi.fn(async (): Promise<string> => 'open') }));
+vi.mock('./pipeline/pdfCheck', () => pdfCheckMocks);
 vi.mock('./pipeline/preview', () => ({ renderPreviewPages: vi.fn(async (_bytes: Uint8Array, onPage: (done: number, total: number) => void) => { onPage(1, 2); onPage(2, 2); return [new Blob(['page-1'], { type: 'image/jpeg' }), new Blob(['page-2'], { type: 'image/jpeg' })]; }) }));
 vi.mock('../../domain/shinhanBankImport', async (importOriginal) => ({
   getMaskedAccountLast4: (await importOriginal<typeof import('../../domain/shinhanBankImport')>()).getMaskedAccountLast4,
@@ -508,6 +510,51 @@ describe('EvidenceExport', () => {
     expect(screen.getByRole('dialog', { name: '영수증 크게 보기' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '영수증 미리보기 닫기' }));
     expect(screen.queryByRole('dialog', { name: '영수증 크게 보기' })).not.toBeInTheDocument();
+  });
+
+  describe('password-protected receipt and proof PDFs (decision 2026-11-17)', () => {
+    beforeEach(() => { pdfCheckMocks.checkPdfOpens.mockReset().mockResolvedValue('open'); });
+    const attachProof = (container: HTMLElement, name = 'locked.pdf') => fireEvent.change(container.querySelectorAll('input[type="file"]')[1], { target: { files: [new File(['pdf'], name, { type: 'application/pdf' })] } });
+
+    it('asks for the password on the card and keeps the report from being made until it opens the file', async () => {
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('needs-password');
+      const { container } = render(<StatefulEvidenceExport />);
+      attachProof(container);
+      expect(await screen.findByText('비밀번호가 걸린 PDF가 있습니다. 파일 카드에서 비밀번호를 확인해 주세요.')).toBeInTheDocument();
+      // The card appears once the attached file has loaded, a moment after the notice.
+      expect(await screen.findByText('비밀번호가 걸린 PDF입니다')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: '보고서 생성' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
+      expect(await screen.findByText('비밀번호를 확인하지 않은 PDF 1개가 있습니다. 파일 카드에서 비밀번호를 입력하고 [확인]을 눌러 주세요.')).toBeInTheDocument();
+      expect(exportMocks.create).not.toHaveBeenCalled();
+
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('wrong-password');
+      fireEvent.change(screen.getByLabelText('locked.pdf PDF 비밀번호'), { target: { value: 'fake-wrong' } });
+      fireEvent.click(screen.getByRole('button', { name: '확인' }));
+      expect(await screen.findByText('비밀번호가 맞지 않습니다. 다시 입력해 주세요.')).toBeInTheDocument();
+
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('open');
+      fireEvent.change(screen.getByLabelText('locked.pdf PDF 비밀번호'), { target: { value: 'fake-right' } });
+      expect(screen.queryByText('비밀번호가 맞지 않습니다. 다시 입력해 주세요.')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '확인' }));
+      expect(await screen.findByText('비밀번호를 확인했습니다.')).toBeInTheDocument();
+      expect(pdfCheckMocks.checkPdfOpens).toHaveBeenLastCalledWith(expect.any(File), 'fake-right');
+      expect(screen.queryByLabelText('locked.pdf PDF 비밀번호')).not.toBeInTheDocument();
+    });
+
+    it('does not attach a PDF that cannot be opened at all', async () => {
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('unreadable');
+      const { container } = render(<StatefulEvidenceExport />);
+      attachProof(container, 'broken.pdf');
+      expect(await screen.findByText('이 PDF를 열 수 없습니다. 파일이 손상됐을 수 있어요. 다시 저장해서 추가해 주세요.')).toBeInTheDocument();
+      expect(screen.queryByText('broken.pdf')).not.toBeInTheDocument();
+    });
+
+    it('asks again after the screen is reopened, since the password is never saved', async () => {
+      render(<StatefulEvidenceExport initialEvidence={[{ id: 'proof-locked', stored: { id: 'stored-locked', fileName: 'kept.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'transactionProof', order: 0, sourceRequiresPassword: true }]} />);
+      expect(await screen.findByLabelText('kept.pdf PDF 비밀번호')).toBeInTheDocument();
+      expect(pdfCheckMocks.checkPdfOpens).not.toHaveBeenCalled();
+    });
   });
 
   const attachStatement = async (container: HTMLElement, name = 'statement.pdf') => {

@@ -75,6 +75,13 @@ describe('evidence PDF assembly', () => {
     expect(renderMocks.renderMaskedStatementPdf.mock.calls[0][7]).toBe('pw');
   });
 
+  it('draws a password-protected proof through pdf.js with its password instead of copying it', async () => {
+    const lockedProof: AssemblySource = { ...proofPdf, sourceRequiresPassword: true };
+    await assembleEvidencePdf(input({ documents: [lockedProof], receiptGroups: [], passwords: { p1: 'proof-pw' } }));
+    expect(pdfState.documents[0]).toEqual(['summary', 'pdf:proof.pdf:1', 'pdf:proof.pdf:2']);
+    expect(renderMocks.renderPdf.mock.calls[0][5]).toBe('proof-pw');
+  });
+
   it('reports progress from zero up to every source page plus the summary and dividers', async () => {
     const onProgress = vi.fn();
     await assembleEvidencePdf(input({ onProgress }));
