@@ -2,7 +2,7 @@ import type { LedgerEntry } from '../domain/ledger';
 import type { ImportSummary } from '../domain/importSummary';
 
 /**
- * Import result on the 분류 필요 screen (decision 2026-11-18, 시안 C): at most three lines, only those
+ * Import result on the 분류 필요 screen (decision 2026-11-18, 시안 C 1안): at most three lines, only those
  * that apply. onUndo is given only while the latest import can still be undone (it is kept in memory).
  */
 export function ImportMergeSummary({ summary, entries, onUndo }: { summary: ImportSummary | null; entries: LedgerEntry[]; onUndo?: () => void }) {
@@ -14,7 +14,7 @@ export function ImportMergeSummary({ summary, entries, onUndo }: { summary: Impo
   return <div className="import-merge-summary" role="status">
     {summary && <p className="import-merge-summary__title">가져오기 결과</p>}
     <ul className="import-merge-summary__list">
-      {showAdded && <li><span>새로 추가</span><b>{summary.added}건{summary.needsClassification > 0 && ` · 분류 필요 ${summary.needsClassification}건`}</b></li>}
+      {showAdded && <li><span>새로 추가</span><b>{summary.added}건</b></li>}
       {summary && summary.alreadyInApp > 0 && <li><span>이미 앱에 있던 결제</span><b>{summary.alreadyInApp}건</b></li>}
       {remaining > 0 && <li className="is-alert"><span>중복 확인 필요</span><b>{remaining}건</b></li>}
     </ul>

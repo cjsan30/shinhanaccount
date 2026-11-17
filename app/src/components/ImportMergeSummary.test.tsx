@@ -7,7 +7,7 @@ import { ImportMergeSummary } from './ImportMergeSummary';
 
 const original: LedgerEntry = { id: 'approval-card', cardLast4: '1234', merchant: '메가커피', occurredAt: '2026-09-20T12:00:00+09:00', amount: 2700, status: 'classified', source: 'excel', category: 'food', bucket: 'resident' };
 const pending: LedgerEntry = { id: 'bank-account', cardLast4: '6789', merchant: '네이버페이', occurredAt: original.occurredAt, amount: original.amount, status: 'undecided', source: 'bankCsv', duplicateCandidateIds: [original.id] };
-const summary: ImportSummary = { added: 1, needsClassification: 0, alreadyInApp: 0 };
+const summary: ImportSummary = { added: 1, alreadyInApp: 0 };
 const row = (label: string) => screen.getByText(label).closest('li');
 
 describe('import summary (decision 2026-11-18, 시안 C)', () => {
@@ -23,15 +23,14 @@ describe('import summary (decision 2026-11-18, 시안 C)', () => {
   });
 
   it('shows at most three lines and only those that apply', () => {
-    const { rerender } = render(<ImportMergeSummary summary={{ added: 5, needsClassification: 3, alreadyInApp: 4 }} entries={[original]} />);
+    const { rerender } = render(<ImportMergeSummary summary={{ added: 5, alreadyInApp: 4 }} entries={[original]} />);
     expect(screen.getByText('가져오기 결과')).toBeInTheDocument();
-    expect(row('새로 추가')).toHaveTextContent('5건 · 분류 필요 3건');
+    expect(row('새로 추가')).toHaveTextContent(/^새로 추가5건$/);
     expect(row('이미 앱에 있던 결제')).toHaveTextContent('4건');
-    rerender(<ImportMergeSummary summary={{ added: 2, needsClassification: 0, alreadyInApp: 0 }} entries={[original]} />);
+    rerender(<ImportMergeSummary summary={{ added: 2, alreadyInApp: 0 }} entries={[original]} />);
     expect(row('새로 추가')).toHaveTextContent('2건');
-    expect(row('새로 추가')).not.toHaveTextContent('분류 필요');
     expect(screen.queryByText('이미 앱에 있던 결제')).not.toBeInTheDocument();
-    rerender(<ImportMergeSummary summary={{ added: 0, needsClassification: 0, alreadyInApp: 3 }} entries={[original]} />);
+    rerender(<ImportMergeSummary summary={{ added: 0, alreadyInApp: 3 }} entries={[original]} />);
     expect(screen.queryByText('새로 추가')).not.toBeInTheDocument();
     expect(row('이미 앱에 있던 결제')).toHaveTextContent('3건');
   });
