@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { SpotlightGuide } from './SpotlightGuide';
 import { APP_GUIDE_STEPS } from './appGuideSteps';
@@ -66,12 +66,14 @@ describe('SpotlightGuide', () => {
     fireEvent.keyDown(dialog, { key: 'Tab' }); expect(screen.getByRole('button', { name: '건너뛰기' })).toHaveFocus();
     fireEvent.keyDown(dialog, { key: 'Escape' }); expect(close).toHaveBeenCalledOnce();
   });
-  it('highlights a fallback target and closes on Android back without changing the screen', () => {
+  it('highlights a fallback target and closes on Android back without changing the screen', async () => {
     const target = document.createElement('button'); target.id = 'fallback'; target.scrollIntoView = vi.fn();
     target.getBoundingClientRect = () => ({ left: 10, right: 110, top: 50, bottom: 100, width: 100, height: 50, x: 10, y: 50, toJSON: () => ({}) });
     document.body.append(target);
     const close = vi.fn(); const { unmount } = render(<SpotlightGuide title="안내" steps={[{ target: '#missing', fallbackTarget: '#fallback', title: '설명', body: '설명' }]} onClose={close} />);
-    expect(document.querySelector('.spotlight-highlight')).not.toBeNull();
+    // The highlight appears once the scroll to the target has stopped (decision 2026-11-17).
+    await waitFor(() => expect(document.querySelector('.spotlight-highlight')).not.toBeNull());
+    expect(document.querySelector('.spotlight-card--moving')).toBeNull();
     fireEvent(window, new Event('close-help-guide')); expect(close).toHaveBeenCalledOnce();
     unmount(); target.remove();
   });

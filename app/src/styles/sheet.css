@@ -325,6 +325,11 @@ body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not
   overflow-wrap: anywhere;
 }
 
+/* Hidden while the page scrolls to the next target, so the card never slides into place. */
+.spotlight-card--moving {
+  visibility: hidden;
+}
+
 .spotlight-card small {
   color: #b6cbd1;
   font-size: 12px;
