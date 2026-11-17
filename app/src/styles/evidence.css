@@ -1306,3 +1306,34 @@ body.high-contrast .receipt-overview :is(.receipt-overview__count, .receipt-over
 body.high-contrast .receipt-cards-toggle :is(small, i) {
   color: #fff !important;
 }
+
+.evidence-recent-reports .evidence-recent-reports__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.evidence-recent-reports__pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.evidence-recent-reports__pages button {
+  min-width: 44px;
+  min-height: 40px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 18px;
+}
+
+.evidence-recent-reports__pages button:disabled {
+  opacity: .35;
+}

@@ -3,7 +3,7 @@ import { Sentences } from '../../components/Sentences';
 
 type PdfPreviewProps = { pages: string[]; sizeLabel: string; saving: boolean; error: string | null; onClose: () => void; onSave: () => void };
 
-/** Full-screen check of the assembled PDF; nothing is saved until [이대로 PDF 생성]. */
+/** Full-screen check of the assembled PDF; nothing is saved until [이대로 저장]. */
 export function PdfPreview({ pages, sizeLabel, saving, error, onClose, onSave }: PdfPreviewProps) {
   const [zoomed, setZoomed] = useState<number | null>(null);
   // Android back closes only the preview (App.tsx sends this event), not the whole report sheet.
@@ -21,7 +21,7 @@ export function PdfPreview({ pages, sizeLabel, saving, error, onClose, onSave }:
     </figure>)}</div>
     <footer className="pdf-preview__footer">
       {error && <p role="alert"><Sentences text={error} /></p>}
-      <div><button type="button" className="pdf-preview__close" disabled={saving} onClick={onClose}>닫기</button><button type="button" className="pdf-preview__save" disabled={saving} onClick={onSave}>{saving ? '저장 중…' : '이대로 PDF 생성'}</button></div>
+      <div><button type="button" className="pdf-preview__close" disabled={saving} onClick={onClose}>닫기</button><button type="button" className="pdf-preview__save" disabled={saving} onClick={onSave}>{saving ? '저장 중…' : '이대로 저장'}</button></div>
     </footer>
   </div>;
 }
