@@ -18,7 +18,7 @@ describe('bottom sheet navigation', () => {
   it('moves focus into the sheet when it opens and gives it back to the opener when it closes', async () => {
     const opener = document.createElement('button'); opener.textContent = 'open'; document.body.append(opener); opener.focus();
     const { unmount } = render(<BottomSheet title="Plan" onClose={vi.fn()}><div>Plan</div></BottomSheet>);
-    expect(screen.getByRole('dialog')).toHaveFocus();
+    expect(screen.getByRole('heading', { name: 'Plan' })).toHaveFocus();
     unmount();
     await waitFor(() => expect(opener).toHaveFocus());
     opener.remove();

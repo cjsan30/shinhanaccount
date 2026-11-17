@@ -49,8 +49,8 @@
   touch-action: none;
 }
 
-/* Focus moves to the sheet itself when it opens; the sheet is a container, not a control. */
-.sheet:focus {
+/* Focus moves to the sheet title when it opens; the title is not a control. */
+.sheet > header h2:focus {
   outline: none;
 }
 
