@@ -3,7 +3,7 @@ import type { ReportEvidenceRecord } from '../../../domain/reportEvidence';
 import { compressImage, divider, pageImage, renderMaskedStatementPdf, renderPdf, statementPages } from './render';
 import { A4, ExportCancelled, PROFILES, SECTION_LABEL, TARGET_BYTES, type ExportProfile, type RasterImage, type ReportSummary } from './types';
 
-export type AssemblySource = Pick<ReportEvidenceRecord, 'id' | 'section' | 'statementRows' | 'excludedStatementRowIds' | 'statementSourceRequiresPassword'> & { file: File; kind: 'image' | 'pdf'; pages?: number };
+export type AssemblySource = Pick<ReportEvidenceRecord, 'id' | 'section' | 'statementRows' | 'excludedStatementRowIds' | 'statementSourceRequiresPassword' | 'sourceRequiresPassword'> & { file: File; kind: 'image' | 'pdf'; pages?: number };
 export type AssemblyProgress = { current: number; total: number; stage: string; attempt: number };
 export type ImagePlacement = { x: number; y: number; width: number; height: number };
 
@@ -14,7 +14,7 @@ export type EvidenceAssembly = {
   /** One divider page per group, followed by its receipts. */
   receiptGroups: Array<{ label: string; receipts: AssemblySource[] }>;
   scope: PeriodScope;
-  /** Statement PDF passwords by evidence id; used only while rendering. */
+  /** PDF passwords by evidence id (statements, protected receipts and proofs); used only while rendering. */
   passwords: Record<string, string>;
   /** Rendered pages survive between attempts and exports while the inputs are unchanged. */
   rasterCache: Map<string, RasterImage[]>;
@@ -55,7 +55,7 @@ export async function addRasterPages(pdf: any, images: RasterImage[], isCancelle
 
 async function rasterize(input: EvidenceAssembly, item: AssemblySource, profile: ExportProfile, onPage: () => void) {
   const { scope, rasterCache, isCancelled } = input;
-  const key = `${evidenceRasterCacheKey(item, profile.id)}:${scope.periodKey}:${JSON.stringify(scope.period)}:${item.statementSourceRequiresPassword ? 'protected' : 'open'}`;
+  const key = `${evidenceRasterCacheKey(item, profile.id)}:${scope.periodKey}:${JSON.stringify(scope.period)}:${item.statementSourceRequiresPassword || item.sourceRequiresPassword ? 'protected' : 'open'}`;
   const cached = rasterCache.get(key);
   if (cached) return cached;
   const hasSourceCoordinates = item.statementRows?.some((row) => row.sourcePage !== undefined && row.sourceY !== undefined);
@@ -64,7 +64,7 @@ async function rasterize(input: EvidenceAssembly, item: AssemblySource, profile:
     : item.section === 'statement' && item.statementRows?.length
       ? await statementPages(item.statementRows, item.excludedStatementRowIds ?? [], profile.quality, scope.periodKey, scope.period)
       : item.kind === 'pdf'
-        ? await renderPdf(item.file, profile.pdfDpi ?? 150, profile.quality, onPage, isCancelled)
+        ? await renderPdf(item.file, profile.pdfDpi ?? 150, profile.quality, onPage, isCancelled, input.passwords[item.id])
         : await compressImage(item.file, profile.maxEdge, profile.quality);
   rasterCache.set(key, output);
   return output;
@@ -94,7 +94,8 @@ export async function assembleEvidencePdf(input: EvidenceAssembly): Promise<Uint
     for (const item of documents) {
       if (isCancelled()) throw new ExportCancelled();
       const stage = profile.pdfDpi ? `용량을 최적화하고 있습니다 · ${attempt + 1}차` : `${SECTION_LABEL[item.section]}을 추가하고 있습니다`;
-      if (item.kind === 'pdf' && item.section !== 'statement' && !profile.pdfDpi && !item.statementRows?.length) {
+      // pdf-lib cannot open a password-protected file, so a protected proof is drawn through pdf.js with its password.
+      if (item.kind === 'pdf' && item.section !== 'statement' && !profile.pdfDpi && !item.statementRows?.length && !item.sourceRequiresPassword) {
         const source = await PDFDocument.load(await item.file.arrayBuffer());
         const pages = await pdf.copyPages(source, source.getPageIndices());
         pages.forEach((page) => pdf.addPage(page));
@@ -121,12 +122,12 @@ export async function assembleEvidencePdf(input: EvidenceAssembly): Promise<Uint
     bytes = await pdf.save({ useObjectStreams: true });
     if (isCancelled()) throw new ExportCancelled();
     if (onComparison) {
-      if (bytes.byteLength > TARGET_BYTES) throw new Error(`${profile.id} 품질의 PDF가 5MB 제한을 넘습니다. 영수증 수나 불필요한 페이지를 줄여 다시 비교해 주세요.`);
+      if (bytes.byteLength > TARGET_BYTES) throw new Error(`${profile.id} 품질의 PDF가 4.5MB 제한을 넘습니다. 영수증 수나 불필요한 페이지를 줄여 다시 비교해 주세요.`);
       await onComparison(profile.id, bytes);
       continue;
     }
     if (bytes.byteLength <= TARGET_BYTES) break;
   }
-  if (!onComparison && bytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 5MB 이하로 만들 수 없습니다. 원본이 너무 큰 경우 불필요한 페이지를 줄인 뒤 다시 생성해 주세요.');
+  if (!onComparison && bytes.byteLength > TARGET_BYTES) throw new Error('선명도를 유지하면서 4.5MB 이하로 만들 수 없습니다. 원본이 너무 큰 경우 불필요한 페이지를 줄인 뒤 다시 생성해 주세요.');
   return bytes;
 }

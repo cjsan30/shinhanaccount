@@ -37,7 +37,17 @@ jobs:
       - run: npm run build
       - run: npm run test:security
       - name: npm audit (production deps)
-        run: npm audit --omit=dev
+        # The registry sometimes times out on GitHub runners. Only that is retried;
+        # a vulnerability report fails the job at once.
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --omit=dev > audit.log 2>&1; then cat audit.log; exit 0; fi
+            cat audit.log
+            if grep -qi 'vulnerabilit' audit.log; then exit 1; fi
+            echo "npm audit could not reach the registry (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 20)); fi
+          done
+          exit 1
 
   android:
     name: Android unit tests

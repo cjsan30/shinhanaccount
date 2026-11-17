@@ -1,4 +1,4 @@
-import { getPolicyPeriodKey, getPolicyPeriodRange, type BudgetKey, type PolicyPeriod } from './budget';
+import { getPolicyPeriodKey, getPolicyPeriodRange, isDateInPolicyPeriod, type BudgetKey, type PolicyPeriod } from './budget';
 import { getCategorySpent, getSpent, getSupportAmount, isEntryInPolicyPeriod, type Ledger, type LedgerEntry } from './ledger';
 import type { AnyPolicyItemDefinition } from './policy';
 
@@ -11,8 +11,17 @@ export type PeriodScope = { periodKey: string; period?: PolicyPeriod };
 
 export type ItemUsage = { item: AnyPolicyItemDefinition; spent: number; count: number };
 
-export function isInPeriodScope(value: { occurredAt: string }, scope: PeriodScope) {
+export function isInPeriodScope(value: { occurredAt: string; includedBeforeDeposit?: boolean }, scope: PeriodScope) {
   return isEntryInPolicyPeriod(value, scope.periodKey, scope.period);
+}
+
+/**
+ * Whether a record falls between the period's 11th and its 10th, before or after
+ * the deposit. Such records are kept (payments before the deposit are recorded
+ * as 사업 무관); only records in scope count toward the budget.
+ */
+export function isInPeriodBounds(value: { occurredAt: string }, scope: PeriodScope) {
+  return isDateInPolicyPeriod(new Date(value.occurredAt), scope.periodKey);
 }
 
 /** Queued records without a date are kept so the user can still review them. */
@@ -65,6 +74,6 @@ export function selectUndecidedByPeriod(ledger: Ledger, scope: PeriodScope) {
 export type ImportDatedRecord = { occurredAt: string };
 
 export function filterImportToPolicyPeriod<T extends ImportDatedRecord>(records: T[], periodKey: string, period?: PolicyPeriod) {
-  const included = records.filter((record) => isInPeriodScope(record, { periodKey, period }));
+  const included = records.filter((record) => isInPeriodBounds(record, { periodKey, period }));
   return { included, excludedOutsidePeriod: records.length - included.length };
 }

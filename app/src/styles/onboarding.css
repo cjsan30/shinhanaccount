@@ -84,8 +84,9 @@
   color: var(--color-text-bright);
 }
 
-.first-run__error {
-  color: #ffaca6 !important;
+/* `.first-run>p` and `.first-run__card>p` would otherwise give the error the body text colour. */
+.first-run p.first-run__error {
+  color: #ffaca6;
 }
 
 .first-run__start {
@@ -435,33 +436,6 @@
   border-radius: 16px;
   background: #fff;
 }
-
-.onboarding-history-guide {
-  margin: 14px 0 20px;
-  padding: 14px;
-  border-left: 3px solid #72d6cf;
-  border-radius: 0 12px 12px 0;
-  background: #172f3b;
-}
-
-.onboarding-history-guide strong {
-  display: block;
-  color: #e9f5f7;
-  font-size: 14px;
-}
-
-.onboarding-history-guide p {
-  margin: 7px 0 0 !important;
-  color: #bfd0de !important;
-  font-size: 13px !important;
-  line-height: 1.65 !important;
-}
-
-.onboarding-history-guide b {
-  color: var(--color-accent);
-  font-weight: 750;
-}
-
 /* Information stays readable in small viewports and the largest text setting. */
 
 .first-run--applicant {
@@ -487,8 +461,4 @@
   line-height: 1.65;
   word-break: keep-all;
   overflow-wrap: anywhere;
-}
-
-body.high-contrast :is(.app-information-content p, .app-information-content h3, .onboarding-app-notice p) {
-  color: #fff !important;
 }

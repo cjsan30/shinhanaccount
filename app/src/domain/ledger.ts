@@ -9,7 +9,7 @@ import { reconcileImportedEntries, transactionOrigins, type TransactionOrigin } 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 // Keep original transaction amounts separate from subsidy amounts.
 export type LedgerSource = 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual';
-export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; supportAmount?: number; supportAmountReviewRequired?: boolean; previousSupportAmount?: number; previousClassification?: ManualClassification; memo?: string; evidence?: StoredEvidence[]; importOrigins?: TransactionOrigin[]; bankSummary?: string; duplicateCandidateIds?: string[] };
+export type LedgerEntry = NativeApproval & { id: string; status: LedgerStatus; bucket?: BudgetKey; category?: string; periodKey?: string; approvalNumber?: string; source?: LedgerSource; cancelledAt?: string; cancelledAmount?: number; supportAmount?: number; supportAmountReviewRequired?: boolean; previousSupportAmount?: number; previousClassification?: ManualClassification; memo?: string; /** Set while the payment is excluded as made before the subsidy deposit; restores the earlier state. */ beforeDeposit?: { status: LedgerStatus; bucket?: BudgetKey; category?: string }; /** The user counted this payment although it was made before the deposit; it is not left out again. */ includedBeforeDeposit?: boolean; evidence?: StoredEvidence[]; importOrigins?: TransactionOrigin[]; bankSummary?: string; duplicateCandidateIds?: string[] };
 export type Ledger = { entries: LedgerEntry[]; alertThresholds: [number, number] };
 export type ApplyPaymentResult = { ledger: Ledger; entry: LedgerEntry; alerts: number[] };
 export type ManualClassification = { bucket: BudgetKey; category: string };
@@ -26,7 +26,8 @@ export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, period?: PolicyPeriod) { return getPolicyPeriodKey(new Date(entry.occurredAt), period); }
-export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, period); }
+/** A payment the user counted although it came before the deposit belongs to the period by its date alone. */
+export function isEntryInPolicyPeriod(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey' | 'includedBeforeDeposit'>, periodKey: string, period?: PolicyPeriod) { return isDateInPolicyPeriod(new Date(entry.occurredAt), periodKey, entry.includedBeforeDeposit ? undefined : period); }
 export function getRemainingPaymentAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount'>) { return Math.max(0, entry.amount - (entry.cancelledAmount ?? 0)); }
 export function getSupportAmount(entry: Pick<LedgerEntry, 'amount' | 'cancelledAmount' | 'supportAmount' | 'status'>) {
   if (entry.status === 'cancelled') return 0;
@@ -62,8 +63,8 @@ function transactionToEntry(transaction: ImportedCardTransaction, cardLast4: str
 }
 
 /** `classify` applies the user's merchant rules; bank withdrawals stay undecided candidates (see importBankTransactions). */
-export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, period?: PolicyPeriod, classify?: (merchant: string, amount: number) => PaymentClassification): ImportResult {
-  const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
+export function importCardTransactions(ledger: Ledger, transactions: ImportedCardTransaction[], cardLast4 = '', periodKey?: string, _period?: PolicyPeriod, classify?: (merchant: string, amount: number) => PaymentClassification): ImportResult {
+  const importable = transactions.filter(isImportable).filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;
@@ -71,8 +72,8 @@ export function importCardTransactions(ledger: Ledger, transactions: ImportedCar
   const added = result.entries.filter((entry) => !baseline.some((existing) => existing.id === entry.id));
   return { ...result, ledger: { ...ledger, entries: result.entries }, excluded: added.filter((entry) => entry.status === 'excluded').length, undecided: added.filter((entry) => entry.status === 'undecided').length, skipped: transactions.length - importable.length, replacedDemo: replacesDemo };
 }
-export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string, period?: PolicyPeriod): ImportResult {
-  const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey, period));
+export function importBankTransactions(ledger: Ledger, transactions: ImportedBankTransaction[], accountLast4 = '', periodKey?: string, _period?: PolicyPeriod): ImportResult {
+  const importable = transactions.filter((transaction) => transaction.direction === 'withdrawal').filter((transaction) => !periodKey || isDateInPolicyPeriod(new Date(transaction.occurredAt), periodKey));
   if (!importable.length) return { ledger, imported: 0, duplicates: 0, excluded: 0, undecided: 0, skipped: transactions.length, replacedDemo: false };
   const replacesDemo = ledger.entries.length > 0 && ledger.entries.every((entry) => entry.source === 'demo');
   const baseline = replacesDemo ? [] : ledger.entries;

@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState, type ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadEvidence } from '../../native/evidenceVault';
+import { loadEvidence, removeStoredEvidence } from '../../native/evidenceVault';
 import { ReceiptOcr } from '../../native/receiptOcr';
 import { EvidenceExport } from './EvidenceExport';
 import { evidenceRasterCacheKey } from './pipeline/assemble';
@@ -14,10 +14,13 @@ vi.mock('../../native/evidenceVault', () => ({
   removeStoredEvidence: vi.fn(),
   storeEvidence: vi.fn(async (file: File) => ({ id: 'stored-upload', fileName: file.name, mimeType: file.type, size: file.size, attachedAt: '2026-09-29T00:00:00+09:00' })),
 }));
-const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn() }));
-vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, bytesToBase64: () => 'local-test-image' }));
+const exportMocks = vi.hoisted(() => ({ saveFile: vi.fn(), create: vi.fn(), load: vi.fn(), openSavedFile: vi.fn(), existingSavedFiles: vi.fn() }));
+vi.mock('../../native/fileExport', () => ({ saveFile: exportMocks.saveFile, openSavedFile: exportMocks.openSavedFile, existingSavedFiles: exportMocks.existingSavedFiles, isSavedFileNotFound: (error: unknown) => (error as { code?: string } | null)?.code === 'FILE_NOT_FOUND', bytesToBase64: () => 'local-test-image' }));
 vi.mock('../../native/receiptOcr', () => ({ ReceiptOcr: { recognize: vi.fn(async () => ({ text: '결제일시 2026-09-20 12:00:00' })) } }));
 vi.mock('pdf-lib', () => ({ PDFDocument: { create: exportMocks.create, load: exportMocks.load } }));
+const pdfCheckMocks = vi.hoisted(() => ({ checkPdfOpens: vi.fn(async (): Promise<string> => 'open') }));
+vi.mock('./pipeline/pdfCheck', () => pdfCheckMocks);
+vi.mock('./pipeline/preview', () => ({ renderPreviewPages: vi.fn(async (_bytes: Uint8Array, onPage: (done: number, total: number) => void) => { onPage(1, 2); onPage(2, 2); return [new Blob(['page-1'], { type: 'image/jpeg' }), new Blob(['page-2'], { type: 'image/jpeg' })]; }) }));
 vi.mock('../../domain/shinhanBankImport', async (importOriginal) => ({
   getMaskedAccountLast4: (await importOriginal<typeof import('../../domain/shinhanBankImport')>()).getMaskedAccountLast4,
   parseShinhanBankPdfExport: vi.fn(async () => [{ source: 'bankCsv', occurredAt: '2026-09-20T12:00:00+09:00', merchant: '개인 결제처', summary: '체크카드', amount: 12000, balance: 683000, transactionId: 'row-1', direction: 'withdrawal' }]),
@@ -28,9 +31,20 @@ const summary = {
   buckets: [{ key: 'resident' as const, label: '정주비', budget: 500000, used: 10000, items: [{ category: 'food', label: '식비', budget: 200000, used: 10000 }] }, { key: 'studySpace' as const, label: '학습공간비', budget: 200000, used: 0, items: [] }],
 };
 
-function StatefulEvidenceExport({ initialEvidence = [], entries = [] }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries'] }) {
+function StatefulEvidenceExport({ initialEvidence = [], entries = [], onNotify }: { initialEvidence?: ComponentProps<typeof EvidenceExport>['reportEvidence']; entries?: ComponentProps<typeof EvidenceExport>['entries']; onNotify?: (message: string) => void }) {
   const [reportEvidence, setReportEvidence] = useState<ComponentProps<typeof EvidenceExport>['reportEvidence']>(initialEvidence);
-  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} />;
+  return <EvidenceExport reportEvidence={reportEvidence} onReportEvidenceChange={setReportEvidence} summary={summary} periodKey="2026-09" entries={entries} onNotify={onNotify} />;
+}
+
+/** Receipt cards start folded (decision 2026-11-16); tests that work on a card unfold them first. */
+async function openReceipts() {
+  fireEvent.click(await screen.findByRole('button', { name: /^영수증 \d+장 보기/ }));
+}
+
+/** [보고서 생성] builds the PDF and opens the in-app preview; saving happens only from the preview. */
+async function previewAndSave() {
+  fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
+  fireEvent.click(await screen.findByRole('button', { name: '이대로 저장' }));
 }
 
 describe('EvidenceExport', () => {
@@ -39,7 +53,8 @@ describe('EvidenceExport', () => {
   const canvasContext = { fillStyle: '', font: '', strokeStyle: '', fillRect: vi.fn(), fillText: vi.fn(), strokeRect: vi.fn(), drawImage: vi.fn() } as unknown as CanvasRenderingContext2D;
 
   beforeEach(() => {
-    exportMocks.saveFile.mockReset(); exportMocks.create.mockReset(); exportMocks.load.mockReset();
+    exportMocks.saveFile.mockReset(); exportMocks.create.mockReset(); exportMocks.load.mockReset(); exportMocks.openSavedFile.mockReset().mockResolvedValue(undefined); exportMocks.existingSavedFiles.mockReset().mockImplementation(async (uris: string[]) => uris);
+    window.localStorage.removeItem('shinhanhae-recent-reports-v1');
     exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(async () => new Uint8Array([1, 2, 3])) });
     exportMocks.load.mockResolvedValue({ getPageCount: () => 1, getPageIndices: () => [], copyPages: vi.fn(async () => []) });
     exportMocks.saveFile.mockResolvedValue({ fileName: 'shinhanhae_report_evidence.pdf', relativePath: 'Downloads' });
@@ -50,6 +65,30 @@ describe('EvidenceExport', () => {
     URL.revokeObjectURL = vi.fn();
   });
   afterEach(() => { URL.createObjectURL = originalCreateObjectURL; URL.revokeObjectURL = originalRevokeObjectURL; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('clears every attachment of all three sections only after the user confirms', async () => {
+    const stored = (id: string) => ({ id, fileName: `${id}.jpg`, mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' });
+    const evidence = [
+      { id: 'statement', stored: stored('statement'), section: 'statement' as const, order: 0 },
+      { id: 'proof', stored: stored('proof'), section: 'transactionProof' as const, order: 0 },
+      { id: 'receipt', stored: stored('receipt'), section: 'receipt' as const, order: 0 },
+    ];
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 10, height: 10, close: vi.fn() })));
+    vi.mocked(removeStoredEvidence).mockReset().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const notify = vi.fn();
+    render(<StatefulEvidenceExport initialEvidence={evidence} onNotify={notify} />);
+    const clear = screen.getByRole('button', { name: '보고서 초기화' });
+    expect(clear.parentElement?.firstElementChild).toBe(clear);
+    fireEvent.click(clear);
+    expect(confirm).toHaveBeenLastCalledWith('사용보고서를 초기화할까요?\n첨부한 입출금내역·거래증빙·영수증 3개를 모두 지웁니다.\n되돌릴 수 없습니다.');
+    expect(removeStoredEvidence).not.toHaveBeenCalled();
+    fireEvent.click(clear);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('사용보고서를 초기화했습니다.'));
+    expect(screen.queryByText('사용보고서를 초기화했습니다.')).not.toBeInTheDocument();
+    expect(vi.mocked(removeStoredEvidence).mock.calls.map(([file]) => file.id)).toEqual(['statement', 'proof', 'receipt']);
+    expect(screen.queryByRole('button', { name: '보고서 초기화' })).not.toBeInTheDocument();
+  });
 
   it('shows stored receipts before batch OCR completes and only fills dates without auto-linking', async () => {
     let finishFirst!: (value: unknown) => void;
@@ -62,24 +101,38 @@ describe('EvidenceExport', () => {
     expect(await screen.findByText('first.jpg')).toBeInTheDocument();
     expect(await screen.findByText('second.jpg')).toBeInTheDocument();
     expect(screen.getByText('파일 추가 · 날짜 확인 중 0 / 2장')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'PDF 생성' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '보고서 생성' })).toBeDisabled();
     await waitFor(() => expect(finishFirst).toBeDefined()); finishFirst(bitmap);
     await waitFor(() => expect(screen.getByLabelText('영수증 1 날짜')).toHaveValue('2026-09-20'));
     await waitFor(() => expect(screen.getByLabelText('영수증 2 날짜')).toHaveValue('2026-09-20'));
     expect(screen.queryByText('결제 연결 완료')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /후보 결제/ })).toHaveLength(2);
+    // One same-day candidate under each receipt; 결제별 영수증 lists the payment separately.
+    expect([...document.querySelectorAll('.receipt-payment-candidates button')].filter((button) => /후보 결제/.test(button.textContent ?? ''))).toHaveLength(2);
   });
 
-  it('lists missing originals and blocks incomplete generation until reattached', async () => {
-    vi.mocked(loadEvidence).mockRejectedValueOnce(new Error('missing'));
-    const { container } = render(<StatefulEvidenceExport initialEvidence={[{ id: 'missing', stored: { id: 'lost', fileName: 'lost.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
-    expect(await screen.findByText('원본 파일 1개를 찾지 못했습니다')).toBeInTheDocument();
-    expect(screen.getByText('lost.jpg')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'PDF 생성' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('lost.jpg 원본 다시 추가'), { target: { files: [new File(['restored'], 'restored.jpg', { type: 'image/jpeg' })] } });
-    expect(await screen.findByText('restored.jpg')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('원본 파일 1개를 찾지 못했습니다')).not.toBeInTheDocument());
-    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(3);
+  it('drops attachments whose stored copy is gone and marks the payment whose receipt link was lost', async () => {
+    window.localStorage.clear();
+    const entries = [{ id: 'pay', amount: 5000, merchant: '연결 결제', cardLast4: '1234', occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, bucket: 'resident' as const, category: 'food' }];
+    vi.mocked(loadEvidence).mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'EVIDENCE_NOT_FOUND' }));
+    const { unmount } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'missing', stored: { id: 'lost', fileName: 'lost.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'pay' }]} />);
+    expect(await screen.findByText('원본을 찾지 못해 연결이 풀린 결제 1건')).toBeInTheDocument();
+    expect(screen.queryByText('lost.jpg')).not.toBeInTheDocument();
+    expect(screen.queryByText(/찾지 못했습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '보고서 초기화' })).not.toBeInTheDocument();
+    unmount();
+    render(<StatefulEvidenceExport entries={entries} />);
+    expect(await screen.findByText('원본을 찾지 못해 연결이 풀린 결제 1건')).toBeInTheDocument();
+    window.localStorage.clear();
+  });
+
+  it('keeps an attachment that could not be read for another reason and blocks generation', async () => {
+    window.localStorage.clear();
+    vi.mocked(loadEvidence).mockRejectedValueOnce(new Error('read failed'));
+    render(<StatefulEvidenceExport initialEvidence={[{ id: 'busy', stored: { id: 'busy', fileName: 'busy.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    expect(await screen.findByText('첨부 1개를 읽지 못했습니다. 사용보고서를 닫았다가 다시 열어 주세요.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '보고서 초기화' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '보고서 생성' })).toBeDisabled();
+    expect(screen.queryByText(/연결이 풀린 결제/)).not.toBeInTheDocument();
   });
 
   it('filters receipt tasks, keeps source order controls correct and collapses completed cards', async () => {
@@ -90,6 +143,7 @@ describe('EvidenceExport', () => {
       { id: 'todo', stored: stored('todo'), section: 'receipt', order: 1, receiptDate: '2026-09-20' },
       { id: 'date', stored: stored('date'), section: 'receipt', order: 2 },
     ]} />);
+    await openReceipts();
     await screen.findByText('done.jpg');
     expect(container.querySelector('#evidence-done details')).not.toHaveAttribute('open');
     fireEvent.change(screen.getByLabelText('영수증 보기 필터'), { target: { value: 'unlinked' } });
@@ -104,11 +158,13 @@ describe('EvidenceExport', () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
     const entries = [{ id: 'p', cardLast4: '1234', merchant: '연결 결제', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food', occurredAt: '2026-09-20T12:00:00+09:00' }];
     const { container } = render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'linked', stored: { id: 's', fileName: 'linked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', linkedEntryId: 'p', category: 'transport' }]} />);
+    // Linked receipts start folded (decision 2026-11-16).
+    fireEvent.click(await screen.findByRole('button', { name: /영수증 1장 보기/ }));
     await screen.findByText('linked.jpg');
     fireEvent.click(screen.getByText('연결한 영수증 확인 · 수정'));
     fireEvent.blur(screen.getByLabelText('영수증 1 날짜'));
     expect(await screen.findByText('결제 연결 완료')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await previewAndSave();
     await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalled());
     expect(canvasContext.fillText).toHaveBeenCalledWith('식비', expect.any(Number), expect.any(Number));
     expect(container.querySelector('#evidence-linked')).toBeInTheDocument();
@@ -119,8 +175,9 @@ describe('EvidenceExport', () => {
     const policy = adjustBudget({ ...emptyPolicy, plans: { ...emptyPolicy.plans, food: 200000, education: 200000, transport: 100000, cafe: 200000 } }, { from: 'transport', to: 'housing', amount: 50000 }, {});
     const adjustedSummary = { ...summary, totalUsed: 0, buckets: (['resident', 'studySpace'] as const).map((key) => ({ key, label: key === 'resident' ? '정주비' : '학습공간비', budget: getPolicyLimit(policy, key), used: 0, items: getPolicyItems(policy).filter((item) => item.bucket === key).map((item) => ({ category: item.ledgerCategories[0], label: item.label, budget: getCategoryLimit(policy, item.ledgerCategories[0]), used: 0 })) })) };
     render(<EvidenceExport reportEvidence={[{ id: 'receipt', stored: { id: 'stored', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={adjustedSummary} periodKey="2026-09" entries={[]} />);
+    await openReceipts();
     await screen.findByText('receipt.jpg');
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await previewAndSave();
     await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalled());
     const texts = vi.mocked(canvasContext.fillText).mock.calls.map(([text]) => text);
     expect(texts.filter((text) => text === '계획 50,000원')).toHaveLength(2);
@@ -138,13 +195,77 @@ describe('EvidenceExport', () => {
 
   it('shows receipt coverage before a submission is generated', () => {
     render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
-    expect(screen.getByText('영수증 연결 확인')).toBeInTheDocument();
-    expect(screen.getByText(/결제 1건 · 연결 0건 · 미연결 1건/)).toBeInTheDocument();
+    // 결제별 영수증 replaced the 영수증 연결 확인 box (decision 2026-11-16).
+    const overview = screen.getByRole('region', { name: '결제별 영수증' });
+    expect(overview).toHaveTextContent('영수증 없음 1');
+    expect(overview).toHaveTextContent('연결됨 0');
+    expect(within(overview).getByRole('button', { name: '카페 10,000원 · 영수증 추가' })).toBeInTheDocument();
     expect(screen.getByText(/연결하지 않아도 PDF를 생성할 수 있습니다/)).toBeInTheDocument();
+  });
+
+  it('lists payments without a receipt first and can show only those', async () => {
+    const payment = (id: string, day: number, merchant: string) => ({ id, cardLast4: '1234', occurredAt: `2026-09-${day}T10:00:00+09:00`, merchant, amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' });
+    const entries = [payment('linked', 25, '연결 가게'), ...Array.from({ length: 6 }, (_, index) => payment(`missing-${index}`, 20 + index, `빈 가게 ${index}`))];
+    render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'r1', stored: { id: 's1', fileName: 'r1.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-25' }, section: 'receipt', order: 0, linkedEntryId: 'linked', receiptOcrStatus: 'linked', receiptDate: '2026-09-25' }]} />);
+    const overview = screen.getByRole('region', { name: '결제별 영수증' });
+    expect(overview).toHaveTextContent('영수증 없음 6');
+    expect(overview).toHaveTextContent('연결됨 1');
+    const rows = () => within(overview).getAllByRole('button', { name: /영수증 (추가|\d+ 보기)$/ }).map((button) => button.getAttribute('aria-label'));
+    // Six rows at first, newest payment without a receipt on top; the linked one is behind 더 보기.
+    expect(rows()).toHaveLength(6);
+    expect(rows()[0]).toBe('빈 가게 5 5,000원 · 영수증 추가');
+    fireEvent.click(within(overview).getByRole('button', { name: '1건 더 보기' }));
+    expect(rows().at(-1)).toBe('연결 가게 5,000원 · 영수증 1 보기');
+    fireEvent.click(within(overview).getByLabelText('영수증 없는 결제만 보기'));
+    expect(rows()).toHaveLength(6);
+    expect(rows().every((name) => name?.endsWith('영수증 추가'))).toBe(true);
+  });
+
+  it('starts with the receipt cards folded and opens them on request or from 결제별 영수증', async () => {
+    const payment = { id: 'p1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '연결 가게', amount: 5000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' };
+    const linked = { id: 'r1', stored: { id: 's1', fileName: 'linked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt' as const, order: 0, linkedEntryId: 'p1', receiptOcrStatus: 'linked' as const, receiptDate: '2026-09-20' };
+    const first = render(<StatefulEvidenceExport entries={[payment]} initialEvidence={[linked]} />);
+    const toggle = await screen.findByRole('button', { name: /영수증 1장 보기/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('linked.jpg')).not.toBeInTheDocument();
+    // 결제별 영수증 → the linked payment opens the cards on its receipt.
+    fireEvent.click(within(screen.getByRole('region', { name: '결제별 영수증' })).getByRole('button', { name: '연결 가게 5,000원 · 영수증 1 보기' }));
+    expect(await screen.findByText('linked.jpg')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /영수증 1장 접기/ })).toHaveAttribute('aria-expanded', 'true');
+    first.unmount();
+
+    // A receipt still without a payment does not unfold the cards when the screen opens; the row counts it.
+    const unlinked = { id: 'r2', stored: { id: 's2', fileName: 'unlinked.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-21' }, section: 'receipt' as const, order: 1, receiptOcrStatus: 'needs-input' as const };
+    render(<StatefulEvidenceExport entries={[payment]} initialEvidence={[linked, unlinked]} />);
+    const folded = await screen.findByRole('button', { name: /영수증 2장 보기/ });
+    expect(folded).toHaveTextContent('확인 필요 1장');
+    expect(screen.queryByText('unlinked.jpg')).not.toBeInTheDocument();
+    fireEvent.click(folded);
+    expect(await screen.findByText('unlinked.jpg')).toBeInTheDocument();
+  });
+
+  it('links a receipt picked from a payment row to that payment without reading its date', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    vi.mocked(ReceiptOcr.recognize).mockClear();
+    const entries = [{ id: 'cafe', cardLast4: '1234', occurredAt: '2026-09-20T15:30:00+09:00', merchant: '동네 카페', amount: 4500, status: 'classified' as const, bucket: 'studySpace' as const, category: 'generalCafe' }];
+    const { container } = render(<StatefulEvidenceExport entries={entries} />);
+    const overview = screen.getByRole('region', { name: '결제별 영수증' });
+    const picker = container.querySelector<HTMLInputElement>('.receipt-link-picker')!;
+    const opened = vi.spyOn(picker, 'click').mockImplementation(() => undefined);
+    fireEvent.click(within(overview).getByRole('button', { name: '동네 카페 4,500원 · 영수증 추가' }));
+    expect(opened).toHaveBeenCalled();
+    fireEvent.change(picker, { target: { files: [new File(['receipt'], 'cafe.jpg', { type: 'image/jpeg' })] } });
+    expect(await screen.findByText('cafe.jpg')).toBeInTheDocument();
+    await waitFor(() => expect(overview).toHaveTextContent('연결됨 1'));
+    expect(overview).toHaveTextContent('영수증 없음 0');
+    expect(within(overview).getByRole('button', { name: '동네 카페 4,500원 · 영수증 1 보기' })).toBeInTheDocument();
+    expect(ReceiptOcr.recognize).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('영수증 1 날짜')).toHaveValue('2026-09-20');
   });
 
   it('does not repeat old amount-matching instructions from saved receipts', async () => {
     render(<StatefulEvidenceExport initialEvidence={[{ id: 'legacy-receipt', section: 'receipt', order: 0, stored: { id: 'old', fileName: 'old.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, receiptOcrStatus: 'ambiguous', receiptOcrMessage: '날짜와 금액을 읽었습니다. 추천 또는 직접 연결해 주세요.' }]} />);
+    await openReceipts();
     await screen.findByText('old.jpg');
     expect(screen.queryByText(/날짜와 금액을 읽었습니다/)).not.toBeInTheDocument();
     expect(screen.getByText('결제 날짜를 선택하면 해당 날짜의 결제를 보여드립니다.')).toBeInTheDocument();
@@ -158,7 +279,7 @@ describe('EvidenceExport', () => {
     fireEvent.pointerUp(dialog, { clientX: 120 });
     expect(screen.getByText('입출금내역을 추가하세요')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '다음' }));
-    expect(screen.getByText('가릴 내역을 확인하세요')).toBeInTheDocument();
+    expect(screen.getByText('모자이크할 내역을 확인하세요')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '건너뛰기' }));
     expect(screen.queryByRole('dialog', { name: '사용보고서 작성 도움말' })).not.toBeInTheDocument();
   });
@@ -176,14 +297,15 @@ describe('EvidenceExport', () => {
   it('warns but exports an unlinked receipt, including its own divider and page', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
     render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[{ id: 'payment-1', cardLast4: '1234', occurredAt: '2026-09-20T10:00:00+09:00', merchant: '카페', amount: 10000, status: 'classified', bucket: 'resident', category: 'food' }]} />);
+    await openReceipts();
     await screen.findByText('receipt.jpg');
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await previewAndSave();
     await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalledWith('shinhanhae_report_evidence.pdf', expect.any(Uint8Array), 'application/pdf'));
-    expect(screen.getAllByText(/영수증 미연결 결제 1건 · 결제 미연결 영수증 1장/).length).toBeGreaterThan(0);
+    expect(screen.getByText('결제와 연결 안 된 영수증 1장')).toBeInTheDocument();
     expect(canvasContext.fillText).toHaveBeenCalledWith('미연결 영수증', expect.any(Number), expect.any(Number));
     const pdf = await exportMocks.create.mock.results[0].value;
     expect(pdf.addPage).toHaveBeenCalledTimes(3);
-    expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: '만든 보고서' })).toBeInTheDocument();
   });
 
   it('keeps the screen on while a PDF is being made and lets it turn off afterwards', async () => {
@@ -194,9 +316,10 @@ describe('EvidenceExport', () => {
     let release: () => void = () => undefined;
     exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(() => new Promise<Uint8Array>((resolve) => { release = () => resolve(new Uint8Array([1, 2, 3])); })) });
     render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await openReceipts();
     await screen.findByText('receipt.jpg');
     expect(request).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
     await waitFor(() => expect(request).toHaveBeenCalledWith('screen'));
     await waitFor(() => expect(exportMocks.create).toHaveBeenCalled());
     expect(lock.release).not.toHaveBeenCalled();
@@ -206,17 +329,116 @@ describe('EvidenceExport', () => {
     Reflect.deleteProperty(navigator, 'wakeLock');
   });
 
+  it('shows the assembled PDF in the app and saves those same bytes only after [이대로 저장]', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    const built = new Uint8Array([7, 7, 7]);
+    exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(async () => built) });
+    const notify = vi.fn();
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} onNotify={notify} />);
+    await openReceipts();
+    await screen.findByText('receipt.jpg');
+    fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
+    const dialog = await screen.findByRole('dialog', { name: 'PDF 미리보기' });
+    expect(dialog).toHaveTextContent('2쪽 · 0.0MB');
+    expect(screen.getAllByRole('img', { name: /쪽$/ })).toHaveLength(2);
+    expect(exportMocks.saveFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    expect(screen.queryByRole('dialog', { name: 'PDF 미리보기' })).not.toBeInTheDocument();
+    expect(exportMocks.saveFile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
+    await screen.findByRole('dialog', { name: 'PDF 미리보기' });
+    act(() => { window.dispatchEvent(new Event('close-pdf-preview')); });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'PDF 미리보기' })).not.toBeInTheDocument());
+    await previewAndSave();
+    await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalledTimes(1));
+    expect(exportMocks.saveFile).toHaveBeenCalledWith('shinhanhae_report_evidence.pdf', built, 'application/pdf');
+    // The preview closes once the save has finished, not when it starts.
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'PDF 미리보기' })).not.toBeInTheDocument());
+    // Saving is confirmed with a toast; below the button only the report list remains.
+    expect(notify).toHaveBeenCalledWith('사용보고서를 저장했습니다.');
+    expect(screen.queryByText(/저장했습니다/)).not.toBeInTheDocument();
+    const preview = screen.getByRole('button', { name: '보고서 생성' });
+    const list = screen.getByRole('region', { name: '만든 보고서' });
+    expect(preview.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list).toHaveTextContent('0.0MB');
+  });
+
+  it('lists saved reports again after the sheet is reopened and drops one whose file was deleted', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    exportMocks.saveFile.mockResolvedValueOnce({ fileName: 'shinhanhae_report_evidence_20261116_124000.pdf', relativePath: 'Downloads/신청해 계산기', uri: 'content://media/external/downloads/41' });
+    const props = { reportEvidence: [{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt' as const, order: 0 }], onReportEvidenceChange: vi.fn(), summary, periodKey: '2026-09', entries: [] };
+    const first = render(<EvidenceExport {...props} />);
+    await openReceipts();
+    await screen.findByText('receipt.jpg');
+    await previewAndSave();
+    await screen.findByRole('region', { name: '만든 보고서' });
+    first.unmount();
+    render(<EvidenceExport {...props} />);
+    await openReceipts();
+    const open = await screen.findByRole('button', { name: /보고서 열기$/ });
+    fireEvent.click(open);
+    await waitFor(() => expect(exportMocks.openSavedFile).toHaveBeenCalledWith('content://media/external/downloads/41', 'application/pdf'));
+    exportMocks.openSavedFile.mockRejectedValueOnce(Object.assign(new Error('gone'), { code: 'FILE_NOT_FOUND' }));
+    fireEvent.click(open);
+    expect(await screen.findByText('파일을 찾지 못해 목록에서 뺐습니다. 파일 앱에서 지웠을 수 있습니다.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /보고서 열기$/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(window.localStorage.getItem('shinhanhae-recent-reports-v1')).toBeNull());
+  });
+
+  it('always shows 만든 보고서 and pages through every saved report five at a time', async () => {
+    const first = render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    expect(within(screen.getByRole('region', { name: '만든 보고서' })).getByText('아직 만든 보고서가 없습니다.')).toBeInTheDocument();
+    first.unmount();
+    const saved = Array.from({ length: 7 }, (_, index) => ({ uri: `content://media/external/downloads/${index}`, fileName: `report_${index}.pdf`, size: 1_000_000, savedAt: `2026-11-${String(10 + index).padStart(2, '0')}T03:00:00Z` }));
+    window.localStorage.setItem('shinhanhae-recent-reports-v1', JSON.stringify(saved));
+    render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    const list = screen.getByRole('region', { name: '만든 보고서' });
+    await waitFor(() => expect(within(list).getAllByRole('button', { name: /보고서 열기$/ })).toHaveLength(5));
+    expect(within(list).getByText('1 / 2')).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: '이전 보고서' })).toBeDisabled();
+    fireEvent.click(within(list).getByRole('button', { name: '다음 보고서' }));
+    expect(within(list).getAllByRole('button', { name: /보고서 열기$/ })).toHaveLength(2);
+    expect(within(list).getByText('2 / 2')).toBeInTheDocument();
+  });
+
+  it('drops reports deleted in the file app when the screen opens and when the app returns', async () => {
+    const stored = (index: number) => ({ uri: `content://media/external/downloads/${index}`, fileName: `report_${index}.pdf`, size: 1_000_000 * index, savedAt: `2026-11-1${index}T03:00:00Z` });
+    window.localStorage.setItem('shinhanhae-recent-reports-v1', JSON.stringify([stored(3), stored(2), stored(1)]));
+    exportMocks.existingSavedFiles.mockImplementationOnce(async (uris: string[]) => uris.filter((uri) => !uri.endsWith('/2')));
+    render(<EvidenceExport reportEvidence={[]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /보고서 열기$/ })).toHaveLength(2));
+    expect(screen.queryByText('2.0MB')).not.toBeInTheDocument();
+    exportMocks.existingSavedFiles.mockImplementationOnce(async (uris: string[]) => uris.filter((uri) => !uri.endsWith('/3')));
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /보고서 열기$/ })).toHaveLength(1));
+    expect(screen.getByText('1.0MB')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the preview open with a notice when saving fails', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 1200, close: vi.fn() })));
+    exportMocks.saveFile.mockRejectedValueOnce(new Error('disk'));
+    render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await openReceipts();
+    await screen.findByText('receipt.jpg');
+    await previewAndSave();
+    expect(await screen.findByText('PDF를 저장하지 못했습니다. 다시 시도해 주세요.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'PDF 미리보기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '이대로 저장' })).toBeEnabled();
+  });
+
   it('cancels an export in progress without saving and keeps the selected files', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 600, height: 2400, close: vi.fn() })));
     let release: () => void = () => undefined;
     exportMocks.create.mockResolvedValue({ embedJpg: vi.fn(async () => ({})), addPage: vi.fn(() => ({ drawImage: vi.fn() })), save: vi.fn(() => new Promise<Uint8Array>((resolve) => { release = () => resolve(new Uint8Array([1, 2, 3])); })) });
     render(<EvidenceExport reportEvidence={[{ id: 'receipt-1', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'receipt', order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
+    await openReceipts();
     await screen.findByText('receipt.jpg');
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
     fireEvent.click(await screen.findByRole('button', { name: '생성 취소' }));
     await waitFor(() => expect(exportMocks.create).toHaveBeenCalled());
     release();
-    expect(await screen.findByText('PDF 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.')).toBeInTheDocument();
+    expect(await screen.findByText('보고서 생성을 취소했습니다. 선택한 파일은 그대로 유지됩니다.')).toBeInTheDocument();
     expect(exportMocks.saveFile).not.toHaveBeenCalled();
     expect(screen.getByText('receipt.jpg')).toBeInTheDocument();
   });
@@ -227,16 +449,20 @@ describe('EvidenceExport', () => {
       { id: 'other-day', cardLast4: '1234', occurredAt: '2026-09-21T10:00:00+09:00', merchant: '다른 날 결제', amount: 10000, status: 'classified' as const, bucket: 'resident' as const, category: 'food' },
     ];
     render(<StatefulEvidenceExport entries={entries} initialEvidence={[{ id: 'receipt-date-only', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, section: 'receipt', order: 0, receiptDate: '2026-09-20', receiptOcrStatus: 'ambiguous' }]} />);
+    await openReceipts();
 
     expect(await screen.findByText(/2026-09-20 결제 1건/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /같은 날 결제/ })).toBeInTheDocument();
-    expect(screen.queryByText('다른 날 결제')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /같은 날 결제/ }));
+    // 결제별 영수증 also lists every payment, so look only at the same-day candidates.
+    const candidates = within(document.querySelector<HTMLElement>('.receipt-payment-candidates')!);
+    expect(candidates.getByRole('button', { name: /같은 날 결제/ })).toBeInTheDocument();
+    expect(candidates.queryByText(/다른 날 결제/)).not.toBeInTheDocument();
+    fireEvent.click(candidates.getByRole('button', { name: /같은 날 결제/ }));
     expect(await screen.findByText('결제 연결 완료')).toBeInTheDocument();
   });
 
   it('identifies a manually selected date without claiming OCR read it', async () => {
     render(<StatefulEvidenceExport initialEvidence={[{ id: 'manual', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    await openReceipts();
     const date = await screen.findByLabelText('영수증 1 날짜');
     fireEvent.change(date, { target: { value: '2026-09-20' } }); fireEvent.blur(date);
     expect(await screen.findByText('선택한 날짜의 결제 중 하나를 눌러 연결해 주세요.')).toBeInTheDocument();
@@ -245,12 +471,14 @@ describe('EvidenceExport', () => {
 
   it('shows same-day payments as soon as a receipt date is picked, without leaving the field', async () => {
     render(<StatefulEvidenceExport initialEvidence={[{ id: 'picked', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    await openReceipts();
     fireEvent.change(await screen.findByLabelText('영수증 1 날짜'), { target: { value: '2026-09-20' } });
     expect(await screen.findByText('선택한 날짜의 결제 중 하나를 눌러 연결해 주세요.')).toBeInTheDocument();
   });
 
   it('opens the calendar when any part of the date field is tapped', async () => {
     render(<StatefulEvidenceExport initialEvidence={[{ id: 'tap', stored: { id: 's', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 1, attachedAt: '2026-09-20' }, section: 'receipt', order: 0 }]} />);
+    await openReceipts();
     const date = await screen.findByLabelText('영수증 1 날짜') as HTMLInputElement;
     const showPicker = vi.fn();
     Object.defineProperty(date, 'showPicker', { value: showPicker });
@@ -276,11 +504,57 @@ describe('EvidenceExport', () => {
 
   it('opens a receipt image in a larger preview from its thumbnail', async () => {
     render(<StatefulEvidenceExport initialEvidence={[{ id: 'receipt-preview', stored: { id: 'stored-1', fileName: 'receipt.jpg', mimeType: 'image/jpeg', size: 10, attachedAt: '2026-09-20T00:00:00+09:00' }, section: 'receipt', order: 0 }]} />);
+    await openReceipts();
     const thumbnail = await screen.findByRole('button', { name: '영수증 1 크게 보기' });
     fireEvent.click(thumbnail);
     expect(screen.getByRole('dialog', { name: '영수증 크게 보기' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '영수증 미리보기 닫기' }));
     expect(screen.queryByRole('dialog', { name: '영수증 크게 보기' })).not.toBeInTheDocument();
+  });
+
+  describe('password-protected receipt and proof PDFs (decision 2026-11-17)', () => {
+    beforeEach(() => { pdfCheckMocks.checkPdfOpens.mockReset().mockResolvedValue('open'); });
+    const attachProof = (container: HTMLElement, name = 'locked.pdf') => fireEvent.change(container.querySelectorAll('input[type="file"]')[1], { target: { files: [new File(['pdf'], name, { type: 'application/pdf' })] } });
+
+    it('asks for the password on the card and keeps the report from being made until it opens the file', async () => {
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('needs-password');
+      const { container } = render(<StatefulEvidenceExport />);
+      attachProof(container);
+      expect(await screen.findByText('비밀번호가 걸린 PDF가 있습니다. 파일 카드에서 비밀번호를 확인해 주세요.')).toBeInTheDocument();
+      // The card appears once the attached file has loaded, a moment after the notice.
+      expect(await screen.findByText('비밀번호가 걸린 PDF입니다')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: '보고서 생성' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
+      expect(await screen.findByText('비밀번호를 확인하지 않은 PDF 1개가 있습니다. 파일 카드에서 비밀번호를 입력하고 [확인]을 눌러 주세요.')).toBeInTheDocument();
+      expect(exportMocks.create).not.toHaveBeenCalled();
+
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('wrong-password');
+      fireEvent.change(screen.getByLabelText('locked.pdf PDF 비밀번호'), { target: { value: 'fake-wrong' } });
+      fireEvent.click(screen.getByRole('button', { name: '확인' }));
+      expect(await screen.findByText('비밀번호가 맞지 않습니다. 다시 입력해 주세요.')).toBeInTheDocument();
+
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('open');
+      fireEvent.change(screen.getByLabelText('locked.pdf PDF 비밀번호'), { target: { value: 'fake-right' } });
+      expect(screen.queryByText('비밀번호가 맞지 않습니다. 다시 입력해 주세요.')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '확인' }));
+      expect(await screen.findByText('비밀번호를 확인했습니다.')).toBeInTheDocument();
+      expect(pdfCheckMocks.checkPdfOpens).toHaveBeenLastCalledWith(expect.any(File), 'fake-right');
+      expect(screen.queryByLabelText('locked.pdf PDF 비밀번호')).not.toBeInTheDocument();
+    });
+
+    it('does not attach a PDF that cannot be opened at all', async () => {
+      pdfCheckMocks.checkPdfOpens.mockResolvedValueOnce('unreadable');
+      const { container } = render(<StatefulEvidenceExport />);
+      attachProof(container, 'broken.pdf');
+      expect(await screen.findByText('이 PDF를 열 수 없습니다. 파일이 손상됐을 수 있어요. 다시 저장해서 추가해 주세요.')).toBeInTheDocument();
+      expect(screen.queryByText('broken.pdf')).not.toBeInTheDocument();
+    });
+
+    it('asks again after the screen is reopened, since the password is never saved', async () => {
+      render(<StatefulEvidenceExport initialEvidence={[{ id: 'proof-locked', stored: { id: 'stored-locked', fileName: 'kept.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'transactionProof', order: 0, sourceRequiresPassword: true }]} />);
+      expect(await screen.findByLabelText('kept.pdf PDF 비밀번호')).toBeInTheDocument();
+      expect(pdfCheckMocks.checkPdfOpens).not.toHaveBeenCalled();
+    });
   });
 
   const attachStatement = async (container: HTMLElement, name = 'statement.pdf') => {
@@ -314,7 +588,7 @@ describe('EvidenceExport', () => {
     await attachStatement(container);
     fireEvent.change(screen.getByLabelText('statement.pdf 계좌 끝 4자리'), { target: { value: '1234' } });
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
-    expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
+    expect(await screen.findByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '그래도 첨부' })).not.toBeInTheDocument();
   });
 
@@ -325,17 +599,17 @@ describe('EvidenceExport', () => {
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
     // The mocked file shows no account, so it is attached only after confirmation.
     fireEvent.click(await screen.findByRole('button', { name: '그래도 첨부' }));
-    expect(await screen.findByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument();
+    expect(await screen.findByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/입출금 1행/));
     expect(screen.getByText(/체크카드/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
-    await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 1행/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/입출금 1행 · 모자이크 1행/)).toBeInTheDocument());
   });
 
   it('blocks export when a bank PDF could not be converted into a maskable table', async () => {
     render(<EvidenceExport reportEvidence={[{ id: 'statement-1', stored: { id: 'stored-1', fileName: 'statement.pdf', mimeType: 'application/pdf', size: 10, attachedAt: '2026-09-29T00:00:00+09:00' }, section: 'statement', statementParseFailed: true, order: 0 }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
     await screen.findByText('statement.pdf');
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    fireEvent.click(screen.getByRole('button', { name: '보고서 생성' }));
     expect(await screen.findByText(/원본 개인정보 보호를 위해 계좌 끝 4자리\(비밀번호가 있으면 함께\)를 입력하고 표를 읽어/)).toBeInTheDocument();
   });
 
@@ -347,11 +621,11 @@ describe('EvidenceExport', () => {
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
     expect(await screen.findByText('입출금내역 표를 읽지 못했습니다. PDF 비밀번호와 파일 형식을 확인해 주세요.')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText('protected.pdf PDF 비밀번호'), { target: { value: 'fake-pdf-pass-d' } });
     fireEvent.click(screen.getByRole('button', { name: '표 읽기' }));
 
-    await waitFor(() => expect(screen.getByText(/입출금 1행 · 제외 0행/)).toBeInTheDocument());
-    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'test-pass');
+    await waitFor(() => expect(screen.getByText(/입출금 1행 · 모자이크 0행/)).toBeInTheDocument());
+    expect(parseShinhanBankPdfExport).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'fake-pdf-pass-d');
   });
 
   it('connects additional proof only to eligible housing or transport payments', async () => {
@@ -378,10 +652,10 @@ describe('EvidenceExport', () => {
     ] }]} onReportEvidenceChange={vi.fn()} summary={summary} periodKey="2026-09" entries={[]} />);
 
     await screen.findByText('statement.pdf');
-    fireEvent.click(screen.getByRole('button', { name: 'PDF 생성' }));
+    await previewAndSave();
 
     await waitFor(() => expect(exportMocks.saveFile).toHaveBeenCalledWith('shinhanhae_report_evidence.pdf', expect.any(Uint8Array), 'application/pdf'));
     expect(canvasContext.fillText).toHaveBeenCalledWith('████████', expect.any(Number), expect.any(Number));
-    expect(screen.getByText(/Downloads에 저장했습니다/)).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: '만든 보고서' })).toBeInTheDocument();
   });
 });

@@ -36,7 +36,7 @@ describe('statement mask blocks', () => {
 });
 
 const row = (id: string, patch: Partial<StatementRow> = {}): StatementRow => ({ id, date: '2026-09-20', time: '12:00:00', summary: '체크카드', withdrawal: 5000, deposit: 0, merchant: id, sourcePage: 0, ...patch });
-const scope = { periodKey: '2026-09' };
+const scope = { periodKey: '2026-09', period: { startDay: 11, endDay: 10, start: { periodKey: '2026-09', at: '2026-09-15T00:00:00+09:00' } } };
 const page = { width: 620, height: 300 };
 const geometry = { left: 30, right: 540, horizontalLines: [100, 140, 180, 220] };
 // Canvas y = 300 - sourceY at scale 1, so these layoutRows sit at 120, 160 and 200.

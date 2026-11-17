@@ -12,6 +12,13 @@
   border-top: 1px solid var(--color-divider);
 }
 
+/* With nothing above it, the first section sits right under the sheet title divider; skip its own line. */
+.evidence-export>.evidence-group:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .evidence-group h3 {
   display: flex;
   justify-content: space-between;
@@ -127,16 +134,11 @@
   font-size: 12px;
   line-height: 1.4;
 }
-
-.evidence-error {
-  color: #ffc5c5 !important;
-}
-
 .evidence-message {
   padding: 12px;
   border-radius: 10px;
   background: #ffffff0b;
-  color: var(--color-text-label) !important;
+  color: var(--color-text-label);
 }
 
 .evidence-pdf-preview {
@@ -197,8 +199,12 @@
   font-weight: 700;
 }
 
+/* Above `.sheet label`. */
+.sheet label.evidence-link {
+  display: grid;
+}
+
 .evidence-link {
-  display: grid !important;
   gap: 6px;
   margin: 10px 0;
   color: #b7c7d9;
@@ -217,56 +223,6 @@
   background: #1d2a39;
   font: inherit;
 }
-
-.evidence-candidates {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.evidence-candidates>small {
-  color: #8cddd3;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.evidence-candidates button {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-  width: 100%;
-  color: #dff8f2 !important;
-  background: #1c535555 !important;
-  text-align: left;
-}
-
-.evidence-candidates button small {
-  color: #b7d7d3;
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.evidence-missing {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0;
-  padding: 14px;
-  border: 1px solid #e7bb7055;
-  border-radius: 13px;
-  background: #e7bb7011;
-}
-
-.evidence-missing strong {
-  color: #ffd996;
-}
-
-.evidence-missing span,
-.evidence-missing small {
-  color: #c7d3df;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .statement-redaction {
   display: grid;
   gap: 7px;
@@ -280,7 +236,7 @@
 }
 
 .statement-redaction label {
-  display: flex !important;
+  display: flex;
   align-items: center;
   gap: 7px;
   margin: 0;
@@ -389,12 +345,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-
-.receipt-link-manual {
-  margin-top: 4px !important;
-  color: #aebdcb !important;
-}
-
 .evidence-list article .evidence-content>span {
   display: block;
   overflow: hidden;
@@ -403,47 +353,14 @@
 }
 
 .statement-unread button {
-  color: #102338 !important;
-  background: var(--color-accent) !important;
+  color: #102338;
+  background: var(--color-accent);
 }
 
 @media (max-width:380px) {
   .receipt-input-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.evidence-result-preview {
-  margin: 16px 0;
-  padding: 14px;
-  border: 1px solid #55d1c855;
-  border-radius: 13px;
-  background: #102d34;
-}
-
-.evidence-result-preview summary {
-  cursor: pointer;
-  color: #a3eee7;
-  font-weight: 800;
-}
-
-.evidence-result-preview object {
-  display: block;
-  width: 100%;
-  height: 340px;
-  margin-top: 12px;
-  border: 0;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.evidence-result-preview a {
-  display: block;
-  padding: 14px;
-  color: #0b2530;
-  background: var(--color-accent);
-  text-align: center;
-  font-weight: 800;
 }
 
 .evidence-export__actions {
@@ -627,7 +544,7 @@
 }
 
 .sheet .statement-redaction__row {
-  display: grid !important;
+  display: grid;
   grid-template-columns: 18px minmax(0,1fr) auto;
   align-items: center;
   gap: 8px;
@@ -720,52 +637,17 @@
   overflow-wrap: anywhere;
   text-align: right;
 }
-
-.evidence-missing {
-  border: 2px solid #e7bb70 !important;
-  background: #4f3718 !important;
-  box-shadow: 0 0 0 1px #e7bb7044,0 0 22px #e7bb7033;
-  animation: evidence-warning-pulse .72s ease-in-out 2;
-}
-
-.evidence-missing:before {
-  content: '!';
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #ffce75;
-  color: #3d2708;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-@media (prefers-reduced-motion:reduce) {
-  .evidence-missing {
-    animation: none;
-  }
-}
-
-.evidence-missing:not(:has(small)) {
-  border: 1px solid #e7bb7055 !important;
-  background: #e7bb7011 !important;
-  box-shadow: none;
-  animation: none;
-}
-
-.evidence-missing:not(:has(small)):before {
-  display: none;
-}
-
 .receipt-thumbnail {
-  display: block !important;
   width: 54px;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
   cursor: zoom-in;
+}
+
+/* Above `.evidence-list button`. */
+.evidence-list button.receipt-thumbnail {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .receipt-thumbnail img {
@@ -774,8 +656,12 @@
 
 .receipt-unlink {
   width: 100%;
-  color: #dce7f3 !important;
-  background: #ffffff18 !important;
+}
+
+/* Above `.evidence-list button`. */
+.evidence-list button.receipt-unlink {
+  color: #dce7f3;
+  background: #ffffff18;
 }
 
 .receipt-preview-backdrop {
@@ -807,11 +693,11 @@
   right: 5px;
   width: 38px;
   height: 38px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  background: #102338e8 !important;
-  color: #fff !important;
-  font-size: 30px !important;
+  padding: 0;
+  border-radius: 50%;
+  background: #102338e8;
+  color: #fff;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -866,17 +752,6 @@
 .receipt-edit-details[open]>summary {
   margin-bottom: 10px;
 }
-
-.evidence-missing>div {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.evidence-missing>div>span {
-  overflow-wrap: anywhere;
-}
-
 .evidence-list article[id] {
   scroll-margin-top: 105px;
 }
@@ -894,8 +769,7 @@
   grid-template-columns: minmax(0,1fr);
 }
 
-.receipt-task-controls > button,
-.evidence-missing > div > button {
+.receipt-task-controls > button {
   min-width: 0;
   min-height: 44px;
   padding: 12px;
@@ -910,14 +784,432 @@
   overflow-wrap: anywhere;
 }
 
-.receipt-task-controls > button:disabled,
-.evidence-missing > div > button:disabled {
+.receipt-task-controls > button:disabled {
   opacity: .5;
 }
 
-body.high-contrast .sheet .receipt-task-controls > button,
-body.high-contrast .sheet .evidence-missing > div > button {
-  border-color: #fff !important;
-  background: #000 !important;
-  color: #fff !important;
+/* Report reset button at the top of the report sheet. Styled by its own class so it
+   does not depend on the surrounding sheet. */
+.evidence-reset {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid #f0a7a777;
+  border-radius: 10px;
+  background: #ff59591a;
+  color: #ffc5c5;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.evidence-reset:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+/* In-app PDF preview: full screen, pages scroll top to bottom, actions stay at the bottom. */
+.pdf-preview {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1118;
+  color: var(--color-text);
+}
+
+.pdf-preview__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__header strong {
+  font-size: 18px;
+}
+
+.pdf-preview__header span {
+  color: #b9c0c8;
+  font-size: 14px;
+}
+
+.pdf-preview__pages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 16px 24px;
+}
+
+.pdf-preview__page {
+  margin: 0 0 18px;
+  overflow-x: auto;
+}
+
+.pdf-preview__page button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.pdf-preview__page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.pdf-preview__page.is-zoomed button {
+  width: 220%;
+  cursor: zoom-out;
+}
+
+.pdf-preview__page figcaption {
+  margin-top: 6px;
+  color: #b9c0c8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.pdf-preview__footer {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid #e6eaf018;
+  background: #121922;
+}
+
+.pdf-preview__footer p {
+  margin: 0 0 10px;
+  color: #ffc5c5;
+  font-size: 13px;
+}
+
+.pdf-preview__footer div {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 10px;
+}
+
+.pdf-preview__close,
+.pdf-preview__save {
+  min-height: 48px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pdf-preview__close {
+  border: 1px solid var(--color-divider-strong);
+  background: var(--color-fill);
+  color: var(--color-text);
+}
+
+.pdf-preview__save {
+  border: 0;
+  background: #eef0f2;
+  color: #151a20;
+}
+
+.pdf-preview__close:disabled,
+.pdf-preview__save:disabled {
+  opacity: .42;
+}
+
+/* Under [미리보기]: the reports made so far, newest first. */
+.evidence-recent-reports {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.evidence-recent-reports > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.evidence-recent-reports ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-recent-reports li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  background: var(--color-fill);
+}
+
+.evidence-recent-reports li span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.evidence-recent-reports li b {
+  font-size: 14px;
+}
+
+.evidence-recent-reports li small {
+  color: #b9c0c8;
+  font-size: 12px;
+}
+
+.evidence-recent-reports li button {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.evidence-recent-reports > p {
+  margin-top: 10px;
+  color: #ffc5c5;
+  font-size: 13px;
+}
+
+/* 결제별 영수증 (decision 2026-11-16): one list of the period's payments and their receipts. */
+.receipt-overview {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-raised);
+}
+
+.receipt-overview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.receipt-overview__head strong {
+  margin-right: auto;
+  color: var(--color-text-bright);
+  font-size: 15px;
+}
+
+.receipt-overview__count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-fill);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.receipt-overview__count.is-missing {
+  background: #efc46b22;
+  color: #f2c86d;
+}
+
+.receipt-overview__note {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* One line: an 18px box and its label. Scoped twice to win over the generic sheet label/input rules. */
+.receipt-overview .receipt-overview__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.receipt-overview .receipt-overview__filter input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* The picker behind the rows without a receipt; opened from code only. */
+/* Above `.sheet input:not([type="range"])`. */
+.evidence-export input.receipt-link-picker[type="file"] {
+  display: none;
+}
+
+.receipt-overview ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-overview li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.receipt-overview li button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 2px;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+}
+
+.receipt-overview li button:disabled {
+  opacity: .5;
+}
+
+.receipt-overview__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #16424a;
+  color: #b8f3e9;
+  font-weight: 700;
+}
+
+.receipt-overview li button.is-missing .receipt-overview__mark {
+  border: 1px dashed #f2c86d;
+  background: none;
+  color: #f2c86d;
+}
+
+.receipt-overview__text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.receipt-overview__text b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-overview__text small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.receipt-overview li button.is-missing .receipt-overview__text small {
+  color: #f2c86d;
+}
+
+.receipt-overview__amount {
+  flex: none;
+  font-weight: 700;
+}
+
+.receipt-overview__more {
+  padding: 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+}
+
+/* Folded receipt cards (decision 2026-11-16): one row under the file button. */
+.evidence-group .receipt-cards-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.receipt-cards-toggle span {
+  flex: 1;
+}
+
+.receipt-cards-toggle small {
+  color: #f2c86d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.receipt-cards-toggle i {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.evidence-recent-reports .evidence-recent-reports__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.evidence-recent-reports__pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.evidence-recent-reports__pages button {
+  min-width: 44px;
+  min-height: 40px;
+  border: 1px solid var(--color-divider-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 18px;
+}
+
+.evidence-recent-reports__pages button:disabled {
+  opacity: .35;
 }

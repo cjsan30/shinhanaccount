@@ -75,6 +75,13 @@ describe('evidence PDF assembly', () => {
     expect(renderMocks.renderMaskedStatementPdf.mock.calls[0][7]).toBe('pw');
   });
 
+  it('draws a password-protected proof through pdf.js with its password instead of copying it', async () => {
+    const lockedProof: AssemblySource = { ...proofPdf, sourceRequiresPassword: true };
+    await assembleEvidencePdf(input({ documents: [lockedProof], receiptGroups: [], passwords: { p1: 'proof-pw' } }));
+    expect(pdfState.documents[0]).toEqual(['summary', 'pdf:proof.pdf:1', 'pdf:proof.pdf:2']);
+    expect(renderMocks.renderPdf.mock.calls[0][5]).toBe('proof-pw');
+  });
+
   it('reports progress from zero up to every source page plus the summary and dividers', async () => {
     const onProgress = vi.fn();
     await assembleEvidencePdf(input({ onProgress }));
@@ -94,7 +101,7 @@ describe('evidence PDF assembly', () => {
 
   it('fails with a clear message when no profile fits', async () => {
     pdfState.saveSizes = [TARGET_BYTES + 1, TARGET_BYTES + 1, TARGET_BYTES + 1];
-    await expect(assembleEvidencePdf(input())).rejects.toThrow('5MB 이하로 만들 수 없습니다');
+    await expect(assembleEvidencePdf(input())).rejects.toThrow('4.5MB 이하로 만들 수 없습니다');
   });
 
   it('hands every profile to a quality comparison and stops if one is too large', async () => {
@@ -102,7 +109,7 @@ describe('evidence PDF assembly', () => {
     await assembleEvidencePdf(input({ onComparison }));
     expect(onComparison.mock.calls.map(([profileId]) => profileId)).toEqual(['default', 'compact', 'minimum']);
     pdfState.saveSizes = [1000, TARGET_BYTES + 1];
-    await expect(assembleEvidencePdf(input({ onComparison: vi.fn(async () => undefined) }))).rejects.toThrow('compact 품질의 PDF가 5MB 제한을 넘습니다');
+    await expect(assembleEvidencePdf(input({ onComparison: vi.fn(async () => undefined) }))).rejects.toThrow('compact 품질의 PDF가 4.5MB 제한을 넘습니다');
   });
 
   it('stops between pages when cancelled', async () => {

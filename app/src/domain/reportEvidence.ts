@@ -1,4 +1,4 @@
-import { getPolicyPeriodRange, type PolicyPeriod } from './budget';
+import { getPeriodBounds, type PolicyPeriod } from './budget';
 import type { StoredEvidence } from '../native/evidenceVault';
 import type { StatementRow } from './statementRedaction';
 
@@ -26,15 +26,19 @@ export type ReportEvidenceRecord = {
   statementNeedsAccount?: boolean;
   /** 원본 은행 PDF를 제출서류에 다시 그릴 때만, 이번 화면에서 비밀번호가 필요하다. 비밀번호 자체는 저장하지 않는다. */
   statementSourceRequiresPassword?: boolean;
+  /** 영수증·거래증빙 PDF에 열기 비밀번호가 걸려 있다. 비밀번호 자체는 저장하지 않고, 화면에서 확인한 뒤에만 보고서에 넣는다. */
+  sourceRequiresPassword?: boolean;
   order: number;
 };
 
 /**
- * Files attached before the current policy period began were gathered for an earlier report.
- * Records whose attachment time cannot be read are kept, so nothing is removed by mistake.
+ * Files attached before the current policy period opened (its 11th) were gathered for an
+ * earlier report, whose deadline is the 10th. Files attached between the 11th and the deposit
+ * belong to this period. Records whose attachment time cannot be read are kept, so nothing is
+ * removed by mistake.
  */
-export function splitEvidenceByPolicyPeriod(records: ReportEvidenceRecord[], periodKey: string, period?: PolicyPeriod) {
-  const { start } = getPolicyPeriodRange(periodKey, period);
+export function splitEvidenceByPolicyPeriod(records: ReportEvidenceRecord[], periodKey: string, _period?: PolicyPeriod) {
+  const { open: start } = getPeriodBounds(periodKey);
   const startsAt = start ? new Date(`${start}T00:00:00+09:00`).getTime() : Number.NaN;
   const isPrevious = (record: ReportEvidenceRecord) => {
     const attachedAt = new Date(record.stored.attachedAt).getTime();

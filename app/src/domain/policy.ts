@@ -1,5 +1,4 @@
-import { getPolicyPeriodKey, type BudgetKey } from './budget';
-import { getPolicyPeriodRange, normalizePolicyPeriod, type PolicyPeriod } from './budget';
+import { DEFAULT_POLICY_PERIOD, PERIOD_OPEN_DAY, getPolicyPeriodKey, type BudgetKey, type PolicyPeriod } from './budget';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
 export type SupportProfileId = 'shinhanhae-70' | 'shinhanhae-40';
@@ -49,6 +48,24 @@ export function validatePolicyAgainstProfile(policy: SupportPolicy) {
     if (!item.id.trim() || !item.label.trim() || !Number.isFinite(item.amount) || item.amount < 0) issues.push('사용자 정의 항목의 이름과 금액을 확인해 주세요.');
   }
   return issues;
+}
+
+/**
+ * The amount fields to mark as wrong while reviewing a plan: every item of a group whose sum
+ * misses the group limit (which one is wrong cannot be known), and any item above its cap.
+ * Matches the messages of validatePolicyAgainstProfile.
+ */
+export function getPlanIssueItems(policy: SupportPolicy): PolicyItem[] {
+  const profile = getSupportProfile(policy.profileId);
+  const flagged = new Set<PolicyItem>();
+  for (const bucket of ['resident', 'studySpace'] as const) {
+    if (getPolicyLimit(policy, bucket) !== profile.bucketLimits[bucket]) POLICY_ITEMS.filter((item) => item.bucket === bucket).forEach((item) => flagged.add(item.key));
+  }
+  for (const item of POLICY_ITEMS) {
+    const amount = policy.plans[item.key];
+    if (!Number.isFinite(amount) || amount < 0 || amount > profile.itemCaps[item.key]) flagged.add(item.key);
+  }
+  return POLICY_ITEMS.map((item) => item.key).filter((key) => flagged.has(key));
 }
 
 export const POLICY_ITEM_ALIASES: Record<PolicyItem, readonly string[]> = {
@@ -172,11 +189,19 @@ export function loadPolicy(storage: Pick<Storage, 'getItem'>) {
     const raw = storage.getItem(POLICY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SupportPolicy;
-    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', ...(parsed.period ? { period: normalizePolicyPeriod(parsed.period) } : {}), profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [], ...(parsed.customItems?.length ? { customItems: parsed.customItems } : {}) };
+    return { plans: { ...emptyPolicy.plans, ...parsed.plans }, sourceText: parsed.sourceText ?? '', profileId: parsed.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: parsed.alertTargets ?? [], ...(parsed.customItems?.length ? { customItems: parsed.customItems } : {}) };
   } catch { return null; }
 }
 export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPolicy) { storage.setItem(POLICY_STORAGE_KEY, JSON.stringify(policy)); }
-export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string };
+/**
+ * When the period's subsidy arrived. `pending`: the plan is confirmed but the
+ * money has not arrived, so payments wait. `deposited`: payments from `startAt`
+ * (the first payment after the deposit, or the deposit date's midnight) count.
+ * `migrated` marks a plan confirmed before this existed; its start is the old
+ * fixed start day and the user is asked once when nothing counted yet.
+ */
+export type PolicyFunding = { status: 'pending' } | { status: 'deposited'; depositDate: string; startAt: string; migrated?: true };
+export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string; funding?: PolicyFunding };
 export type PolicyBook = { versions: PolicyVersion[]; mode?: 'not-applicant' };
 export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
 
@@ -186,8 +211,24 @@ export function getNextPolicyPeriodKey(date: Date, period?: PolicyPeriod) {
   return `${next.year}-${String(next.month).padStart(2, '0')}`;
 }
 
-export function createPolicyBook(policy: SupportPolicy, date: Date = new Date()): PolicyBook {
-  return { versions: [{ ...structuredClone(policy), periodKey: getPolicyPeriodKey(date, policy.period), confirmedAt: date.toISOString() }] };
+export function createPolicyBook(policy: SupportPolicy, date: Date = new Date(), funding?: PolicyFunding): PolicyBook {
+  return { versions: [{ ...structuredClone(policy), period: { ...DEFAULT_POLICY_PERIOD }, periodKey: getPolicyPeriodKey(date), confirmedAt: date.toISOString(), ...(funding ? { funding } : {}) }] };
+}
+
+const LEGACY_START_DAY = 15;
+/** Plans saved before the deposit start keep the start day they were confirmed with. */
+function migratedFunding(version: PolicyVersion): PolicyFunding {
+  const saved = version.period?.startDay;
+  const [year, month] = version.periodKey.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day = Math.min(lastDay, Math.max(PERIOD_OPEN_DAY, typeof saved === 'number' && Number.isInteger(saved) && saved >= 1 && saved <= 31 ? saved : LEGACY_START_DAY));
+  const depositDate = `${version.periodKey}-${String(day).padStart(2, '0')}`;
+  return { status: 'deposited', depositDate, startAt: `${depositDate}T00:00:00+09:00`, migrated: true };
+}
+function validFunding(value: unknown): value is PolicyFunding {
+  const funding = value as PolicyFunding | undefined;
+  if (funding?.status === 'pending') return true;
+  return funding?.status === 'deposited' && /^\d{4}-\d{2}-\d{2}$/.test(funding.depositDate) && Number.isFinite(Date.parse(funding.startAt));
 }
 
 export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = new Date()): PolicyBook {
@@ -195,7 +236,7 @@ export function loadPolicyBook(storage: Pick<Storage, 'getItem'>, _date: Date = 
     const saved = storage.getItem(POLICY_BOOK_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PolicyBook;
-      if (Array.isArray(parsed.versions)) return { ...(parsed.mode ? { mode: parsed.mode } : {}), versions: parsed.versions.map((version) => ({ ...version, ...(version.period ? { period: normalizePolicyPeriod(version.period) } : {}), plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [], ...(version.customItems?.length ? { customItems: version.customItems } : {}) })) };
+      if (Array.isArray(parsed.versions)) return { ...(parsed.mode ? { mode: parsed.mode } : {}), versions: parsed.versions.map((version) => ({ ...version, period: { ...DEFAULT_POLICY_PERIOD }, funding: validFunding(version.funding) ? version.funding : migratedFunding(version), plans: { ...emptyPolicy.plans, ...version.plans }, profileId: version.profileId ?? DEFAULT_SUPPORT_PROFILE_ID, alertTargets: version.alertTargets ?? [], ...(version.customItems?.length ? { customItems: version.customItems } : {}) })) };
     }
     return { versions: [] };
   } catch { return { versions: [] }; }
@@ -209,26 +250,42 @@ export function getPolicyVersion(book: PolicyBook, periodKey: string) {
   return book.versions.find((version) => version.periodKey === periodKey) ?? null;
 }
 
-export function getEffectivePolicy(book: PolicyBook, date: Date) {
-  if (book.mode === 'not-applicant') return { policy: emptyPolicy, periodKey: getPolicyPeriodKey(date), confirmed: true };
-  const localDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(date);
-  const eligible = book.versions.filter((version) => getPolicyPeriodRange(version.periodKey, version.period).start <= localDate);
-  const fallback = [...eligible].sort((a, b) => getPolicyPeriodRange(a.periodKey, a.period).start.localeCompare(getPolicyPeriodRange(b.periodKey, b.period).start) || a.confirmedAt.localeCompare(b.confirmedAt)).at(-1);
-  const periodKey = getPolicyPeriodKey(date, fallback?.period);
-  const exact = eligible.find((version) => version.periodKey === periodKey && getPolicyPeriodKey(date, version.period) === periodKey);
+/** The deposit start travels with the period so every selector counts the same payments. */
+function withFundingStart(version: PolicyVersion): SupportPolicy {
+  const funding = version.funding ?? migratedFunding(version);
+  const at = funding.status === 'deposited' ? funding.startAt : null;
+  return { ...version, period: { ...DEFAULT_POLICY_PERIOD, start: { periodKey: version.periodKey, at } } };
+}
+
+export type EffectivePolicy = { policy: SupportPolicy; periodKey: string; confirmed: boolean; funding?: PolicyFunding };
+export function getEffectivePolicy(book: PolicyBook, date: Date): EffectivePolicy {
+  const periodKey = getPolicyPeriodKey(date);
+  if (book.mode === 'not-applicant') return { policy: emptyPolicy, periodKey, confirmed: true };
+  const exact = book.versions.find((version) => version.periodKey === periodKey);
   // Older test builds could persist an all-zero draft as a "confirmed" policy.
   // An exact version is usable only when it satisfies the selected support profile;
   // otherwise the user must return to onboarding and confirm a real plan.
   if (exact && validatePolicyAgainstProfile(exact).length === 0) {
-    return { policy: exact as SupportPolicy, periodKey, confirmed: true };
+    return { policy: withFundingStart(exact), periodKey, confirmed: true, funding: exact.funding ?? migratedFunding(exact) };
   }
-  return { policy: (fallback ?? emptyPolicy) as SupportPolicy, periodKey, confirmed: false };
+  // A later period may exist from the old "reserve for next period" option; it never applies early.
+  const fallback = book.versions.filter((version) => version.periodKey <= periodKey).sort((a, b) => a.periodKey.localeCompare(b.periodKey) || a.confirmedAt.localeCompare(b.confirmedAt)).at(-1);
+  // Until a plan is confirmed nothing of the new period counts; its payments are only stored.
+  return { policy: { ...(fallback ?? emptyPolicy), period: { ...DEFAULT_POLICY_PERIOD, start: { periodKey, at: null } } }, periodKey, confirmed: false };
 }
 
-export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, periodKey: string, confirmedAt: string = new Date().toISOString()): PolicyBook {
-  const version: PolicyVersion = { ...structuredClone(policy), periodKey, confirmedAt };
+/** Saves a plan for a period. Without `funding` an existing period keeps its deposit state. */
+export function confirmPolicyForPeriod(book: PolicyBook, policy: SupportPolicy, periodKey: string, confirmedAt: string = new Date().toISOString(), funding?: PolicyFunding): PolicyBook {
+  const previous = book.versions.find((candidate) => candidate.periodKey === periodKey)?.funding;
+  const kept = funding ?? previous;
+  const version: PolicyVersion = { ...structuredClone(policy), period: { ...DEFAULT_POLICY_PERIOD }, periodKey, confirmedAt, ...(kept ? { funding: kept } : {}) };
   return { versions: [...book.versions.filter((candidate) => candidate.periodKey !== periodKey), version].sort((a, b) => a.periodKey.localeCompare(b.periodKey)) };
 }
+
+export function setPolicyFunding(book: PolicyBook, periodKey: string, funding: PolicyFunding): PolicyBook {
+  return { ...book, versions: book.versions.map((version) => version.periodKey === periodKey ? { ...version, funding } : version) };
+}
+
 export function getCategoryLimit(policy: SupportPolicy, category: string) {
   const item = POLICY_ITEMS.find((candidate) => candidate.ledgerCategories.includes(category));
   if (item) return policy.plans[item.key];

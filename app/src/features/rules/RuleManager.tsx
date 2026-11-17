@@ -51,7 +51,7 @@ export function RuleManager({ rules, categoryNames, onRulesChange, notify }: Pro
   };
 
   return <section className="rule-manager">
-    <p>결제처에 키워드가 포함되면 자동 분류합니다. 정확 일치는 상호명 전체가 같을 때만 적용됩니다.</p>
+    <p>결제처에 키워드가 포함되면 자동 분류합니다. <br />정확 일치는 상호명 전체가 같을 때만 적용됩니다.</p>
     <div className="rule-editor">
       <label>상호명 또는 키워드<input aria-label="규칙 상호명" value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="예: 메가커피" /></label>
       <label>표시 별칭 (선택)<input aria-label="규칙 표시 별칭" value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="예: 스터디 카페" maxLength={40} /></label>

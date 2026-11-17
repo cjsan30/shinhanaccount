@@ -20,6 +20,17 @@ internal val supportedApprovalNotificationPackages = setOf(
     SHINHAN_SOL_PAY_PACKAGE,
 )
 
+/** Channel of the fake approvals that only the device verification app (`.verify`) posts to itself. */
+internal const val VERIFY_TEST_APPROVAL_CHANNEL = "verify-test-approval"
+
+/**
+ * Approvals are read from Shinhan apps only. The verification app alone also reads its
+ * own fake approvals, so a closed-app warning can be checked without a real payment.
+ */
+internal fun isApprovalNotificationSource(sourcePackage: String, ownPackage: String, channelId: String?): Boolean =
+    sourcePackage in supportedApprovalNotificationPackages ||
+        (ownPackage.endsWith(".verify") && sourcePackage == ownPackage && channelId == VERIFY_TEST_APPROVAL_CHANNEL)
+
 internal data class NotificationMessageCandidate(val body: String, val postedAt: Long)
 
 internal fun notificationSourceId(approval: Approval, postedAt: Long, conversationKey: String): String {
@@ -76,16 +87,9 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
     private fun processNotification(sbn: StatusBarNotification) {
         val prefs = secureSmsPreferences(this)
         val eventId = newSmsDiagnosticEventId()
-        if (sbn.packageName !in supportedApprovalNotificationPackages) {
-            recordSmsDiagnostic(
-                prefs,
-                eventId,
-                SmsDiagnosticStage.NOTIFICATION_SOURCE_UNSUPPORTED,
-                status = "skipped",
-                sourceApp = sbn.packageName,
-            )
-            return
-        }
+        // Other apps' notifications leave no trace, not even their package name: the diagnostics
+        // keep only payment-notification records and are sent with feedback (decision 2026-11-17).
+        if (!isApprovalNotificationSource(sbn.packageName, packageName, sbn.notification.channelId)) return
         if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
             recordSmsDiagnostic(
                 prefs,

@@ -6,12 +6,12 @@ const record = (id: string, attachedAt: string): ReportEvidenceRecord => ({
 });
 
 describe('previous policy period evidence', () => {
-  it('treats files attached before the current period start in Korea as the previous report', () => {
+  it('treats files attached before the current period opens in Korea as the previous report', () => {
     const records = [
-      record('gap', '2026-10-14T23:59:59+09:00'),
-      record('utc-before', '2026-10-14T14:59:59Z'),
-      record('start', '2026-10-15T00:00:00+09:00'),
-      record('utc-start', '2026-10-14T15:00:00Z'),
+      record('gap', '2026-10-10T23:59:59+09:00'),
+      record('utc-before', '2026-10-10T14:59:59Z'),
+      record('start', '2026-10-11T00:00:00+09:00'),
+      record('utc-start', '2026-10-10T15:00:00Z'),
     ];
     const { current, previous } = splitEvidenceByPolicyPeriod(records, '2026-10');
     expect(previous.map((item) => item.id)).toEqual(['gap', 'utc-before']);
@@ -23,10 +23,10 @@ describe('previous policy period evidence', () => {
     expect(previous).toEqual([]);
   });
 
-  it('follows a custom period start and keeps records with an unreadable date', () => {
-    const records = [record('before', '2026-10-31T12:00:00+09:00'), record('after', '2026-11-01T00:00:00+09:00'), record('broken', 'not a date')];
-    const { current, previous } = splitEvidenceByPolicyPeriod(records, '2026-11', { startDay: 1, endDay: 30 });
+  it('keeps files attached before the deposit and records with an unreadable date', () => {
+    const records = [record('before', '2026-11-10T12:00:00+09:00'), record('before-deposit', '2026-11-12T09:00:00+09:00'), record('broken', 'not a date')];
+    const { current, previous } = splitEvidenceByPolicyPeriod(records, '2026-11', { startDay: 11, endDay: 10, start: { periodKey: '2026-11', at: '2026-11-13T00:00:00+09:00' } });
     expect(previous.map((item) => item.id)).toEqual(['before']);
-    expect(current.map((item) => item.id)).toEqual(['after', 'broken']);
+    expect(current.map((item) => item.id)).toEqual(['before-deposit', 'broken']);
   });
 });

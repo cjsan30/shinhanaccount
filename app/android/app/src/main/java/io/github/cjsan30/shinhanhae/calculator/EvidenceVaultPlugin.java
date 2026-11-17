@@ -17,6 +17,11 @@ public class EvidenceVaultPlugin extends Plugin {
         return directory;
     }
 
+    /** True when the file is gone afterwards; a file that was already missing counts as removed. */
+    static boolean removeFile(File file) {
+        return !file.exists() || file.delete() || !file.exists();
+    }
+
     private String safeId(String id) {
         if (id == null || !id.matches("[A-Za-z0-9_-]{8,80}")) throw new IllegalArgumentException("증빙 식별자가 올바르지 않습니다.");
         return id;
@@ -39,7 +44,7 @@ public class EvidenceVaultPlugin extends Plugin {
         try {
             String id = safeId(call.getString("id"));
             File file = new File(vault(), id);
-            if (!file.exists()) { call.reject("보관된 증빙 파일을 찾지 못했습니다."); return; }
+            if (!file.exists()) { call.reject("보관된 증빙 파일을 찾지 못했습니다.", "EVIDENCE_NOT_FOUND"); return; }
             byte[] bytes = new byte[(int) file.length()];
             try (FileInputStream input = new FileInputStream(file)) {
                 int offset = 0; while (offset < bytes.length) { int read = input.read(bytes, offset, bytes.length - offset); if (read < 0) break; offset += read; }
@@ -50,7 +55,11 @@ public class EvidenceVaultPlugin extends Plugin {
 
     @com.getcapacitor.PluginMethod
     public void remove(PluginCall call) {
-        try { String id = safeId(call.getString("id")); new File(vault(), id).delete(); call.resolve(); }
+        try {
+            String id = safeId(call.getString("id"));
+            if (!removeFile(new File(vault(), id))) { call.reject("증빙 파일을 삭제하지 못했습니다.", "EVIDENCE_REMOVE_FAILED"); return; }
+            call.resolve();
+        }
         catch (Exception error) { call.reject("증빙 파일을 삭제하지 못했습니다.", error); }
     }
 }

@@ -49,6 +49,11 @@
   touch-action: none;
 }
 
+/* Focus moves to the sheet title when it opens; the title is not a control. */
+.sheet > header h2:focus {
+  outline: none;
+}
+
 .sheet {
   width: min(560px,100%);
   max-height: 78svh;
@@ -129,7 +134,7 @@
 }
 
 .file-picker {
-  padding: 13px !important;
+  padding: 13px;
   border: 1px solid var(--color-divider-strong);
   border-radius: 10px;
   background: var(--color-fill);
@@ -137,8 +142,9 @@
   font-weight: 700;
 }
 
-.file-picker input {
-  display: none !important;
+/* The picker is the label itself; the file input stays hidden. Specific enough to beat `.sheet input:not([type="range"])`. */
+label.file-picker input[type="file"] {
+  display: none;
 }
 
 .import-preview .sheet-action {
@@ -162,10 +168,6 @@
   background: #74869a;
 }
 
-.backup-card .file-picker {
-  margin-top: 18px;
-}
-
 .sheet select {
   display: block;
   width: 100%;
@@ -176,10 +178,6 @@
   color: var(--color-text);
   background: #253548;
   font: inherit;
-}
-
-.sms-diagnostic-actions .sheet-action {
-  margin-top: 12px !important;
 }
 
 .operations-settings .sheet-action {
@@ -196,11 +194,16 @@
   box-shadow: 0 8px 14px #101820aa;
 }
 
+/* Every sheet keeps the same gap under its title divider, whatever comes first. */
+.sheet > header {
+  margin-bottom: 16px;
+}
+
 .undecided-quick-action__buttons .sheet-action {
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  margin: 0 !important;
+  margin: 0;
   padding: 8px 6px;
   white-space: nowrap;
 }
@@ -213,24 +216,9 @@
   margin-top: 0;
 }
 
-body.high-contrast :is(.app,.first-run,.import-page,.sheet) :is(p,small,span,strong,b,h1,h2,h3,label,legend,button) {
-  color: #fff !important;
-}
-
 .import-card__upload .file-picker {
   display: block;
   width: 100%;
-}
-
-/* Preserve dark text on white primary buttons in high-contrast mode. */
-
-body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not(.secondary-action):not(.danger-action) {
-  background: #fff !important;
-  color: #000 !important;
-}
-
-body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not(.secondary-action):not(.danger-action) :is(span, strong, small, b) {
-  color: #000 !important;
 }
 
 .sheet-backdrop {
@@ -324,6 +312,11 @@ body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not
   overflow-wrap: anywhere;
 }
 
+/* Hidden while the page scrolls to the next target, so the card never slides into place. */
+.spotlight-card--moving {
+  visibility: hidden;
+}
+
 .spotlight-card small {
   color: #b6cbd1;
   font-size: 12px;
@@ -405,26 +398,6 @@ body.high-contrast :is(.app, .first-run, .import-page, .sheet) .sheet-action:not
   margin-right: 0;
 }
 
-body.high-contrast .spotlight-card {
-  border-color: #fff;
-  background: #000;
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card :is(small, h3, p) {
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card footer button {
-  border-color: #fff;
-  color: #fff;
-}
-
-body.high-contrast .spotlight-card footer .spotlight-next {
-  background: #fff;
-  color: #000;
-}
-
 .app-information-notice > .sheet-action {
   flex-shrink: 0;
   width: 100%;
@@ -433,9 +406,4 @@ body.high-contrast .spotlight-card footer .spotlight-next {
   background: #fff;
   color: #10202d;
   white-space: normal;
-}
-
-body.high-contrast .app .app-information-notice > .sheet-action {
-  background: #fff !important;
-  color: #000 !important;
 }

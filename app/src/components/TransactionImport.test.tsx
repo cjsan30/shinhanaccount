@@ -20,7 +20,7 @@ describe('transaction import', () => {
 
   it('imports only current-period card CSV rows and reports excluded rows', async () => {
     const current = { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 카페', amount: 5000, cardMasked: '111*', cardIdentity: '1111', approvalNumber: '0001', paymentStatus: '승인', cancellationStatus: '' };
-    const outside = { ...current, occurredAt: '2026-09-13T12:00:00+09:00', approvalNumber: '0002' };
+    const outside = { ...current, occurredAt: '2026-09-10T12:00:00+09:00', approvalNumber: '0002' };
     mocks.parseCard.mockResolvedValue([current, outside]);
     mocks.filterCard.mockReturnValue({ status: 'ready', transactions: [current, outside], hasMaskedCardWarning: false });
     const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
@@ -36,7 +36,7 @@ describe('transaction import', () => {
     mocks.parseBankPdf.mockResolvedValue([
       { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '현재 출금', amount: 5000, accountMasked: '6789', transactionId: 'withdrawal', direction: 'withdrawal' },
       { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'deposit', direction: 'deposit' },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal' },
+      { occurredAt: '2026-09-10T12:00:00+09:00', merchant: '기간 외 출금', amount: 3000, accountMasked: '6789', transactionId: 'outside', direction: 'withdrawal' },
     ]);
     const onImport = vi.fn(); const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
@@ -80,11 +80,11 @@ describe('transaction import', () => {
     const { container, getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
     fireEvent.change(getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
-    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: '950504' } });
+    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: 'fake-pdf-pass-c' } });
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['pdf'], 'bank.pdf', { type: 'application/pdf' })] } });
     fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
     await screen.findByText(/1건의 기간 내 출금 내역/);
-    expect(mocks.parseBankPdf).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), '950504');
+    expect(mocks.parseBankPdf).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), 'fake-pdf-pass-c');
   });
 
   it('rejects a bank PDF whose readable account suffix differs from the selected account', async () => {
@@ -129,7 +129,7 @@ describe('transaction import', () => {
   it('clears the PDF password when the import type changes', () => {
     const { getByLabelText } = render(<TransactionImport cardLast4="1111" periodKey="2026-09" onImport={vi.fn()} notify={vi.fn()} />);
     fireEvent.click(getByLabelText('계좌번호'));
-    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: 'temporary-password' } });
+    fireEvent.change(getByLabelText('PDF 비밀번호'), { target: { value: 'fake-pdf-pass-b' } });
     fireEvent.click(getByLabelText('카드번호'));
     fireEvent.click(getByLabelText('계좌번호'));
     expect(getByLabelText('PDF 비밀번호')).toHaveValue('');
@@ -161,13 +161,13 @@ describe('optional statement reuse', () => {
     const rows = [
       { occurredAt: '2026-09-20T12:00:00+09:00', merchant: '출금', amount: 5000, accountMasked: '6789', transactionId: 'w', direction: 'withdrawal' },
       { occurredAt: '2026-09-20T12:01:00+09:00', merchant: '입금', amount: 700000, accountMasked: '6789', transactionId: 'd', direction: 'deposit' },
-      { occurredAt: '2026-09-13T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal' },
+      { occurredAt: '2026-09-10T12:00:00+09:00', merchant: '기간 외', amount: 3000, accountMasked: '6789', transactionId: 'o', direction: 'withdrawal' },
     ];
     mocks.parseBankPdf.mockResolvedValue(rows);
     const onImport = vi.fn(); const { container } = render(<TransactionImport cardLast4="" periodKey="2026-09" onImport={onImport} notify={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('계좌번호'));
     fireEvent.change(screen.getByLabelText('계좌 끝 4자리'), { target: { value: '6789' } });
-    fireEvent.change(screen.getByLabelText('PDF 비밀번호'), { target: { value: 'test-private-password' } });
+    fireEvent.change(screen.getByLabelText('PDF 비밀번호'), { target: { value: 'fake-pdf-pass-a' } });
     const file = new File(['pdf'], 'reuse.pdf', { type: 'application/pdf' });
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: '파일 읽기' }));
@@ -179,7 +179,7 @@ describe('optional statement reuse', () => {
     const payload = onImport.mock.calls[1][0];
     expect(payload.statement).toEqual({ file, transactions: rows, requiresPassword: true });
     expect(payload.bankTransactions).toEqual([rows[0]]);
-    expect(JSON.stringify(payload)).not.toContain('test-private-password');
+    expect(JSON.stringify(payload)).not.toContain('fake-pdf-pass-a');
     fireEvent.change(screen.getByLabelText('계좌 끝 4자리'), { target: { value: '1111' } });
     expect(screen.queryByRole('button', { name: '내역 가져오기' })).not.toBeInTheDocument();
   });

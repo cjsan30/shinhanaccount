@@ -7,7 +7,8 @@ export type ExportProfile = { id: 'default' | 'compact' | 'minimum'; maxEdge: nu
 export class ExportCancelled extends Error {}
 
 export const A4: [number, number] = [595.28, 841.89];
-export const TARGET_BYTES = Math.floor(4.7 * 1024 * 1024);
+/** 4.5MB in decimal units, so the file shows as 4.5MB or less in any file app. */
+export const TARGET_BYTES = 4_500_000;
 export const PROFILES: ExportProfile[] = [{ id: 'default', maxEdge: 1024, quality: .58, pdfDpi: null }, { id: 'compact', maxEdge: 920, quality: .5, pdfDpi: 150 }, { id: 'minimum', maxEdge: 800, quality: .42, pdfDpi: 120 }];
 
 export type ReportSummary = { periodLabel: string; totalBudget: number; totalUsed: number; buckets: Array<{ key: 'resident' | 'studySpace'; label: string; budget: number; used: number; items: Array<{ category: string; label: string; budget: number; used: number }> }> };
