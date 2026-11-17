@@ -196,6 +196,19 @@
   margin-top: 18px;
 }
 
+.plan-view__actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* .secondary-action forces a 10px top margin; both buttons sit on one line here. */
+.plan-view__actions .sheet-action {
+  margin-top: 0 !important;
+}
+
 .sheet .plan-view__item {
   display: flex;
   justify-content: space-between;

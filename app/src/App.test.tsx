@@ -168,7 +168,13 @@ describe('app entry flows', () => {
     window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [currentVersion, nextVersion] }));
     window.localStorage.setItem('shinhanhae-report-evidence-v1', JSON.stringify(evidence));
     const app = await renderApp();
+    // 예산 조정 lives under 이번 기간 계획, not in the bucket detail (decision 2026-11-17).
     fireEvent.click(screen.getByRole('button', { name: '정주비 상세 보기' }));
+    expect(screen.queryByLabelText('예산 가져올 항목')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '정주비 상세 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: /계획 보기/ }));
+    fireEvent.click(screen.getByRole('button', { name: '예산 조정' }));
+    expect(screen.getByRole('heading', { name: '예산 조정' })).toBeInTheDocument();
     expect(screen.getByLabelText('예산 가져올 항목')).toHaveTextContent('교통비 · 이동 가능 80,000원');
     fireEvent.change(screen.getByLabelText('예산 가져올 항목'), { target: { value: 'transport' } });
     fireEvent.change(screen.getByLabelText('예산 받을 항목'), { target: { value: 'housing' } });
