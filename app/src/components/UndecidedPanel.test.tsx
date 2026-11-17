@@ -15,6 +15,14 @@ describe('undecided panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes' })); expect(resolve).toHaveBeenCalledWith('bank', 'card', true);
     fireEvent.click(screen.getByRole('button', { name: 'No' })); expect(resolve).toHaveBeenCalledWith('bank', 'card', false);
   });
+  it('marks only a suspected duplicate card with the duplicate style', () => {
+    const existing = { id: 'card', source: 'excel' as const, cardLast4: '1234', merchant: '메가커피', amount: 2700, occurredAt: '2026-09-20T12:00:00+09:00', status: 'classified' as const, category: 'food' };
+    const incoming = { ...existing, id: 'bank', merchant: '네이버페이', status: 'undecided' as const, duplicateCandidateIds: ['card'] };
+    const ordinary = { ...existing, id: 'plain', merchant: '분식집', status: 'undecided' as const, category: undefined };
+    render(<UndecidedPanel entries={[incoming, ordinary]} allEntries={[existing, incoming, ordinary]} items={POLICY_ITEMS} onClassify={vi.fn()} onExclude={vi.fn()} onResolveDuplicate={vi.fn()} />);
+    expect(screen.getByText('네이버페이').closest('article')).toHaveClass('reclassify-card--duplicate');
+    expect(screen.getByText('분식집').closest('article')).not.toHaveClass('reclassify-card--duplicate');
+  });
   it('classifies selected entries in bulk and only permits a rule for one entry', () => {
     const onClassify = vi.fn();
     const entries = [

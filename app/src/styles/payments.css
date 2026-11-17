@@ -1030,6 +1030,11 @@
   }
 }
 
+/* A payment waiting for a duplicate decision gets the same yellow as 중복 확인 필요 (decision 2026-11-18). */
+.reclassify-card.reclassify-card--duplicate {
+  border-color: #ffd27a;
+}
+
 .duplicate-review {
   padding: 16px;
   margin: -4px 0 14px;
