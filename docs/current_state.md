@@ -31,7 +31,7 @@
 
 1. 버전업 PR(`chore/release-x.y.z` → `dev`): `app/package.json`·`app/package-lock.json`의 버전, `app/android/app/build.gradle`의 `versionName`·`versionCode`를 올리고 `docs/11` 맨 위에 한국어 출시 노트를 둔다. 버전 번호와 출시 노트 문구는 사용자가 정한다.
 2. `dev` → `main` PR을 병합한다.
-3. 사용자가 `main`을 받은 체크아웃의 `app/`에서 `.uild-play-release.ps1`을 실행한다. 키 비밀번호를 직접 입력하면 lint·테스트·보안 검사·Android 단위 테스트 후 `android/app/build/outputs/bundle/release/app-release.aab`를 만든다.
+3. 사용자가 `main`을 받은 체크아웃의 `app/`에서 `.uild-play-release.ps1`을 실행한다. 스크립트는 먼저 Node 24 이상인지 확인하고 아니면 멈춘다. 키 비밀번호를 직접 입력하면 lint·테스트·보안 검사·Android 단위 테스트 후 `android/app/build/outputs/bundle/release/app-release.aab`를 만든다.
 4. 사용자가 Play Console에서 새 AAB와 출시 노트로 프로덕션 출시를 만들어 검토로 보낸다.
 
 ## 진행 상황
