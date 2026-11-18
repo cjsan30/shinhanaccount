@@ -6,6 +6,14 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 
+# Tests need Node 24 (jsdom/undici fail on Node 20). Check before asking for passwords.
+$nodeVersion = (node --version 2>$null)
+if (-not $nodeVersion -or [int]($nodeVersion.TrimStart('v').Split('.')[0]) -lt 24) {
+    $shown = if ($nodeVersion) { $nodeVersion } else { 'not found' }
+    throw "Node 24 or later is required (current: $shown). Run 'nvm use 24' or put the Node 24 folder first in PATH, then open a new terminal."
+}
+Write-Host "Node: $nodeVersion"
+
 # Use the first JDK and keystore that exist on this PC unless a path is passed.
 # Android Studio is not installed on every development PC.
 $javaCandidates = @($JavaHome, 'C:\Program Files\Android\Android Studio\jbr') + @(Get-ChildItem -Directory 'C:\Program Files\Eclipse Adoptium\jdk-21*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | ForEach-Object FullName)
