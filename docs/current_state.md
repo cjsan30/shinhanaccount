@@ -146,7 +146,7 @@
    - 출시 빌드가 Node 20 때문에 한 번 실패했다. 사용자 PATH에 `C:\Users\mnshell\scoop\persist\nvm\nodejs\v20.20.2`가 nvm 링크보다 앞에 고정돼 `nvm use`가 듣지 않는다. 그 줄은 사용자가 직접 지운다(대기). 릴리스 스크립트 Node 24 확인은 `chore/release-node-check`.
 2. **출시 뒤 처리**(사용자 결정 2026-11-17, 출시 빌드와 섞지 않는다)
    - 개발 의존성 취약점 12건 `npm audit fix` (아래 개선점 표)
-   - `DashboardScreen.tsx` lint 경고 2건 (아래 개선점 표)
+   - ~~`DashboardScreen.tsx` lint 경고 2건~~ 완료(2026-11-18)
 3. **보류**(필요할 때 진행)
    - **저장소 계층 분리(리팩터링 계획 P2)**: 저장 경로 6곳(`App.tsx`)을 저장 담당 모듈 하나로 모으고 스키마 버전별 이전 틀을 만든다. 사용자 체감 변화가 없고 데이터 유실 위험이 있어 출시 뒤로 미뤘다(사용자 결정). 다음에 저장 형식이 바뀌는 기능을 만들 때 첫 단계로 한다.
 4. 완료 기록: 작업 A~G(PR #55~#69), 예산 조정 이동(#70), 보안·바로 고칠 것(#71~#76), `!important` 98 → 0(#77~#83, 새 CSS에는 `!important` 대신 더 구체적인 선택자를 쓴다), 고대비 없앰(#82), 설정 정리 2차(#84). 결정은 `docs/00`, 실기기 확인은 `docs/10`.
@@ -164,7 +164,7 @@
 | CI `npm audit` 네트워크 실패 | GitHub runner에서 audit 요청이 가끔 시간 초과된다(`gh run rerun --failed`로 해결) | 네트워크 실패만 최대 3회 재시도(20·40초 간격), 취약점 보고는 바로 실패(PR #75). Android 단계의 Maven 429는 그대로(필요하면 Gradle 재시도 설정 검토) |
 | 내부 PDF 측정 비교가 공정하지 않음 | 측정 화면의 "N% 빨랐습니다"는 과거 방식 1회와 현재 방식 3회 중앙값을 비교한다. 현재 방식은 각 측정의 첫 회차가 가장 느리다. 실측 원자료는 [15-pdf-benchmark.md](15-pdf-benchmark.md) | 두 방식 모두 같은 횟수로 재고 첫 회차 제외 검토 |
 | 내부 PDF 측정 결과 줄바꿈 | 측정 결과 두 줄(`small`)이 붙어 "1회 측 / 정현재"처럼 이어져 보인다 | 결과를 줄 단위로 표시 |
-| 대시보드 맞춤 함수 lint 경고 | `DashboardScreen.tsx`가 판단 함수(`budgetHeadingFits`, `fitScale`)를 함께 내보내 `only-export-components` 경고 2건. 개발 서버의 빠른 갱신(Fast Refresh)만 영향받고 앱·사용자에게는 영향 없음 | 출시 뒤로 미룸(사용자 결정 2026-11-17). 할 때는 `domain/`(예: `textFit.ts`)으로 옮기고 테스트도 함께 옮긴다(`refactor/*`, 15분 정도) |
+| 대시보드 맞춤 함수 lint 경고 | `DashboardScreen.tsx`가 판단 함수(`budgetHeadingFits`, `fitScale`)를 함께 내보내 `only-export-components` 경고 2건. 개발 서버의 빠른 갱신(Fast Refresh)만 영향받고 앱·사용자에게는 영향 없음 | 완료(2026-11-18, `refactor/dashboard-text-fit`): `domain/textFit.ts`로 옮기고 테스트도 `textFit.test.ts`로 옮김. lint 경고 0 |
 
 ## 확인·결정이 필요한 항목
 
