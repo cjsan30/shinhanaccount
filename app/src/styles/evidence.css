@@ -1213,3 +1213,14 @@
 .evidence-recent-reports__pages button:disabled {
   opacity: .35;
 }
+
+/* Internal benchmark: one result per line. */
+.evidence-benchmark__results {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.5;
+}
