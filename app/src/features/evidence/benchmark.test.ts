@@ -6,17 +6,22 @@ const setup = (kind: 'legacy' | 'current' = 'current') => ({
   cancelled: () => false, progress: vi.fn(), now: (() => { let n = 0; return () => n += 100; })(),
 });
 describe('benchmark measurements', () => {
-  it('starts at zero receipts and measures current median over three runs', async () => {
+  it('starts at zero receipts and measures current median over three runs after a warm-up', async () => {
     const options = setup(); const result = await measureBenchmark(options);
-    expect(options.create).toHaveBeenCalledTimes(3);
+    expect(options.create).toHaveBeenCalledTimes(4);
     expect(options.progress.mock.calls[0][0]).toMatchObject({ current: 0, total: 2 });
     expect(options.progress.mock.calls.at(-1)?.[0]).toMatchObject({ current: 2, total: 2 });
-    expect(result).toMatchObject({ sampleCount: 3, imageCount: 2, elapsedMs: 100, outputBytes: 3 });
+    expect(result).toMatchObject({ runCount: 4, sampleCount: 3, imageCount: 2, elapsedMs: 100, outputBytes: 3 });
   });
-  it('legacy runs once and does not use fallback compression', async () => {
+  it('legacy runs as often as current and does not use fallback compression', async () => {
     const options = setup('legacy'); options.targetBytes = 1;
-    expect((await measureBenchmark(options)).sampleCount).toBe(1);
-    expect(options.create).toHaveBeenCalledTimes(1);
+    expect(await measureBenchmark(options)).toMatchObject({ runCount: 4, sampleCount: 3, attempts: 1 });
+    expect(options.create).toHaveBeenCalledTimes(4);
+  });
+  it('leaves the slow first run out of the median', async () => {
+    const times = [0, 900, 900, 1000, 1000, 1100, 1100, 1200];
+    const options = { ...setup('legacy'), now: () => times.shift() ?? 0 };
+    expect((await measureBenchmark(options)).elapsedMs).toBe(100);
   });
   it('stops after cancellation without saving a partial result', async () => {
     const options = setup(); let stop = false;
@@ -30,7 +35,7 @@ describe('benchmark measurements', () => {
   it('retries profiles only within the bounded current algorithm', async () => {
     const options = setup(); options.targetBytes = 1;
     const result = await measureBenchmark(options);
-    expect(options.create).toHaveBeenCalledTimes(6); expect(result.attempts).toBe(2);
+    expect(options.create).toHaveBeenCalledTimes(8); expect(result.attempts).toBe(2);
   });
   it('rejects mismatched comparisons and reports slower as slower', async () => {
     const legacy = await measureBenchmark(setup('legacy'));
