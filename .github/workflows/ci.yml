@@ -72,7 +72,16 @@ jobs:
           npm run android:sync
       - name: Run unit tests
         working-directory: app/android
-        run: ./gradlew :app:testDebugUnitTest --console=plain
+        # Maven Central sometimes answers GitHub runners with 429 Too Many Requests while
+        # dependencies download. Only that is retried; a test or compile failure fails at once.
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew :app:testDebugUnitTest --console=plain 2>&1 | tee gradle.log; [ "${PIPESTATUS[0]}" -eq 0 ]; then exit 0; fi
+            if ! grep -q 'Received status code 429' gradle.log; then exit 1; fi
+            echo "Maven repository rate-limited the runner (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 60)); fi
+          done
+          exit 1
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7
