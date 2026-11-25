@@ -48,25 +48,27 @@ export async function initializeAppState(
   if (!dependencies.native) return { state: legacy, migrated: false };
 
   const hadLegacyState = sensitiveLegacyKeys.some((key) => storage.getItem(key) !== null);
+  // Opening the database first also runs its schema migrations (encryptedStore.ts).
   const encrypted = await dependencies.loadEncrypted();
-  if (hadLegacyState) {
-    // The previous release wrote localStorage synchronously and encrypted storage asynchronously.
-    // On a crash the local snapshot can therefore be newer, so migrate it before removing plaintext.
-    const saved = await dependencies.saveEncrypted(legacy);
-    if (!saved) throw new Error('암호화 저장소를 준비하지 못했습니다.');
-    const verified = await dependencies.loadEncrypted();
-    if (!verified) throw new Error('암호화 저장소 이전 결과를 확인하지 못했습니다.');
-    clearSensitiveLegacyState(storage);
-    return { state: verified, migrated: true };
-  }
+  // The previous release wrote localStorage synchronously and encrypted storage asynchronously.
+  // On a crash the local snapshot can therefore be newer, so migrate it before removing plaintext.
+  if (hadLegacyState) return { state: await moveLocalStateToEncrypted(storage, legacy, dependencies), migrated: true };
   if (encrypted) return { state: encrypted, migrated: false };
+  // First start: the empty (or web) state becomes the first encrypted copy.
+  return { state: await moveLocalStateToEncrypted(storage, legacy, dependencies), migrated: false };
+}
 
+/**
+ * Before the encrypted database (schema 1), state lived in plaintext localStorage.
+ * It is copied, read back to prove the copy, and only then removed.
+ */
+async function moveLocalStateToEncrypted(storage: Storage, legacy: PersistedAppState, dependencies: StateStoreDependencies) {
   const saved = await dependencies.saveEncrypted(legacy);
   if (!saved) throw new Error('암호화 저장소를 준비하지 못했습니다.');
   const verified = await dependencies.loadEncrypted();
   if (!verified) throw new Error('암호화 저장소 이전 결과를 확인하지 못했습니다.');
   clearSensitiveLegacyState(storage);
-  return { state: verified, migrated: false };
+  return verified;
 }
 
 export async function persistAppState(
