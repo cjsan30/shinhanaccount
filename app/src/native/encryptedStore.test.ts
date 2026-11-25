@@ -108,4 +108,15 @@ describe('encrypted app state', () => {
     expect(db.tables.get('app_state')!.has('app-state-v1')).toBe(false);
     expect(mocks.setEncryptionSecret).not.toHaveBeenCalled();
   });
+
+  it('refuses to open a database a newer app version wrote and leaves it untouched', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
+    const { saveEncryptedAppState, loadEncryptedAppState } = await import('./encryptedStore');
+    await saveEncryptedAppState({ ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [] });
+    db.settings.set('schema-version', '99');
+    const writesBefore = db.run.mock.calls.length;
+    await expect(loadEncryptedAppState()).rejects.toThrow('이 앱 버전');
+    expect(db.run.mock.calls.length).toBe(writesBefore);
+    expect(db.settings.get('schema-version')).toBe('99');
+  });
 });

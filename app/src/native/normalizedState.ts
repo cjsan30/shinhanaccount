@@ -1,5 +1,6 @@
 import type { PersistedAppState } from './encryptedStore';
 import type { VerificationState } from '../domain/verification';
+import { CURRENT_SCHEMA_VERSION } from './schemaVersion';
 
 export type StoredRow = { id: string; value: string; position: number };
 export type NormalizedStateRows = {
@@ -14,7 +15,7 @@ const stringify = (value: unknown) => JSON.stringify(value);
 export function normalizeAppState(state: PersistedAppState): NormalizedStateRows {
   return {
     settings: new Map([
-      ['schema-version', '2'],
+      ['schema-version', String(CURRENT_SCHEMA_VERSION)],
       ['state-present', '1'],
       ['alert-thresholds', stringify(state.ledger.alertThresholds)],
       ...(state.policyBook.mode ? [['policy-mode', state.policyBook.mode] as [string, string]] : []),
