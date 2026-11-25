@@ -49,7 +49,8 @@ import { SmsBridge, type NativeApproval, type NativeApprovalReview, type NativeC
 import { NotificationBridge } from './native/notificationBridge';
 import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
-import { createEmptyAppState, initializeAppState, loadLegacyAppState, persistAppState } from './native/appStateStore';
+import { createEmptyAppState, initializeAppState, loadLegacyAppState } from './native/appStateStore';
+import { createAppRepository } from './native/appRepository';
 import { AppHealth } from './native/appHealth';
 import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import { PaymentHistory } from './components/PaymentHistory';
@@ -153,6 +154,8 @@ function App() {
   const [importSafety, setImportSafety] = useState<ReturnType<typeof filterTransactionsForConfiguredCard> | null>(null);
   const [policyBook, setPolicyBook] = useState(initialState.policyBook);
   const policyBookRef = useRef(policyBook);
+  // Every save fills in what it did not change from these refs, the newest in-memory copy.
+  const repository = useMemo(() => createAppRepository(window.localStorage, () => ({ ledger: ledgerRef.current, policyBook: policyBookRef.current, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current })), []);
   const [storageReady, setStorageReady] = useState(!nativePlatform);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [forceStopRecovery, setForceStopRecovery] = useState(false);
@@ -207,8 +210,8 @@ function App() {
   }, [startupDate]);
   useEffect(() => {
     if (!storageReady) return;
-    void persistAppState(window.localStorage, { ledger, policyBook, merchantRules, reportEvidence, verification }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
-  }, [ledger, merchantRules, policyBook, reportEvidence, storageReady, verification]);
+    void repository.save({ ledger, policyBook, merchantRules, reportEvidence, verification }).catch(() => setStorageError('변경 내용을 암호화 저장소에 저장하지 못했습니다.'));
+  }, [ledger, merchantRules, policyBook, reportEvidence, repository, storageReady, verification]);
   useEffect(() => { merchantRulesRef.current = merchantRules; }, [merchantRules]);
   // Once per start: delete again any stored file whose deletion failed last time.
   const retriedRemovals = useRef(false);
@@ -362,13 +365,7 @@ function App() {
       categoryLimits,
       classify: (merchant) => classifyWithMerchantRules(merchant, merchantRulesRef.current),
     });
-    await persistAppState(window.localStorage, {
-      ledger: batch.ledger,
-      policyBook: policyBookRef.current,
-      merchantRules: merchantRulesRef.current,
-      reportEvidence: reportEvidenceRef.current,
-      verification: verificationRef.current,
-    });
+    await repository.save({ ledger: batch.ledger });
     ledgerRef.current = batch.ledger;
     setLedger(batch.ledger);
     await acknowledgeApprovals(result.items);
@@ -388,7 +385,7 @@ function App() {
     }
     batch.crossedAlerts.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
     if (batch.appliedApprovals.length || batch.autoCancelled.length) show(`${batch.appliedApprovals.length}건의 승인 결제를 자동 반영했습니다.${batch.autoCancelled.length ? ` 취소 ${batch.autoCancelled.length}건도 반영했습니다.` : ''}`);
-  }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
+  }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits, repository]);
   // Payments of a new period are stored before its plan exists; they count only after the deposit.
   useApprovalSync(activePolicy.confirmed || (policyBook.versions.length > 0 && policyBook.mode !== 'not-applicant'), processPendingApprovals);
   const completeOnboarding = async (
@@ -415,13 +412,7 @@ function App() {
       for (const approval of payload.pendingApprovals) nextLedger = saveAsUndecided(nextLedger, approval).ledger;
     }
     try {
-      await persistAppState(window.localStorage, {
-        ledger: nextLedger,
-        policyBook: confirmed,
-        merchantRules,
-        reportEvidence: reportEvidenceRef.current,
-        verification,
-      });
+      await repository.save({ ledger: nextLedger, policyBook: confirmed, merchantRules, verification });
       setCard(payload.cardLast4);
       setPolicyBook(confirmed);
       ledgerRef.current = nextLedger;
@@ -568,7 +559,7 @@ function App() {
     const nextBook = confirmPolicyForPeriod(previousBook, adjusted, current.periodKey);
     policyBookRef.current = nextBook;
     try {
-      await persistAppState(window.localStorage, { ledger: ledgerRef.current, policyBook: nextBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
+      await repository.save({ policyBook: nextBook });
     } catch {
       if (policyBookRef.current === nextBook) policyBookRef.current = previousBook;
       throw new Error('예산 조정을 기기에 저장하지 못했습니다. 다시 시도해 주세요.');
@@ -583,7 +574,7 @@ function App() {
     // concurrent persistence path to the new book before awaiting I/O.
     policyBookRef.current = nextBook;
     try {
-      await persistAppState(window.localStorage, { ledger: nextLedger, policyBook: nextBook, merchantRules: merchantRulesRef.current, reportEvidence: reportEvidenceRef.current, verification: verificationRef.current });
+      await repository.save({ ledger: nextLedger, policyBook: nextBook });
     } catch {
       if (policyBookRef.current === nextBook) policyBookRef.current = previousBook;
       show('계획표를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도해 주세요.');
