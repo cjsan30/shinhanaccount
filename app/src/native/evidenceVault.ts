@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { bytesToBase64 } from './fileExport';
 import { EVIDENCE_NOT_FOUND } from '../domain/lostEvidence';
+import { LOCAL_STORAGE_KEYS } from '../domain/storageKeys';
 
 type NativeVault = {
   save(options: { id: string; base64Data: string }): Promise<{ id: string; size: number }>;
@@ -30,7 +31,7 @@ export async function loadEvidence(stored: StoredEvidence): Promise<File> {
 }
 
 // Ids (no names or contents) of stored files whose deletion failed; retried on the next start (decision 2026-11-17).
-const PENDING_REMOVAL_KEY = 'shinhanhae-evidence-pending-removal-v1';
+const PENDING_REMOVAL_KEY = LOCAL_STORAGE_KEYS.evidencePendingRemoval.key;
 
 function loadPendingRemovals(): string[] {
   try {

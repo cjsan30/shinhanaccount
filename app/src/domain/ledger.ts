@@ -5,6 +5,7 @@ import { isImportable, type ImportedCardTransaction } from './shinhanImport';
 import type { ImportedBankTransaction } from './shinhanBankImport';
 import type { StoredEvidence } from '../native/evidenceVault';
 import { reconcileImportedEntries, transactionOrigins, type TransactionOrigin } from './importReconciliation';
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 
 export type LedgerStatus = 'classified' | 'excluded' | 'undecided' | 'cancelled';
 // Keep original transaction amounts separate from subsidy amounts.
@@ -22,7 +23,7 @@ const initialEntries: LedgerEntry[] = [
   { id: 'seed-cafe', cardLast4: '', occurredAt: '2026-07-20T00:00:00+09:00', amount: 77700, merchant: '기존 일반카페', status: 'classified', bucket: 'studySpace', category: 'generalCafe' },
 ];
 
-export const LEDGER_STORAGE_KEY = 'shinhanhae-ledger-v1';
+export const LEDGER_STORAGE_KEY = LOCAL_STORAGE_KEYS.legacyLedger.key;
 export function createInitialLedger(): Ledger { return { entries: initialEntries.map((entry) => ({ ...entry, source: 'demo' })), alertThresholds: [50, 80] }; }
 export function createEmptyLedger(): Ledger { return { entries: [], alertThresholds: [50, 80] }; }
 export function getEntryPeriodKey(entry: Pick<LedgerEntry, 'occurredAt' | 'periodKey'>, period?: PolicyPeriod) { return getPolicyPeriodKey(new Date(entry.occurredAt), period); }

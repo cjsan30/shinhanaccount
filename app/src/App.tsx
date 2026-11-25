@@ -73,6 +73,7 @@ import { hasConfirmedAppInformation } from './domain/appInformation';
 import { loadInformationConfirmation, saveInformationConfirmation } from './native/appInformationPreference';
 import './styles/index.css';
 import { Sentences } from './components/Sentences';
+import { LOCAL_STORAGE_KEYS } from './domain/storageKeys';
 
 const EvidenceExport = lazy(() => import('./features/evidence/EvidenceExport').then((module) => ({ default: module.EvidenceExport })));
 const DataManagementPanel = lazy(() => import('./components/DataManagementPanel').then((module) => ({ default: module.DataManagementPanel })));
@@ -90,7 +91,7 @@ type ManualClassificationChoice = 'auto' | 'undecided' | string;
 const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const manualDateTimeValue = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const categoryNames: Record<string, string> = { lodging: '주거비', food: '식비', education: '교육비', transport: '교통비', studyCafe: '스터디카페', generalCafe: '카페', readingRoom: '독서실' };
-const RECOVERY_DISMISSED_EVENT_KEY = 'shinhanhae-force-stop-recovery-dismissed-v1';
+const RECOVERY_DISMISSED_EVENT_KEY = LOCAL_STORAGE_KEYS.forceStopRecoveryDismissed.key;
 
 function classificationText(result: PaymentClassification) {
   if (result.status === 'excluded') return '제외 대상으로 분류';

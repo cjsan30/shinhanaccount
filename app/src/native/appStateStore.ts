@@ -5,6 +5,7 @@ import { loadPolicyBook, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, savePolicy
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
 import { createVerificationState } from '../domain/verification';
 import { loadEncryptedAppState, saveEncryptedAppState, type PersistedAppState } from './encryptedStore';
+import { LOCAL_STORAGE_KEYS } from '../domain/storageKeys';
 
 export type StateStoreDependencies = {
   native: boolean;
@@ -12,7 +13,7 @@ export type StateStoreDependencies = {
   saveEncrypted: (state: PersistedAppState) => Promise<boolean>;
 };
 
-export const REPORT_EVIDENCE_STORAGE_KEY = 'shinhanhae-report-evidence-v1';
+export const REPORT_EVIDENCE_STORAGE_KEY = LOCAL_STORAGE_KEYS.legacyReportEvidence.key;
 const sensitiveLegacyKeys = [LEDGER_STORAGE_KEY, POLICY_BOOK_STORAGE_KEY, POLICY_STORAGE_KEY, MERCHANT_RULES_STORAGE_KEY, REPORT_EVIDENCE_STORAGE_KEY] as const;
 
 export function loadLegacyAppState(storage: Storage, now = new Date()): PersistedAppState {

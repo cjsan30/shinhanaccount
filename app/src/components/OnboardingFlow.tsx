@@ -8,12 +8,13 @@ import { createEmptyLedger, saveAsUndecided } from '../domain/ledger';
 import { DepositStart } from '../features/policy/DepositStart';
 import { SHORT_APP_NOTICE } from '../domain/appInformation';
 import { Sentences } from './Sentences';
+import { LOCAL_STORAGE_KEYS } from '../domain/storageKeys';
 
 type HistoryAction = 'keep-undecided' | 'discard';
 type NextAction = 'dashboard' | 'import';
 type ApplicantStatus = 'applicant' | 'not-applicant';
 type SavedProgress = { step: 'permissions' | 'policy' | 'deposit' | 'history'; policy?: SupportPolicy; funding?: PolicyFunding };
-const PROGRESS_KEY = 'shinhanhae-onboarding-progress-v1';
+const PROGRESS_KEY = LOCAL_STORAGE_KEYS.onboardingProgress.key;
 function loadProgress(): SavedProgress | null { try { const saved = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) || 'null') as SavedProgress | null; return saved?.step ? saved : null; } catch { return null; } }
 
 type CompletePayload = {

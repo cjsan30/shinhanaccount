@@ -1,4 +1,5 @@
 import { DEFAULT_POLICY_PERIOD, PERIOD_OPEN_DAY, getPolicyPeriodKey, type BudgetKey, type PolicyPeriod } from './budget';
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 
 export type PolicyItem = 'housing' | 'food' | 'education' | 'transport' | 'studyCafe' | 'cafe' | 'readingRoom';
 export type SupportProfileId = 'shinhanhae-70' | 'shinhanhae-40';
@@ -8,7 +9,7 @@ export type SupportPolicy = {
 export type PolicyItemDefinition = { key: PolicyItem; bucket: BudgetKey; label: string; ledgerCategories: string[] };
 export type CustomPolicyItem = { id: string; label: string; bucket: BudgetKey; amount: number };
 
-export const POLICY_STORAGE_KEY = 'shinhanhae-policy-v1';
+export const POLICY_STORAGE_KEY = LOCAL_STORAGE_KEYS.legacyPolicy.key;
 export const POLICY_ITEMS: PolicyItemDefinition[] = [
   { key: 'housing', bucket: 'resident', label: '주거비', ledgerCategories: ['lodging'] },
   { key: 'food', bucket: 'resident', label: '식비', ledgerCategories: ['food'] },
@@ -203,7 +204,7 @@ export function savePolicy(storage: Pick<Storage, 'setItem'>, policy: SupportPol
 export type PolicyFunding = { status: 'pending' } | { status: 'deposited'; depositDate: string; startAt: string; migrated?: true };
 export type PolicyVersion = SupportPolicy & { periodKey: string; confirmedAt: string; funding?: PolicyFunding };
 export type PolicyBook = { versions: PolicyVersion[]; mode?: 'not-applicant' };
-export const POLICY_BOOK_STORAGE_KEY = 'shinhanhae-policy-book-v1';
+export const POLICY_BOOK_STORAGE_KEY = LOCAL_STORAGE_KEYS.legacyPolicyBook.key;
 
 export function getNextPolicyPeriodKey(date: Date, period?: PolicyPeriod) {
   const [year, month] = getPolicyPeriodKey(date, period).split('-').map(Number);
