@@ -6,6 +6,7 @@ import type { MerchantRule } from '../domain/merchantRules';
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
 import type { VerificationState } from '../domain/verification';
 import { changedRows, denormalizeAppState, normalizeAppState, type NormalizedStateRows, type StoredRow } from './normalizedState';
+import { planMigrations, readSchemaVersion } from './schemaVersion';
 
 export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; reportEvidence?: ReportEvidenceRecord[]; verification?: VerificationState };
 const DATABASE = 'shinhanhae';
@@ -105,7 +106,10 @@ async function migrateLegacySnapshot(db: DatabaseConnection) {
 export async function loadEncryptedAppState(): Promise<PersistedAppState | null> {
   await writeQueue.catch(() => undefined);
   const db = await database(); if (!db) return null;
-  cachedRows = await readNormalizedRows(db) ?? await migrateLegacySnapshot(db);
+  const stored = await readNormalizedRows(db);
+  // Refuses (throws) before caching when a newer app wrote the database.
+  if (stored) planMigrations(readSchemaVersion(stored.settings), []);
+  cachedRows = stored ?? await migrateLegacySnapshot(db);
   return cachedRows ? denormalizeAppState(cachedRows) : null;
 }
 
