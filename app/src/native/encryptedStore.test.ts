@@ -109,6 +109,27 @@ describe('encrypted app state', () => {
     expect(mocks.setEncryptionSecret).not.toHaveBeenCalled();
   });
 
+  it('marks a migrated snapshot with the current schema version', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db); mocks.isSecretStored.mockResolvedValue({ result: true });
+    const state = { ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [] };
+    db.tables.get('app_state')!.set('app-state-v1', { id: 'app-state-v1', value: JSON.stringify(state), position: 0 });
+    const { loadEncryptedAppState } = await import('./encryptedStore');
+    const { CURRENT_SCHEMA_VERSION } = await import('./schemaVersion');
+
+    await loadEncryptedAppState();
+    expect(db.settings.get('schema-version')).toBe(String(CURRENT_SCHEMA_VERSION));
+  });
+
+  it('keeps normalized rows over a leftover legacy snapshot', async () => {
+    const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
+    const { saveEncryptedAppState, loadEncryptedAppState } = await import('./encryptedStore');
+    const current = { ledger: { ...createEmptyLedger(), alertThresholds: [60, 90] as [number, number] }, policyBook: { versions: [] }, merchantRules: [] };
+    await saveEncryptedAppState(current);
+    db.tables.get('app_state')!.set('app-state-v1', { id: 'app-state-v1', value: JSON.stringify({ ledger: createEmptyLedger(), policyBook: { versions: [] }, merchantRules: [] }), position: 0 });
+
+    await expect(loadEncryptedAppState()).resolves.toEqual(current);
+  });
+
   it('refuses to open a database a newer app version wrote and leaves it untouched', async () => {
     const db = memoryDatabase(); mocks.createConnection.mockResolvedValue(db);
     const { saveEncryptedAppState, loadEncryptedAppState } = await import('./encryptedStore');

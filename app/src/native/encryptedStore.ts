@@ -6,7 +6,7 @@ import type { MerchantRule } from '../domain/merchantRules';
 import type { ReportEvidenceRecord } from '../domain/reportEvidence';
 import type { VerificationState } from '../domain/verification';
 import { changedRows, denormalizeAppState, normalizeAppState, type NormalizedStateRows, type StoredRow } from './normalizedState';
-import { planMigrations, readSchemaVersion } from './schemaVersion';
+import { CURRENT_SCHEMA_VERSION, planMigrations, readSchemaVersion, type SchemaMigration } from './schemaVersion';
 
 export type PersistedAppState = { ledger: Ledger; policyBook: PolicyBook; merchantRules: MerchantRule[]; reportEvidence?: ReportEvidenceRecord[]; verification?: VerificationState };
 const DATABASE = 'shinhanhae';
@@ -92,24 +92,37 @@ async function writeRows(db: DatabaseConnection, next: NormalizedStateRows, prev
   }
 }
 
-async function migrateLegacySnapshot(db: DatabaseConnection) {
+async function readLegacySnapshot(db: DatabaseConnection) {
   const result = await db.query('SELECT value FROM app_state WHERE key = ?;', [LEGACY_STATE_KEY]);
   const value = result.values?.[0]?.value;
-  if (typeof value !== 'string') return null;
-  const state = JSON.parse(value) as PersistedAppState;
-  const rows = normalizeAppState(state);
-  await writeRows(db, rows, null);
-  await db.run('DELETE FROM app_state WHERE key = ?;', [LEGACY_STATE_KEY]);
-  return rows;
+  return typeof value === 'string' ? value : null;
 }
+
+/** Schema migrations of the encrypted database, oldest first. */
+const migrations: SchemaMigration<DatabaseConnection>[] = [
+  // 1 → 2: one JSON snapshot row in app_state becomes normalized rows per table.
+  {
+    from: 1,
+    run: async (db) => {
+      const value = await readLegacySnapshot(db);
+      if (value === null) return;
+      await writeRows(db, normalizeAppState(JSON.parse(value) as PersistedAppState), null);
+      await db.run('DELETE FROM app_state WHERE key = ?;', [LEGACY_STATE_KEY]);
+    },
+  },
+];
 
 export async function loadEncryptedAppState(): Promise<PersistedAppState | null> {
   await writeQueue.catch(() => undefined);
   const db = await database(); if (!db) return null;
-  const stored = await readNormalizedRows(db);
-  // Refuses (throws) before caching when a newer app wrote the database.
-  if (stored) planMigrations(readSchemaVersion(stored.settings), []);
-  cachedRows = stored ?? await migrateLegacySnapshot(db);
+  let stored = await readNormalizedRows(db);
+  const version = stored ? readSchemaVersion(stored.settings) : await readLegacySnapshot(db) !== null ? 1 : null;
+  if (version !== null && version !== CURRENT_SCHEMA_VERSION) {
+    // Throws before anything is written or cached when a newer app wrote the database.
+    for (const step of planMigrations(version, migrations)) await step.run(db);
+    stored = await readNormalizedRows(db);
+  }
+  cachedRows = stored;
   return cachedRows ? denormalizeAppState(cachedRows) : null;
 }
 
