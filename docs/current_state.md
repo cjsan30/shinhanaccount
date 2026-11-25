@@ -3,8 +3,8 @@
 이 파일은 진행 상황 인계의 유일한 기준이다. 세션을 끝낼 때마다 갱신한다.
 결정 이력은 [00-latest-decisions.md](00-latest-decisions.md), 구조 개선의 배경은 [08-refactoring-plan.md](08-refactoring-plan.md)에 둔다.
 
-- 마지막 갱신: 2026-11-18
-- 기준 커밋: `main` `0d50634` = 1.5.0 / code 15 출시본(#87, `dev` `7de6aad`와 같은 코드)
+- 마지막 갱신: 2026-11-26
+- 기준 커밋: `main` `0d50634` = 1.5.0 / code 15 출시본(#87, `dev` `7de6aad`와 같은 코드). `dev` `10e93df` = 출시 뒤 정리 #89~#94 포함(앱 버전은 그대로 1.5.0)
 
 ## 현재 상태 요약
 
@@ -12,7 +12,7 @@
 | --- | --- |
 | 배포 | Play 프로덕션 1.5.0 / code 15 출시(2026-11-18, 사용자 서명 빌드·제출) |
 | 버전 | `package.json`·`package-lock.json` 1.5.0 = Android `versionName` 1.5.0, `versionCode` 15 (2026-11-18 출시) |
-| 웹 테스트 | 638개 통과, 1개 건너뜀(내부 전용) |
+| 웹 테스트 | 639개 통과, 1개 건너뜀(내부 전용) (2026-11-26) |
 | Android 단위 테스트 | 통과 (2026-11-17, PR #74 증빙 삭제 테스트 추가) |
 | `npm audit --omit=dev` | 0건 |
 | 검증 자동화 | pre-push 훅(lint → test:run → build → `npm audit --omit=dev`), GitHub Actions CI(web·android) |
@@ -31,10 +31,23 @@
 
 1. 버전업 PR(`chore/release-x.y.z` → `dev`): `app/package.json`·`app/package-lock.json`의 버전, `app/android/app/build.gradle`의 `versionName`·`versionCode`를 올리고 `docs/11` 맨 위에 한국어 출시 노트를 둔다. 버전 번호와 출시 노트 문구는 사용자가 정한다.
 2. `dev` → `main` PR을 병합한다.
-3. 사용자가 `main`을 받은 체크아웃의 `app/`에서 `.uild-play-release.ps1`을 실행한다. 스크립트는 먼저 Node 24 이상인지 확인하고 아니면 멈춘다. 키 비밀번호를 직접 입력하면 lint·테스트·보안 검사·Android 단위 테스트 후 `android/app/build/outputs/bundle/release/app-release.aab`를 만든다.
+3. 사용자가 `main`을 받은 체크아웃의 `app/`에서 `.\build-play-release.ps1`을 실행한다. 스크립트는 먼저 Node 24 이상인지 확인하고 아니면 멈춘다. 키 비밀번호를 직접 입력하면 lint·테스트·보안 검사·Android 단위 테스트 후 `android/app/build/outputs/bundle/release/app-release.aab`를 만든다.
 4. 사용자가 Play Console에서 새 AAB와 출시 노트로 프로덕션 출시를 만들어 검토로 보낸다.
 
 ## 진행 상황
+
+### 2026-11-18 출시 뒤 정리 (Claude Code)
+
+| PR | 내용 |
+| --- | --- |
+| #89 | 1.5.0 / code 15 출시 기록 |
+| #90 | 릴리스 스크립트가 비밀번호를 묻기 전에 Node 24 이상인지 확인, `package.json` `engines` `>=24` |
+| #91 | 대시보드 글자 맞춤 함수를 `domain/textFit.ts`로 옮겨 lint 경고 0 |
+| #92 | 개발 의존성 `npm audit fix`, vitest 4.1.12·vite 8.3.8 (12건 → 7건) |
+| #93 | 내부 PDF 측정: 두 방식 모두 4회, 첫 1회 제외 중앙값 비교, 결과를 한 줄씩 |
+| #94 | CI Android 단계에서 Maven 429일 때만 Gradle 재시도 |
+
+- #91~#93은 `app/`이 바뀌었다. `dev` `10e93df` 검증 앱 APK는 만들어 두었고 휴대폰 연결을 기다린다(`docs/10` 2026-11-18 항목).
 
 ### 2026-11-18 설정 정리 (Claude Code)
 
@@ -143,12 +156,13 @@
 ## 다음 작업
 
 1. **1.5.0 / code 15 출시 완료(2026-11-18).** 사용자가 `main`에서 서명 AAB를 만들어 Play에 제출했다. 작업 A(입금 기준 정책 시작)는 다음 기간(12월 11일) 전환 때 처음 동작하므로 그 무렵 실제 화면을 확인한다(#30 이전 PDF 정리 안내, #31 새 기간 계획 확정 안내, 입금 뒤 첫 결제부터 집계).
-   - 출시 빌드가 Node 20 때문에 한 번 실패했다. 사용자 PATH에 `C:\Users\mnshell\scoop\persist\nvm\nodejs\v20.20.2`가 nvm 링크보다 앞에 고정돼 `nvm use`가 듣지 않는다. 그 줄은 사용자가 직접 지운다(대기). 릴리스 스크립트 Node 24 확인은 `chore/release-node-check`.
+   - 출시 빌드가 Node 20 때문에 한 번 실패했다. 사용자 PATH에 `C:\Users\mnshell\scoop\persist\nvm\nodejs\v20.20.2`가 nvm 링크보다 앞에 고정돼 `nvm use`가 듣지 않는다. 그 줄은 사용자가 직접 지운다(대기). 릴리스 스크립트가 시작할 때 Node 24 이상인지 확인하도록 고쳤다(#90).
 2. **출시 뒤 처리**(사용자 결정 2026-11-17, 출시 빌드와 섞지 않는다)
    - 개발 의존성 취약점 12건 → 7건(2026-11-18, 남은 7건은 고친 버전이 없는 `picomatch` 하나, 아래 개선점 표)
    - ~~`DashboardScreen.tsx` lint 경고 2건~~ 완료(2026-11-18)
-3. **보류**(필요할 때 진행)
-   - **저장소 계층 분리(리팩터링 계획 P2)**: 저장 경로 6곳(`App.tsx`)을 저장 담당 모듈 하나로 모으고 스키마 버전별 이전 틀을 만든다. 사용자 체감 변화가 없고 데이터 유실 위험이 있어 출시 뒤로 미뤘다(사용자 결정). 다음에 저장 형식이 바뀌는 기능을 만들 때 첫 단계로 한다.
+3. **진행 중(2026-11-26 사용자 결정)**
+   - **저장소 계층 분리(리팩터링 계획 P2)**, 단계마다 PR 하나: ① 저장 담당 모듈(`native/appRepository.ts`)로 `App.tsx`의 `persistAppState` 호출 5곳을 모음 ② 스키마 버전별 이전 틀(더 새 버전 DB는 열지 않음) ③ 기존 이전 2개를 그 틀로 옮김 ④ localStorage 보조 키 7개 목록화. 단계마다 1.5.0 데이터 위에 덮어 설치해 확인한다.
+   - **페이 충전 출금 인식**: 등록한 계좌(끝 4자리)에서 페이 충전으로 보이는 출금 알림을 `미정 지출`로 남긴다(사용자 결정, `docs/00` 2026-11-26). 그 밖의 출금·이체는 계속 무시한다.
 4. 완료 기록: 작업 A~G(PR #55~#69), 예산 조정 이동(#70), 보안·바로 고칠 것(#71~#76), `!important` 98 → 0(#77~#83, 새 CSS에는 `!important` 대신 더 구체적인 선택자를 쓴다), 고대비 없앰(#82), 설정 정리 2차(#84). 결정은 `docs/00`, 실기기 확인은 `docs/10`.
 
 ## 발견한 개선점
