@@ -2,13 +2,14 @@ import { isInPeriodBounds } from './periodSelectors';
 import { restoreBeforeDeposit } from './policyStart';
 import type { Ledger, LedgerEntry } from './ledger';
 import type { PolicyBook } from './policy';
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 
 /**
  * Tools of the device verification build only (`--mode internal`): they set up the
  * states a tester cannot wait for. Nothing here is reachable from the Play build.
  */
 
-export const VERIFY_DATE_OFFSET_KEY = 'shinhanhae-verify-date-offset-v1';
+export const VERIFY_DATE_OFFSET_KEY = LOCAL_STORAGE_KEYS.verifyDateOffset.key;
 export const TEST_PAYMENT_PREFIX = 'verify-test-';
 const DAY = 86_400_000;
 

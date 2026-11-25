@@ -1,4 +1,5 @@
-const KEY = 'shinhanhae-lost-receipt-links-v1';
+import { LOCAL_STORAGE_KEYS } from '../domain/storageKeys';
+const KEY = LOCAL_STORAGE_KEYS.lostReceiptLinks.key;
 
 /** Payment ids only (no amounts or merchants), so plain storage is enough. */
 export function loadLostReceiptLinks(): string[] {

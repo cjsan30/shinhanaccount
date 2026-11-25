@@ -1,5 +1,6 @@
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 export const APP_INFORMATION_TITLE = '앱 안내';
-export const APP_INFORMATION_ACK_KEY = 'shinhanhae-app-information-confirmed-v1';
+export const APP_INFORMATION_ACK_KEY = LOCAL_STORAGE_KEYS.appInformationConfirmed.key;
 export const SHORT_APP_NOTICE = '신청해 계산기는 개인이 개발한 지원금 관리 도구이며, 공식 앱이 아닙니다.';
 export const APP_INFORMATION_PARAGRAPHS = [
   '신청해 계산기는 개인이 개발한 지원금 관리 도구입니다. 어떤 기관의 공식 앱도 아니며, 기관을 대표하거나 기관과 제휴하지 않았습니다.',

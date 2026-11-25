@@ -1,6 +1,7 @@
 import { isRecentReport, type RecentReport } from '../domain/recentReports';
+import { LOCAL_STORAGE_KEYS } from '../domain/storageKeys';
 
-const KEY = 'shinhanhae-recent-reports-v1';
+const KEY = LOCAL_STORAGE_KEYS.recentReports.key;
 
 /** File locations, names, sizes and save times only, so plain storage is enough. */
 export function loadRecentReports(): RecentReport[] {

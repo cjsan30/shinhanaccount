@@ -1,9 +1,10 @@
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 export type AccessibilityPreferences = {
   textScale: 'small' | 'default' | 'large';
   vibration: boolean;
 };
 
-export const ACCESSIBILITY_STORAGE_KEY = 'shinhanhae-accessibility-v1';
+export const ACCESSIBILITY_STORAGE_KEY = LOCAL_STORAGE_KEYS.accessibility.key;
 export const defaultAccessibilityPreferences: AccessibilityPreferences = { textScale: 'default', vibration: false };
 
 export function loadAccessibilityPreferences(storage: Pick<Storage, 'getItem'>): AccessibilityPreferences {

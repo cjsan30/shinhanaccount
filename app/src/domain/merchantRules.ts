@@ -1,6 +1,7 @@
 import type { ManualClassification } from './ledger';
 import type { AnyPolicyItemDefinition } from './policy';
 import type { PaymentClassification } from './sms';
+import { LOCAL_STORAGE_KEYS } from './storageKeys';
 
 export type MerchantMatchMode = 'contains' | 'exact';
 export type MerchantRule = ManualClassification & {
@@ -11,7 +12,7 @@ export type MerchantRule = ManualClassification & {
   alias?: string;
   createdAt: string;
 };
-export const MERCHANT_RULES_STORAGE_KEY = 'shinhanhae-merchant-rules-v1';
+export const MERCHANT_RULES_STORAGE_KEY = LOCAL_STORAGE_KEYS.legacyMerchantRules.key;
 
 export function normalizeMerchant(merchant: string) { return merchant.toLowerCase().replace(/[\s().,]/g, ''); }
 export function createMerchantRule(merchant: string, classification: ManualClassification, createdAt = new Date().toISOString(), matchMode: MerchantMatchMode = 'contains', alias = ''): MerchantRule {
