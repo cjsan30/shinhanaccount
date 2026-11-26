@@ -27,6 +27,7 @@ import java.util.TimeZone
 
 private const val TEST_APPROVAL_REQUEST = 7301
 private const val EXTRA_AMOUNT = "amount"
+private const val EXTRA_KIND = "kind"
 
 private fun isVerifyApp(context: Context) = context.packageName.endsWith(".verify")
 
@@ -40,9 +41,12 @@ class VerifyToolsPlugin : Plugin() {
     fun scheduleTestApproval(call: PluginCall) {
         val context = context
         if (!isVerifyApp(context)) { call.reject("검증 앱에서만 쓸 수 있습니다."); return }
-        if (secureSmsPreferences(context).getString("card_last_4", null) == null) { call.reject("카드 끝 4자리를 먼저 등록해 주세요."); return }
+        val withdrawal = call.getString("kind") == "withdrawal"
+        if (withdrawal && secureSmsPreferences(context).getString(TOPUP_ACCOUNT_KEY, null) == null) { call.reject("충전 계좌 끝 4자리를 먼저 등록해 주세요."); return }
+        if (!withdrawal && secureSmsPreferences(context).getString("card_last_4", null) == null) { call.reject("카드 끝 4자리를 먼저 등록해 주세요."); return }
         val delaySeconds = (call.getInt("delaySeconds") ?: 15).coerceIn(5, 120)
         val intent = Intent(context, VerifyTestApprovalReceiver::class.java).putExtra(EXTRA_AMOUNT, call.getInt("amount") ?: 5000)
+            .putExtra(EXTRA_KIND, if (withdrawal) "withdrawal" else "approval")
         val pending = PendingIntent.getBroadcast(context, TEST_APPROVAL_REQUEST, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         context.getSystemService(AlarmManager::class.java)
             .setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delaySeconds * 1000L, pending)
@@ -88,19 +92,29 @@ class VerifyToolsPlugin : Plugin() {
     }
 }
 
-/** Posts the fake approval in the Shinhan check card format, using the card registered on this device. */
+/**
+ * Posts the fake approval in the Shinhan check card format, using the card registered on this
+ * device, or a fake pay top-up withdrawal ("출금" notice) from the registered top-up account.
+ */
 class VerifyTestApprovalReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!isVerifyApp(context)) return
-        val card = secureSmsPreferences(context).getString("card_last_4", null) ?: return
         val amount = intent.getIntExtra(EXTRA_AMOUNT, 5000)
-        val time = SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).apply { timeZone = TimeZone.getTimeZone("Asia/Seoul") }.format(Date())
-        val body = "[신한체크승인] 검*증($card) $time (금액)${String.format(Locale.KOREA, "%,d", amount)}원 검증 가맹점"
+        val withdrawal = intent.getStringExtra(EXTRA_KIND) == "withdrawal"
+        val identifier = secureSmsPreferences(context).getString(if (withdrawal) TOPUP_ACCOUNT_KEY else "card_last_4", null) ?: return
+        val seoul = TimeZone.getTimeZone("Asia/Seoul")
+        val formattedAmount = String.format(Locale.KOREA, "%,d", amount)
+        val title = if (withdrawal) "출금" else "검증용 결제 알림"
+        val body = if (withdrawal) {
+            "${formattedAmount}원 카카오페이 입출금($identifier) " + SimpleDateFormat("MM.dd HH:mm", Locale.KOREA).apply { timeZone = seoul }.format(Date())
+        } else {
+            "[신한체크승인] 검*증($identifier) " + SimpleDateFormat("MM/dd HH:mm", Locale.KOREA).apply { timeZone = seoul }.format(Date()) + " (금액)${formattedAmount}원 검증 가맹점"
+        }
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(VERIFY_TEST_APPROVAL_CHANNEL, "검증용 가짜 결제 알림", NotificationManager.IMPORTANCE_DEFAULT))
         val notification = NotificationCompat.Builder(context, VERIFY_TEST_APPROVAL_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("검증용 결제 알림")
+            .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)

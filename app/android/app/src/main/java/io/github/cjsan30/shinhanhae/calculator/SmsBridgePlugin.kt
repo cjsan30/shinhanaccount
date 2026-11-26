@@ -20,6 +20,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
@@ -30,6 +31,8 @@ private const val CARD_KEY = "card_last_4"
 private const val QUEUE_KEY = "pending_approvals"
 private const val REVIEW_QUEUE_KEY = "pending_approval_reviews"
 private const val CANCELLATION_QUEUE_KEY = "pending_cancellations"
+internal const val TOPUP_ACCOUNT_KEY = "topup_account_last_4"
+private const val WITHDRAWAL_QUEUE_KEY = "pending_withdrawals"
 private const val BUDGET_STATE_KEY = "budget_state"
 private const val PROCESSED_SMS_KEY = "processed_sms_ids"
 private const val RECENT_APPROVAL_MATCHES_KEY = "recent_approval_matches_v1"
@@ -114,6 +117,8 @@ private val cancellationCardRegex = Regex("""\[신한(?:체크)?취소\]\s+.*?\(
 private val cancellationOccurredAtRegex = Regex("""취소\s*(?:일시|시간|시각)\s*[:：]?\s*(\d{2})/(\d{2})\s+(\d{2}):(\d{2})""")
 private val cancellationAmountRegex = Regex("""취소\s*금액\s*[:：]?\s*([\d,]+)\s*원""")
 private val bankNoticeRegex = Regex("""(?:입금|출금|입출금|이체|잔액|이자)""")
+// Bank withdrawal notice body, e.g. "10,000원 받는곳(1234) 11.25 19:46" under the title "출금".
+private val withdrawalRegex = Regex("""^([\d,]+)\s*원\s+(.+?)\s*\((\d{4})\)\s+(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{2})(?!\d)""")
 
 internal data class Approval(
     val cardLast4: String,
@@ -205,6 +210,61 @@ internal fun parseApprovalReview(body: String, cardLast4: String, year: Int = Ca
     val contextProof = Regex("""(?:승인|결제|거래)""").containsMatchIn(normalized) && structuredFieldCount >= 2
     if (!directMarker && !contextProof) return null
     return ApprovalReview(matchedCard, occurredAt, amount, merchant)
+}
+
+/** A withdrawal from the registered top-up account. TypeScript decides whether it is a pay top-up. */
+internal data class AccountWithdrawal(
+    val accountLast4: String,
+    val occurredAt: String,
+    val amount: Int,
+    val counterparty: String,
+    val notificationPostedAt: Long? = null,
+) {
+    fun toJson(id: String) = JSONObject()
+        .put("id", id)
+        .put("accountLast4", accountLast4)
+        .put("occurredAt", occurredAt)
+        .put("amount", amount)
+        .put("counterparty", counterparty)
+        .also { notificationPostedAt?.let { postedAt -> it.put("notificationPostedAt", postedAt) } }
+}
+
+/**
+ * The display name the web app gave a pay top-up counterparty ("카카오페이 충전"), or null.
+ * The pay list comes from the web app through syncBudgetState; Android only looks it up.
+ */
+internal fun payTopUpLabel(counterparty: String, payServices: JSONArray): String? {
+    val compact = counterparty.lowercase().filterNot { it.isWhitespace() }
+    for (index in 0 until payServices.length()) {
+        val service = payServices.optJSONObject(index) ?: continue
+        val patterns = service.optJSONArray("patterns") ?: continue
+        val matched = (0 until patterns.length()).any { patterns.optString(it).takeIf(String::isNotEmpty)?.let(compact::contains) == true }
+        if (matched) return service.optString("name").takeIf(String::isNotEmpty)?.let { "$it 충전" }
+    }
+    return null
+}
+
+internal fun storedPayServices(prefs: android.content.SharedPreferences): JSONArray =
+    try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}").optJSONArray("payServices") ?: JSONArray() } catch (_: Exception) { JSONArray() }
+
+/**
+ * Reads a bank "출금" notice for the registered account only. The title carries "출금"; some
+ * apps put it at the start of the text instead. Deposits and other accounts return null.
+ */
+internal fun parseAccountWithdrawal(title: String?, body: String, accountLast4: String, year: Int = Calendar.getInstance().get(Calendar.YEAR)): AccountWithdrawal? {
+    var text = body.replace(Regex("""\s+"""), " ").trim()
+    val titled = title?.trim() == "출금"
+    if (!titled) {
+        if (!text.startsWith("출금 ")) return null
+        text = text.removePrefix("출금 ").trim()
+    }
+    val match = withdrawalRegex.find(text) ?: return null
+    if (match.groupValues[3] != accountLast4) return null
+    val amount = match.groupValues[1].replace(",", "").toIntOrNull()?.takeIf { it > 0 } ?: return null
+    val counterparty = match.groupValues[2].trim().takeIf(String::isNotBlank) ?: return null
+    val parts = listOf(4, 5, 6, 7).map { match.groupValues[it].padStart(2, '0') }
+    val occurredAt = validOccurredAt(parts, year) ?: return null
+    return AccountWithdrawal(accountLast4, occurredAt, amount, counterparty)
 }
 
 internal fun approvalMatchId(approval: Approval): String {
@@ -330,6 +390,25 @@ internal fun enqueueCancellation(
     if (committed) EnqueueResult.ADDED else EnqueueResult.WRITE_FAILED
 }
 
+internal fun enqueueWithdrawal(
+    prefs: android.content.SharedPreferences,
+    withdrawal: AccountWithdrawal,
+    sourceId: String,
+): EnqueueResult = synchronized(SMS_QUEUE_LOCK) {
+    val processed = JSArray(prefs.getString(PROCESSED_SMS_KEY, "[]"))
+    val processedIds = (0 until processed.length()).mapNotNull { processed.optString(it, null) }.toMutableList()
+    if (sourceId in processedIds) return@synchronized EnqueueResult.DUPLICATE
+    val queue = JSArray(prefs.getString(WITHDRAWAL_QUEUE_KEY, "[]"))
+    if ((0 until queue.length()).any { queue.optJSONObject(it)?.optString("id") == sourceId }) return@synchronized EnqueueResult.DUPLICATE
+    queue.put(withdrawal.toJson(sourceId))
+    while (queue.length() > MAX_QUEUE_SIZE) queue.remove(0)
+    processedIds.add(sourceId)
+    while (processedIds.size > MAX_PROCESSED_SMS_IDS) processedIds.removeAt(0)
+    val committed = prefs.edit().putString(WITHDRAWAL_QUEUE_KEY, queue.toString())
+        .putString(PROCESSED_SMS_KEY, JSArray().also { array -> processedIds.forEach(array::put) }.toString()).commit()
+    if (committed) EnqueueResult.ADDED else EnqueueResult.WRITE_FAILED
+}
+
 private fun acknowledgeQueue(prefs: android.content.SharedPreferences, key: String, ids: JSArray) {
     val acknowledged = (0 until ids.length()).mapNotNull { ids.optString(it, null) }.toSet()
     val queue = JSArray(prefs.getString(key, "[]"))
@@ -398,7 +477,7 @@ internal fun postApprovalQueuedNotification(
     }
 }
 
-internal fun postReviewNotification(context: Context, prefs: android.content.SharedPreferences, eventId: String, title: String, text: String) {
+internal fun postReviewNotification(context: Context, prefs: android.content.SharedPreferences, eventId: String, title: String, text: String, notificationId: Int = 2004) {
     try {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -407,11 +486,11 @@ internal fun postReviewNotification(context: Context, prefs: android.content.Sha
             NotificationManagerCompat.from(context).createNotificationChannel(NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH))
         }
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP) }
-        val contentIntent = launchIntent?.let { PendingIntent.getActivity(context, 2004, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
+        val contentIntent = launchIntent?.let { PendingIntent.getActivity(context, notificationId, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
         val notification = NotificationCompat.Builder(context, channelId).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(text).setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
             .also { builder -> contentIntent?.let(builder::setContentIntent) }
-        NotificationManagerCompat.from(context).notify(2004, notification.build())
+        NotificationManagerCompat.from(context).notify(notificationId, notification.build())
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
     } catch (error: Exception) {
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
@@ -452,6 +531,18 @@ class SmsBridgePlugin : Plugin() {
         call.resolve()
     }
 
+    /** Four digits register the top-up account; an empty value removes it. */
+    @com.getcapacitor.PluginMethod
+    fun configureTopUpAccount(call: PluginCall) {
+        val account = call.getString("accountLast4")?.filter { it.isDigit() }.orEmpty()
+        when (account.length) {
+            0 -> prefs.edit().remove(TOPUP_ACCOUNT_KEY).apply()
+            4 -> prefs.edit().putString(TOPUP_ACCOUNT_KEY, account).apply()
+            else -> { call.reject("accountLast4 must be four digits or empty"); return }
+        }
+        call.resolve()
+    }
+
     @com.getcapacitor.PluginMethod
     fun clearConfiguration(call: PluginCall) {
         prefs.edit().remove(CARD_KEY).apply()
@@ -477,7 +568,7 @@ class SmsBridgePlugin : Plugin() {
 
     @com.getcapacitor.PluginMethod
     fun getConfiguration(call: PluginCall) {
-        call.resolve(JSObject().put("cardLast4", prefs.getString(CARD_KEY, "") ?: ""))
+        call.resolve(JSObject().put("cardLast4", prefs.getString(CARD_KEY, "") ?: "").put("topUpAccountLast4", prefs.getString(TOPUP_ACCOUNT_KEY, "") ?: ""))
     }    @com.getcapacitor.PluginMethod
     fun syncBudgetState(call: PluginCall) {
         val categoryLimits = call.getObject("categoryLimits") ?: JSObject()
@@ -496,6 +587,7 @@ class SmsBridgePlugin : Plugin() {
             .put("periodEnd", call.getString("periodEnd") ?: "")
             .put("quickCategories", quickCategories)
             .put("rules", call.getArray("rules") ?: JSArray())
+            .put("payServices", call.getArray("payServices") ?: JSArray())
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
         call.resolve()
     }
@@ -620,6 +712,17 @@ class SmsBridgePlugin : Plugin() {
     @com.getcapacitor.PluginMethod
     fun acknowledgePendingCancellations(call: PluginCall) {
         acknowledgeQueue(prefs, CANCELLATION_QUEUE_KEY, call.getArray("ids") ?: JSArray())
+        call.resolve()
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun consumePendingWithdrawals(call: PluginCall) {
+        call.resolve(JSObject().put("items", JSArray(prefs.getString(WITHDRAWAL_QUEUE_KEY, "[]"))))
+    }
+
+    @com.getcapacitor.PluginMethod
+    fun acknowledgePendingWithdrawals(call: PluginCall) {
+        acknowledgeQueue(prefs, WITHDRAWAL_QUEUE_KEY, call.getArray("ids") ?: JSArray())
         call.resolve()
     }
 

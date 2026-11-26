@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { smsBridge, notificationBridge, widgetBridge } = vi.hoisted(() => ({
   widgetBridge: { sync: vi.fn() },
-  smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn() },
+  smsBridge: { addListener: vi.fn(), configure: vi.fn(), clearConfiguration: vi.fn(), getConfiguration: vi.fn(), syncBudgetState: vi.fn(), injectTestApproval: vi.fn(), injectTestNotificationApproval: vi.fn(), scheduleTestApproval: vi.fn(), getNotificationAccessStatus: vi.fn(), openNotificationAccessSettings: vi.fn(), consumePendingApprovals: vi.fn(), acknowledgePendingApprovals: vi.fn(), consumePendingApprovalReviews: vi.fn(), acknowledgePendingApprovalReviews: vi.fn(), consumePendingCancellations: vi.fn(), acknowledgePendingCancellations: vi.fn(), consumePendingWithdrawals: vi.fn(), acknowledgePendingWithdrawals: vi.fn(), configureTopUpAccount: vi.fn() },
   notificationBridge: { requestPermission: vi.fn(), getPermissionStatus: vi.fn(), openNotificationSettings: vi.fn(), show: vi.fn() },
 }));
 vi.mock('./native/smsBridge', () => ({ SmsBridge: smsBridge }));
@@ -46,6 +46,9 @@ beforeEach(() => {
   smsBridge.acknowledgePendingApprovalReviews.mockResolvedValue(undefined);
   smsBridge.consumePendingCancellations.mockResolvedValue({ items: [] });
   smsBridge.acknowledgePendingCancellations.mockResolvedValue(undefined);
+  smsBridge.consumePendingWithdrawals.mockResolvedValue({ items: [] });
+  smsBridge.acknowledgePendingWithdrawals.mockResolvedValue(undefined);
+  smsBridge.configureTopUpAccount.mockResolvedValue(undefined);
   smsBridge.getNotificationAccessStatus.mockResolvedValue({ granted: true });
   smsBridge.openNotificationAccessSettings.mockResolvedValue(undefined);
   notificationBridge.getPermissionStatus.mockResolvedValue({ granted: true });
@@ -569,6 +572,24 @@ describe('app entry flows', () => {
 
     await waitFor(() => expect(smsBridge.acknowledgePendingApprovalReviews).toHaveBeenCalledWith({ ids: ['period-gap-review'] }));
     expect(screen.queryByRole('heading', { name: '결제 정보 확인' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a pay top-up withdrawal as an undecided payment and acknowledges every withdrawal', async () => {
+    window.localStorage.setItem('shinhanhae-policy-book-v1', JSON.stringify({ versions: [{
+      periodKey: getPolicyPeriodKey(new Date()), confirmedAt: new Date().toISOString(), sourceText: 'saved policy',
+      plans: { housing: 50000, food: 200000, education: 0, transport: 250000, studyCafe: 0, cafe: 200000, readingRoom: 0 },
+    }] }));
+    const occurredAt = new Date().toISOString();
+    smsBridge.consumePendingWithdrawals.mockResolvedValue({ items: [
+      { id: 'withdrawal-pay', accountLast4: '1234', occurredAt, amount: 10000, counterparty: '카카오페이 입출금' },
+      { id: 'withdrawal-rent', accountLast4: '1234', occurredAt, amount: 300000, counterparty: '테스트 월세' },
+    ] });
+
+    await renderApp();
+    await act(async () => { approvalListener?.(); });
+
+    await waitFor(() => expect(smsBridge.acknowledgePendingWithdrawals).toHaveBeenCalledWith({ ids: ['withdrawal-pay', 'withdrawal-rent'] }));
+    expect(await screen.findByText('페이 충전 출금 1건을 분류 필요에 추가했습니다.')).toBeInTheDocument();
   });
 
   it('automatically applies and acknowledges one unambiguous cancellation notice', async () => {
