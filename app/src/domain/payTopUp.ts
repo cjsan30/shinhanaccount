@@ -6,7 +6,7 @@ export type AccountWithdrawal = { id: string; accountLast4: string; occurredAt: 
 
 // Decision 2026-11-26: the main pay services. A counterparty containing one of the
 // patterns is taken as a top-up of that pay; every other withdrawal is ignored.
-const PAY_SERVICES: Array<{ name: string; patterns: string[] }> = [
+export const PAY_SERVICES: Array<{ name: string; patterns: string[] }> = [
   { name: '카카오페이', patterns: ['카카오페이', 'kakaopay'] },
   { name: '네이버페이', patterns: ['네이버페이', 'naverpay', '네이버파이낸셜'] },
   { name: '토스', patterns: ['토스', 'toss'] },
@@ -47,4 +47,24 @@ export function topUpEntries(withdrawals: AccountWithdrawal[]): LedgerEntry[] {
       importOrigins: [{ id, kind: 'bank' as const, identifierLast4: withdrawal.accountLast4, merchant: withdrawal.counterparty, occurredAt: withdrawal.occurredAt, amount: withdrawal.amount, summary: withdrawal.counterparty }],
     }];
   });
+}
+
+/** A pay top-up entry made from a withdrawal notice. */
+export const isTopUpEntry = (entry: LedgerEntry) => entry.id.startsWith('topup-');
+
+// Decision 2026-11-26: the notice shows minutes only and pays can be topped up
+// several times a day, so a statement row joins a top-up only within one minute.
+const TOP_UP_MATCH_MS = 60_000;
+
+/**
+ * True when a bank statement row is the same withdrawal as a pay top-up notice:
+ * same amount, at most one minute apart, and the row names the same pay.
+ */
+export function isSameTopUp(topUp: LedgerEntry, row: LedgerEntry) {
+  if (!isTopUpEntry(topUp) || isTopUpEntry(row) || topUp.status === 'cancelled' || row.status === 'cancelled') return false;
+  if (topUp.amount !== row.amount) return false;
+  if (topUp.cardLast4 && row.cardLast4 && topUp.cardLast4 !== row.cardLast4) return false;
+  const delta = Math.abs(Date.parse(topUp.occurredAt) - Date.parse(row.occurredAt));
+  if (!Number.isFinite(delta) || delta > TOP_UP_MATCH_MS) return false;
+  return payTopUpMerchant(`${row.merchant} ${row.bankSummary ?? ''}`) === topUp.merchant;
 }

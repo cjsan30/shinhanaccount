@@ -50,7 +50,7 @@ import { NotificationBridge } from './native/notificationBridge';
 import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
 import { createEmptyAppState, initializeAppState, loadLegacyAppState, persistAppState } from './native/appStateStore';
-import { topUpEntries, type AccountWithdrawal } from './domain/payTopUp';
+import { PAY_SERVICES, topUpEntries, type AccountWithdrawal } from './domain/payTopUp';
 import { AppHealth } from './native/appHealth';
 import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import { PaymentHistory } from './components/PaymentHistory';
@@ -68,7 +68,7 @@ import { AccessibilitySettings } from './components/AccessibilitySettings';
 import { createVerificationState, type VerificationState } from './domain/verification';
 import { SpotlightGuide } from './components/SpotlightGuide';
 import { APP_GUIDE_STEPS } from './components/appGuideSteps';
-import { resolveImportDuplicate } from './domain/importReconciliation';
+import { reconcileImportedEntries, resolveImportDuplicate } from './domain/importReconciliation';
 import { AppInformationContent, AppInformationNotice } from './components/AppInformation';
 import { hasConfirmedAppInformation } from './domain/appInformation';
 import { loadInformationConfirmation, saveInformationConfirmation } from './native/appInformationPreference';
@@ -328,7 +328,7 @@ function App() {
   const widgetDetailRows = useMemo(() => itemUsage.map(({ item, spent, count }) => ({ label: item.label, limit: getCategoryLimit(policy, item.ledgerCategories[0]), spent, count })).filter((item) => item.limit > 0).sort((left, right) => right.count - left.count || right.spent - left.spent || right.limit - left.limit).slice(0, 7).map(({ label, limit, spent }) => ({ label, limit, spent })), [itemUsage, policy]);
   const nativeRules = useMemo(() => buildNativeRuleSnapshot(merchantRules, allPolicyItems), [merchantRules, allPolicyItems]);
   useEffect(() => {
-    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, ...getNativeAlertRange(activePolicy.periodKey, policy.period), quickCategories, rules: nativeRules }).catch(() => undefined);
+    void SmsBridge.syncBudgetState({ categoryLimits, categorySpent, alertCategories, thresholds: ledger.alertThresholds, periodKey: activePolicy.periodKey, ...getNativeAlertRange(activePolicy.periodKey, policy.period), quickCategories, rules: nativeRules, payServices: PAY_SERVICES }).catch(() => undefined);
   }, [policy.period, activePolicy.periodKey, alertCategories, categoryLimits, categorySpent, ledger.alertThresholds, quickCategories, nativeRules]);
 
   useEffect(() => {
@@ -366,8 +366,9 @@ function App() {
       classify: (merchant) => classifyWithMerchantRules(merchant, merchantRulesRef.current),
     });
     // Pay top-ups join as undecided payments; other withdrawals are only acknowledged.
-    const topUps = topUpEntries(withdrawalResult.items).filter((entry) => !batch.ledger.entries.some((existing) => existing.id === entry.id));
-    const nextLedger = topUps.length ? { ...batch.ledger, entries: [...batch.ledger.entries, ...topUps] } : batch.ledger;
+    // A statement row imported earlier absorbs its notice instead of adding a second entry.
+    const topUpResult = reconcileImportedEntries(batch.ledger.entries, topUpEntries(withdrawalResult.items));
+    const nextLedger = { ...batch.ledger, entries: topUpResult.entries };
     await persistAppState(window.localStorage, {
       ledger: nextLedger,
       policyBook: policyBookRef.current,
@@ -394,7 +395,7 @@ function App() {
       if (!reviewResult.items.length) setPanel('cancel-review');
     }
     batch.crossedAlerts.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
-    if (topUps.length) show(`페이 충전 출금 ${topUps.length}건을 분류 필요에 추가했습니다.`);
+    if (topUpResult.imported) show(`페이 충전 출금 ${topUpResult.imported}건을 분류 필요에 추가했습니다.`);
     if (batch.appliedApprovals.length || batch.autoCancelled.length) show(`${batch.appliedApprovals.length}건의 승인 결제를 자동 반영했습니다.${batch.autoCancelled.length ? ` 취소 ${batch.autoCancelled.length}건도 반영했습니다.` : ''}`);
   }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
   // Payments of a new period are stored before its plan exists; they count only after the deposit.

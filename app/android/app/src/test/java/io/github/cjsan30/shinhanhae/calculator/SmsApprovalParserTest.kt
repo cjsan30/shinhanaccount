@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
+import org.json.JSONObject
 
 class SmsApprovalParserTest {
     @Test
@@ -278,5 +280,14 @@ class SmsApprovalParserTest {
         assertNull(parseAccountWithdrawal("출금", "10,000원 테스트페이 입출금(1234) 13.25 19:46", "1234", 2026))
         assertNull(parseAccountWithdrawal("출금", "0원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026))
         assertNull(parseAccountWithdrawal(null, "10,000원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026))
+    }
+
+    @Test
+    fun `names a pay top-up only from the synced pay list`() {
+        val services = JSONArray().put(JSONObject().put("name", "카카오페이").put("patterns", JSONArray().put("카카오페이").put("kakaopay")))
+        assertEquals("카카오페이 충전", payTopUpLabel("카카오페이 입출금", services))
+        assertEquals("카카오페이 충전", payTopUpLabel("KakaoPay", services))
+        assertNull(payTopUpLabel("테스트 부동산 월세", services))
+        assertNull(payTopUpLabel("카카오페이 입출금", JSONArray()))
     }
 }

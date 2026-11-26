@@ -20,6 +20,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.lang.ref.WeakReference
@@ -227,6 +228,24 @@ internal data class AccountWithdrawal(
         .put("counterparty", counterparty)
         .also { notificationPostedAt?.let { postedAt -> it.put("notificationPostedAt", postedAt) } }
 }
+
+/**
+ * The display name the web app gave a pay top-up counterparty ("카카오페이 충전"), or null.
+ * The pay list comes from the web app through syncBudgetState; Android only looks it up.
+ */
+internal fun payTopUpLabel(counterparty: String, payServices: JSONArray): String? {
+    val compact = counterparty.lowercase().filterNot { it.isWhitespace() }
+    for (index in 0 until payServices.length()) {
+        val service = payServices.optJSONObject(index) ?: continue
+        val patterns = service.optJSONArray("patterns") ?: continue
+        val matched = (0 until patterns.length()).any { patterns.optString(it).takeIf(String::isNotEmpty)?.let(compact::contains) == true }
+        if (matched) return service.optString("name").takeIf(String::isNotEmpty)?.let { "$it 충전" }
+    }
+    return null
+}
+
+internal fun storedPayServices(prefs: android.content.SharedPreferences): JSONArray =
+    try { JSONObject(prefs.getString(BUDGET_STATE_KEY, "{}") ?: "{}").optJSONArray("payServices") ?: JSONArray() } catch (_: Exception) { JSONArray() }
 
 /**
  * Reads a bank "출금" notice for the registered account only. The title carries "출금"; some
@@ -458,7 +477,7 @@ internal fun postApprovalQueuedNotification(
     }
 }
 
-internal fun postReviewNotification(context: Context, prefs: android.content.SharedPreferences, eventId: String, title: String, text: String) {
+internal fun postReviewNotification(context: Context, prefs: android.content.SharedPreferences, eventId: String, title: String, text: String, notificationId: Int = 2004) {
     try {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -467,11 +486,11 @@ internal fun postReviewNotification(context: Context, prefs: android.content.Sha
             NotificationManagerCompat.from(context).createNotificationChannel(NotificationChannel(channelId, "승인 결제", NotificationManager.IMPORTANCE_HIGH))
         }
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP) }
-        val contentIntent = launchIntent?.let { PendingIntent.getActivity(context, 2004, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
+        val contentIntent = launchIntent?.let { PendingIntent.getActivity(context, notificationId, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
         val notification = NotificationCompat.Builder(context, channelId).setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(text).setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
             .also { builder -> contentIntent?.let(builder::setContentIntent) }
-        NotificationManagerCompat.from(context).notify(2004, notification.build())
+        NotificationManagerCompat.from(context).notify(notificationId, notification.build())
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_POSTED, status = "success")
     } catch (error: Exception) {
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.NOTIFICATION_FAILED, status = "error", errorType = error.javaClass.simpleName)
@@ -568,6 +587,7 @@ class SmsBridgePlugin : Plugin() {
             .put("periodEnd", call.getString("periodEnd") ?: "")
             .put("quickCategories", quickCategories)
             .put("rules", call.getArray("rules") ?: JSArray())
+            .put("payServices", call.getArray("payServices") ?: JSArray())
         prefs.edit().putString(BUDGET_STATE_KEY, state.toString()).apply()
         call.resolve()
     }

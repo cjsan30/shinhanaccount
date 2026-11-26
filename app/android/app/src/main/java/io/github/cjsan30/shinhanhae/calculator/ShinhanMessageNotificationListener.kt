@@ -124,6 +124,7 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
         var reviewQueued = 0
         var cancellationQueued = 0
         var withdrawalQueued = 0
+        val topUpNotices = mutableListOf<String>()
         var budgetAlert: String? = null
         for (candidate in candidates) {
             if (topUpAccount != null) {
@@ -132,7 +133,10 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
                     val raw = listOf("withdrawal", withdrawal.occurredAt, withdrawal.amount.toString(), withdrawal.counterparty, candidate.postedAt.toString(), sbn.key).joinToString("|")
                     val sourceId = "notification-" + MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString("") { "%02x".format(it) }
                     when (enqueueWithdrawal(prefs, withdrawal, sourceId)) {
-                        EnqueueResult.ADDED -> withdrawalQueued += 1
+                        EnqueueResult.ADDED -> {
+                            withdrawalQueued += 1
+                            payTopUpLabel(withdrawal.counterparty, storedPayServices(prefs))?.let { topUpNotices += "$it ${"%,d".format(withdrawal.amount)}원" }
+                        }
                         EnqueueResult.DUPLICATE -> Unit
                         EnqueueResult.WRITE_FAILED -> { recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMIT_FAILED, status = "error"); return }
                     }
@@ -185,7 +189,11 @@ class ShinhanMessageNotificationListener : NotificationListenerService() {
         recordSmsDiagnostic(prefs, eventId, SmsDiagnosticStage.QUEUE_COMMITTED, status = "success", queueSize = queueSize)
         Log.i(NOTIFICATION_LOG_TAG, "$queued approval, $reviewQueued review, $cancellationQueued cancellation, $withdrawalQueued withdrawal notification(s) queued")
         SmsBridgePlugin.notifyApprovalQueued()
-        // A withdrawal alone posts nothing: the app decides later whether it was a pay top-up.
+        // Only withdrawals the web app's pay list names get a notice (decision 2026-11-26); its own id keeps a card notice beside it.
+        if (topUpNotices.isNotEmpty()) {
+            val noticeTitle = if (topUpNotices.size == 1) "${topUpNotices[0]} · 분류 필요" else "페이 충전 ${topUpNotices.size}건 · 분류 필요"
+            postReviewNotification(this, prefs, eventId, noticeTitle, "앱을 열어 지원금 사용 여부를 골라 주세요.", notificationId = 2005)
+        }
         if (queued == 0 && reviewQueued == 0 && cancellationQueued == 0) return
         when {
             reviewQueued > 0 -> postReviewNotification(this, prefs, eventId, "결제 정보를 확인해 주세요", "일부 정보가 누락되었거나 겹칩니다. 앱에서 확인 후 등록하세요.")

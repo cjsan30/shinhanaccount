@@ -1,4 +1,5 @@
 import type { Ledger, LedgerEntry } from './ledger';
+import { isSameTopUp, isTopUpEntry } from './payTopUp';
 
 export type TransactionOrigin = { id: string; kind: 'card' | 'bank'; identifierLast4: string; merchant: string; occurredAt: string; amount: number; summary?: string };
 const originKind = (entry: LedgerEntry) => entry.source === 'bankCsv' || entry.id.startsWith('bank-') ? 'bank' : ['excel', 'cardPdf', 'sms', 'notification'].includes(entry.source ?? '') || entry.id.startsWith('approval-') ? 'card' : undefined;
@@ -21,6 +22,15 @@ export function mergeTransactionOrigins(existing: LedgerEntry, incoming: LedgerE
   const card = origins.find((origin) => origin.kind === 'card');
   return { ...existing, merchant: card?.merchant ?? existing.merchant, importOrigins: origins, evidence: [...(existing.evidence ?? []), ...(incoming.evidence ?? [])].filter((evidence, index, list) => list.findIndex((other) => other.id === evidence.id) === index) };
 }
+// One notice joins one statement row: an entry that already holds both is never joined again.
+const hasStatementRow = (entry: LedgerEntry) => transactionOrigins(entry).some((origin) => origin.kind === 'bank' && !origin.id.startsWith('topup-'));
+const hasTopUpNotice = (entry: LedgerEntry) => transactionOrigins(entry).some((origin) => origin.id.startsWith('topup-'));
+const joined = (entry: LedgerEntry) => hasStatementRow(entry) && hasTopUpNotice(entry);
+function pairsTopUp(left: LedgerEntry, right: LedgerEntry) {
+  const bankSide = (entry: LedgerEntry) => hasStatementRow(entry) || hasTopUpNotice(entry);
+  if (!bankSide(left) || !bankSide(right) || joined(left) || joined(right)) return false;
+  return isSameTopUp(left, right) || isSameTopUp(right, left);
+}
 export function reconcileImportedEntries(baseline: LedgerEntry[], incoming: LedgerEntry[]) {
   const entries = [...baseline];
   let imported = 0, duplicates = 0, mergedUndecided = 0, mergedConfirmed = 0, reviewNeeded = 0;
@@ -29,6 +39,15 @@ export function reconcileImportedEntries(baseline: LedgerEntry[], incoming: Ledg
     const normalize = (name: string) => name.toLowerCase().replace(/[\s().,]/g, '');
     const repeat = entries.find((entry) => entry.id === next.id || (next.approvalNumber && entry.approvalNumber === next.approvalNumber && entry.cardLast4 === next.cardLast4) || (!transactionOrigins(entry).length && entry.cardLast4 === next.cardLast4 && entry.occurredAt === next.occurredAt && entry.amount === next.amount && normalize(entry.merchant) === normalize(next.merchant)) || transactionOrigins(entry).some((origin) => transactionOrigins(next).some((other) => other.kind === origin.kind && other.identifierLast4 === origin.identifierLast4 && (other.id === origin.id || (other.occurredAt === origin.occurredAt && other.amount === origin.amount && normalize(other.merchant) === normalize(origin.merchant))))));
     if (repeat) { duplicates++; continue; }
+    // A pay top-up notice and its statement row are one withdrawal (decision 2026-11-26).
+    const topUpMatches = entries.filter((entry) => pairsTopUp(entry, next));
+    if (topUpMatches.length === 1 && incoming.filter((other) => pairsTopUp(topUpMatches[0], other)).length === 1) {
+      const existing = topUpMatches[0];
+      const topUp = isTopUpEntry(existing) ? existing : next;
+      entries[entries.indexOf(existing)] = { ...mergeTransactionOrigins(existing, next), merchant: topUp.merchant };
+      if (existing.status === 'undecided') mergedUndecided++; else mergedConfirmed++;
+      continue;
+    }
     // Compare against the full batch, not only earlier rows: a one-to-many match is never auto-merged.
     const candidates = entries.filter((entry) => !entry.duplicateCandidateIds?.length && crossSource(entry, next) && nearby(entry, next));
     const candidate = candidates[0];
