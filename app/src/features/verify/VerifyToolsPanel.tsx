@@ -27,8 +27,8 @@ export function VerifyToolsPanel(props: Props) {
     window.location.reload();
   };
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
-  const scheduleNotice = () => {
-    VerifyTools.scheduleTestApproval({ delaySeconds: 15, amount: 5000 })
+  const scheduleNotice = (kind: 'approval' | 'withdrawal' = 'approval') => {
+    VerifyTools.scheduleTestApproval({ delaySeconds: 15, amount: 5000, kind })
       .then(() => setNoticeStatus('예약했습니다. 지금 앱을 닫아 주세요.'))
       .catch((error: unknown) => setNoticeStatus(error instanceof Error ? error.message : '알림을 예약하지 못했습니다.'));
   };
@@ -57,7 +57,9 @@ export function VerifyToolsPanel(props: Props) {
     <button className="sheet-action secondary-action" type="button" disabled={!props.testPaymentCount} onClick={props.onRemoveTestPayments}>테스트 결제 지우기 ({props.testPaymentCount}건)</button>
     <h3>가짜 결제 알림</h3>
     <p>약 15초~1분 뒤 등록한 카드로 5,000원 결제 알림을 보냅니다. <br />누른 뒤 앱을 닫으면 앱이 닫힌 상태에서 알림과 예산 경고를 확인할 수 있습니다. <br />실제 결제처럼 기록되니 확인 후 결제 내역에서 지워 주세요.</p>
-    <button className="sheet-action" type="button" onClick={scheduleNotice}>가짜 결제 알림 보내기</button>
+    <button className="sheet-action" type="button" onClick={() => scheduleNotice()}>가짜 결제 알림 보내기</button>
+    <p>같은 방식으로 등록한 충전 계좌에서 카카오페이로 5,000원 충전한 출금 알림을 보냅니다. <br />분류 필요에 "카카오페이 충전"으로 들어오는지 확인합니다.</p>
+    <button className="sheet-action secondary-action" type="button" onClick={() => scheduleNotice('withdrawal')}>가짜 충전 출금 알림 보내기</button>
     {noticeStatus && <small role="status"><Sentences text={noticeStatus} /></small>}
     <h3>계획표 OCR 일괄 읽기</h3>
     <p>컴퓨터에서 앱 파일 폴더의 plan-ocr에 넣은 계획표 이미지를 모두 읽어 결과 파일로 남깁니다. <br />정확도 검증용입니다.</p>

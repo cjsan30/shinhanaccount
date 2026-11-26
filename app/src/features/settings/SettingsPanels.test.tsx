@@ -27,15 +27,26 @@ describe('feedback', () => {
 
 describe('OperationsSettings', () => {
   const props = (patch: Partial<Parameters<typeof OperationsSettings>[0]> = {}) => ({
-    card: '1234', showCard: false, onToggleShowCard: vi.fn(), onCardChange: vi.fn(), paymentAlertsEnabled: true, budgetAlertsEnabled: false,
+    card: '1234', showCard: false, onToggleShowCard: vi.fn(), onCardChange: vi.fn(), account: '', onAccountChange: vi.fn(), paymentAlertsEnabled: true, budgetAlertsEnabled: false,
     onTogglePaymentAlerts: vi.fn(), onToggleBudgetAlerts: vi.fn(), thresholds: [50, 80] as [number, number], onThresholdChange: vi.fn(), ...patch,
+  });
+
+  it('masks the top-up account digits with their own eye button', () => {
+    const p = props();
+    render(<OperationsSettings {...p} />);
+    expect(screen.getByLabelText('충전 계좌 끝 4자리')).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: '충전 계좌 끝 4자리 보기' }));
+    expect(screen.getByLabelText('충전 계좌 끝 4자리')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('카드 끝 4자리')).toHaveAttribute('type', 'password');
+    fireEvent.change(screen.getByLabelText('충전 계좌 끝 4자리'), { target: { value: '9a' } });
+    expect(p.onAccountChange).toHaveBeenCalledWith('9a');
   });
 
   it('masks the card digits until shown and passes raw input to the caller', () => {
     const p = props();
     const { rerender } = render(<OperationsSettings {...p} />);
     expect(screen.getByLabelText('카드 끝 4자리')).toHaveAttribute('type', 'password');
-    fireEvent.click(screen.getByRole('button', { name: '보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '카드 끝 4자리 보기' }));
     expect(p.onToggleShowCard).toHaveBeenCalled();
     rerender(<OperationsSettings {...p} showCard />);
     expect(screen.getByLabelText('카드 끝 4자리')).toHaveAttribute('type', 'text');

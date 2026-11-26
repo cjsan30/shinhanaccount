@@ -257,4 +257,26 @@ class SmsApprovalParserTest {
             30_000L,
         ))
     }
+
+    @Test
+    fun `reads a withdrawal notice of the registered top-up account`() {
+        val withdrawal = parseAccountWithdrawal("출금", "10,000원 테스트페이 입출금(1234)\n11.05 09:07", "1234", 2026)
+        assertEquals(AccountWithdrawal("1234", "2026-11-05T09:07:00+09:00", 10000, "테스트페이 입출금"), withdrawal)
+    }
+
+    @Test
+    fun `reads a withdrawal notice whose title is folded into the text`() {
+        val withdrawal = parseAccountWithdrawal(null, "출금 3,500원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026)
+        assertEquals(3500, withdrawal?.amount)
+        assertEquals("2026-11-25T19:46:00+09:00", withdrawal?.occurredAt)
+    }
+
+    @Test
+    fun `ignores deposits, other accounts and broken dates`() {
+        assertNull(parseAccountWithdrawal("입금", "10,000원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026))
+        assertNull(parseAccountWithdrawal("출금", "10,000원 테스트페이 입출금(9999) 11.25 19:46", "1234", 2026))
+        assertNull(parseAccountWithdrawal("출금", "10,000원 테스트페이 입출금(1234) 13.25 19:46", "1234", 2026))
+        assertNull(parseAccountWithdrawal("출금", "0원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026))
+        assertNull(parseAccountWithdrawal(null, "10,000원 테스트페이 입출금(1234) 11.25 19:46", "1234", 2026))
+    }
 }

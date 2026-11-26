@@ -50,6 +50,7 @@ import { NotificationBridge } from './native/notificationBridge';
 import { WidgetBridge } from './native/widgetBridge';
 import type { BackupPayload } from './domain/backup';
 import { createEmptyAppState, initializeAppState, loadLegacyAppState, persistAppState } from './native/appStateStore';
+import { topUpEntries, type AccountWithdrawal } from './domain/payTopUp';
 import { AppHealth } from './native/appHealth';
 import { DashboardScreen } from './features/dashboard/DashboardScreen';
 import { PaymentHistory } from './components/PaymentHistory';
@@ -277,6 +278,7 @@ function App() {
       if (/^\d{4}$/.test(configuration.cardLast4)) {
         setCard(configuration.cardLast4);
       }
+      if (/^\d{4}$/.test(configuration.topUpAccountLast4 ?? '')) setTopUpAccount(configuration.topUpAccountLast4 ?? '');
     }).catch(() => undefined);
   }, [nativePlatform]);
   const approvalQueueId = (approval: NativeApproval) => approval.id ?? `${approval.cardLast4}|${approval.occurredAt}|${approval.amount}|${approval.merchant}`;
@@ -346,12 +348,13 @@ function App() {
   // The Android queue is read first and acknowledged only after the web ledger is persisted.
   const processPendingApprovals = useCallback(async (isDisposed: () => boolean) => {
     const result = await SmsBridge.consumePendingApprovals();
-    const [reviewResult, cancellationResult] = await Promise.all([
+    const [reviewResult, cancellationResult, withdrawalResult] = await Promise.all([
       SmsBridge.consumePendingApprovalReviews().catch(() => ({ items: [] as NativeApprovalReview[] })),
       SmsBridge.consumePendingCancellations().catch(() => ({ items: [] as NativeCancellation[] })),
+      SmsBridge.consumePendingWithdrawals().catch(() => ({ items: [] as AccountWithdrawal[] })),
     ]);
     if (isDisposed()) return;
-    if (!result.items.length && !reviewResult.items.length && !cancellationResult.items.length) return;
+    if (!result.items.length && !reviewResult.items.length && !cancellationResult.items.length && !withdrawalResult.items.length) return;
     const batch = applyApprovalBatch({
       ledger: ledgerRef.current,
       approvals: result.items,
@@ -362,16 +365,20 @@ function App() {
       categoryLimits,
       classify: (merchant) => classifyWithMerchantRules(merchant, merchantRulesRef.current),
     });
+    // Pay top-ups join as undecided payments; other withdrawals are only acknowledged.
+    const topUps = topUpEntries(withdrawalResult.items).filter((entry) => !batch.ledger.entries.some((existing) => existing.id === entry.id));
+    const nextLedger = topUps.length ? { ...batch.ledger, entries: [...batch.ledger.entries, ...topUps] } : batch.ledger;
     await persistAppState(window.localStorage, {
-      ledger: batch.ledger,
+      ledger: nextLedger,
       policyBook: policyBookRef.current,
       merchantRules: merchantRulesRef.current,
       reportEvidence: reportEvidenceRef.current,
       verification: verificationRef.current,
     });
-    ledgerRef.current = batch.ledger;
-    setLedger(batch.ledger);
+    ledgerRef.current = nextLedger;
+    setLedger(nextLedger);
     await acknowledgeApprovals(result.items);
+    if (withdrawalResult.items.length) await SmsBridge.acknowledgePendingWithdrawals({ ids: withdrawalResult.items.map((item) => item.id) }).catch(() => undefined);
     if (batch.skippedReviewIds.length) await SmsBridge.acknowledgePendingApprovalReviews({ ids: batch.skippedReviewIds });
     if (batch.autoCancelled.length) await SmsBridge.acknowledgePendingCancellations({ ids: batch.autoCancelled.map((item) => item.id ?? '') });
     if (batch.reviews.length) {
@@ -387,6 +394,7 @@ function App() {
       if (!reviewResult.items.length) setPanel('cancel-review');
     }
     batch.crossedAlerts.forEach((item) => { void sendBudgetAlerts(item.alerts, item.bucket, item.category); });
+    if (topUps.length) show(`페이 충전 출금 ${topUps.length}건을 분류 필요에 추가했습니다.`);
     if (batch.appliedApprovals.length || batch.autoCancelled.length) show(`${batch.appliedApprovals.length}건의 승인 결제를 자동 반영했습니다.${batch.autoCancelled.length ? ` 취소 ${batch.autoCancelled.length}건도 반영했습니다.` : ''}`);
   }, [periodScope, budgetLimits.resident, budgetLimits.studySpace, categoryLimits]);
   // Payments of a new period are stored before its plan exists; they count only after the deposit.
@@ -461,6 +469,12 @@ function App() {
     const target = category ? getCategoryLabel(category) : (bucket === 'resident' ? '정주비' : '학습공간비');
     try { await NotificationBridge.show({ title: '지원금 사용 경고', body: `${target} 잔액이 ${alerts.map((value) => `${100 - value}%`).join(', ')} 남았습니다.` }); }
     catch { show('경고 기준에 도달했습니다. 알림 권한을 확인해 주세요.'); }
+  };
+  const [topUpAccount, setTopUpAccount] = useState('');
+  const changeTopUpAccount = (rawValue: string) => {
+    const value = rawValue.replace(/\D/g, '').slice(0, 4);
+    setTopUpAccount(value);
+    if (value.length === 4 || value.length === 0) void SmsBridge.configureTopUpAccount({ accountLast4: value }).catch(() => undefined);
   };
   const changeCard = (rawValue: string) => {
     const value = rawValue.replace(/\D/g, '');
@@ -782,7 +796,7 @@ function App() {
   else if (panel === 'settings') content = <SettingsHub onOpen={setPanel} feedbackBody={buildFeedbackBody} />;
   else if (panel === 'accessibility') content = <AccessibilitySettings preferences={accessibilityPreferences} onChange={setAccessibilityPreferences} />;
   else if (panel === 'information') content = <><AppInformationContent /><PrivacyNotice /></>;
-  else if (panel === 'operations') content = <OperationsSettings card={card} showCard={showCard} onToggleShowCard={() => setShowCard((current) => !current)} onCardChange={changeCard} paymentAlertsEnabled={paymentAlertsEnabled} budgetAlertsEnabled={budgetAlertsEnabled} onTogglePaymentAlerts={() => void togglePaymentNotifications()} onToggleBudgetAlerts={() => void toggleBudgetNotifications()} thresholds={[first, second]} onThresholdChange={updateAlertThreshold} />;
+  else if (panel === 'operations') content = <OperationsSettings card={card} showCard={showCard} onToggleShowCard={() => setShowCard((current) => !current)} onCardChange={changeCard} account={topUpAccount} onAccountChange={changeTopUpAccount} paymentAlertsEnabled={paymentAlertsEnabled} budgetAlertsEnabled={budgetAlertsEnabled} onTogglePaymentAlerts={() => void togglePaymentNotifications()} onToggleBudgetAlerts={() => void toggleBudgetNotifications()} thresholds={[first, second]} onThresholdChange={updateAlertThreshold} />;
   else if (panel === 'verification' && VerificationPanel) content = <VerificationPanel storageReady={storageReady} storageError={Boolean(storageError)} policyBook={policyBook} ledger={ledger} evidence={reportEvidence} value={verification} onChange={setVerification} notify={show} />;
   else if (panel === 'plan') content = planAdjusting
     ? <BudgetAdjustment policy={policy} spent={categorySpent} onApply={applyBudgetAdjustment} />

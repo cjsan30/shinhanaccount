@@ -1,4 +1,5 @@
-import { CaretRight } from '@phosphor-icons/react';
+import { useState } from 'react';
+import { CaretRight, Eye, EyeSlash } from '@phosphor-icons/react';
 import { AlertThresholdSettings } from '../../components/AlertThresholdSettings';
 import { withMailBody } from '../../domain/feedbackMail';
 
@@ -42,6 +43,8 @@ type OperationsSettingsProps = {
   showCard: boolean;
   onToggleShowCard: () => void;
   onCardChange: (rawValue: string) => void;
+  account: string;
+  onAccountChange: (rawValue: string) => void;
   paymentAlertsEnabled: boolean;
   budgetAlertsEnabled: boolean;
   onTogglePaymentAlerts: () => void;
@@ -50,14 +53,27 @@ type OperationsSettingsProps = {
   onThresholdChange: (index: 0 | 1, value: number) => void;
 };
 
-export function OperationsSettings({ card, showCard, onToggleShowCard, onCardChange, paymentAlertsEnabled, budgetAlertsEnabled, onTogglePaymentAlerts, onToggleBudgetAlerts, thresholds, onThresholdChange }: OperationsSettingsProps) {
+export function OperationsSettings({ card, showCard, onToggleShowCard, onCardChange, account, onAccountChange, paymentAlertsEnabled, budgetAlertsEnabled, onTogglePaymentAlerts, onToggleBudgetAlerts, thresholds, onThresholdChange }: OperationsSettingsProps) {
+  const [showAccount, setShowAccount] = useState(false);
   return <section className="operations-settings">
     <p>결제 수신과 예산 경고를 관리합니다. <br />버튼 문구로 현재 사용 상태를 확인할 수 있습니다.</p>
-    <label>카드 끝 4자리<input aria-label="카드 끝 4자리" type={showCard ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={card} onChange={(event) => onCardChange(event.target.value)} /></label>
+    <SecretDigitsField label="카드 끝 4자리" value={card} visible={showCard} onToggle={onToggleShowCard} onChange={onCardChange} />
     {card.length !== 4 && <small className="card-configuration-hint">카드 4자리를 모두 입력하면 결제 알림 수신이 다시 시작됩니다.</small>}
-    <button className="mask-toggle" type="button" onClick={onToggleShowCard}>{showCard ? '숨기기' : '보기'}</button>
+    <SecretDigitsField label="충전 계좌 끝 4자리 (선택)" inputLabel="충전 계좌 끝 4자리" value={account} visible={showAccount} onToggle={() => setShowAccount((current) => !current)} onChange={onAccountChange} />
     <button className={`sheet-action status-action ${paymentAlertsEnabled ? 'is-enabled' : ''}`} onClick={onTogglePaymentAlerts}>{paymentAlertsEnabled ? '결제 알림 수신 해제' : '결제 알림 수신 설정'}</button>
     <button className={`sheet-action status-action ${budgetAlertsEnabled ? 'is-enabled' : ''}`} onClick={onToggleBudgetAlerts}>{budgetAlertsEnabled ? '예산 경고 알림 해제' : '예산 경고 알림 설정'}</button>
     <AlertThresholdSettings first={thresholds[0]} second={thresholds[1]} onChange={onThresholdChange} />
   </section>;
+}
+
+/** Four masked digits with an eye button inside the field that shows or hides them. */
+function SecretDigitsField({ label, inputLabel = label, value, visible, onToggle, onChange }: { label: string; inputLabel?: string; value: string; visible: boolean; onToggle: () => void; onChange: (rawValue: string) => void }) {
+  return <label className="secret-digits">{label}
+    <span className="secret-digits__field">
+      <input aria-label={inputLabel} type={visible ? 'text' : 'password'} inputMode="numeric" maxLength={4} value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" className="secret-digits__toggle" aria-label={`${inputLabel} ${visible ? '숨기기' : '보기'}`} aria-pressed={visible} onClick={(event) => { event.preventDefault(); onToggle(); }}>
+        {visible ? <Eye size={22} aria-hidden="true" /> : <EyeSlash size={22} aria-hidden="true" />}
+      </button>
+    </span>
+  </label>;
 }

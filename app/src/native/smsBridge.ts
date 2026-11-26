@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import type { NativeMerchantRule } from '../domain/merchantRules';
+import type { AccountWithdrawal } from '../domain/payTopUp';
 
 export type NativeApproval = { id?: string; cardLast4: string; occurredAt: string; amount: number; merchant: string; notificationPostedAt?: number; source?: 'demo' | 'sms' | 'notification' | 'excel' | 'cardPdf' | 'bankCsv' | 'manual'; quickCategory?: string };
 export type NativeApprovalReview = { id: string; cardLast4: string; occurredAt?: string; amount?: number; merchant?: string; notificationPostedAt?: number; source?: 'notification' };
@@ -27,7 +28,9 @@ type SmsBridgePlugin = {
   addListener(eventName: 'approvalReceived', listener: () => void): Promise<{ remove: () => Promise<void> }>;
   configure(options: { cardLast4: string }): Promise<void>;
   clearConfiguration(): Promise<void>;
-  getConfiguration(): Promise<{ cardLast4: string }>;
+  getConfiguration(): Promise<{ cardLast4: string; topUpAccountLast4?: string }>;
+  /** Four digits register the pay top-up account; an empty string removes it. */
+  configureTopUpAccount(options: { accountLast4: string }): Promise<void>;
   syncBudgetState(state: NativeBudgetState): Promise<void>;
   injectTestApproval(approval: NativeApproval): Promise<void>;
   injectTestNotificationApproval(approval: NativeApproval): Promise<void>;
@@ -40,6 +43,8 @@ type SmsBridgePlugin = {
   acknowledgePendingApprovalReviews(options: { ids: string[] }): Promise<void>;
   consumePendingCancellations(): Promise<{ items: NativeCancellation[] }>;
   acknowledgePendingCancellations(options: { ids: string[] }): Promise<void>;
+  consumePendingWithdrawals(): Promise<{ items: AccountWithdrawal[] }>;
+  acknowledgePendingWithdrawals(options: { ids: string[] }): Promise<void>;
   getSmsDiagnostics(): Promise<{ items: SmsDiagnosticEvent[] }>;
   clearSmsDiagnostics(): Promise<void>;
 };
